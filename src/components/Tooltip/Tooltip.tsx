@@ -2,7 +2,6 @@ import {
   createEffect,
   createSignal,
   createUniqueId,
-  merge,
   onCleanup,
   Show,
   omit,
@@ -15,7 +14,7 @@ import { anchorLayer, openLayer } from "../../lib/layer";
 import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Tooltip.module.css";
-import { defined } from "../../lib/props";
+import { mergeDefined } from "../../lib/props";
 
 /** Which side of the control the tooltip sits on. */
 export type TooltipPlacement = "top" | "bottom" | "left" | "right";
@@ -305,7 +304,7 @@ export default function Tooltip<T extends HTMLElement = HTMLButtonElement, P ext
   // The cast is confined to these two lines: `T` buys the caller precise handler
   // types, and `dynamic` resolves its props from a tag name it cannot know here.
   const bareProps = bare as unknown as TooltipProps<HTMLButtonElement>;
-  const triggerProps = merge(behaviour, defined(trigger)) as unknown as TooltipProps<HTMLButtonElement>;
+  const triggerProps = mergeDefined(behaviour, trigger) as unknown as TooltipProps<HTMLButtonElement>;
 
   const Control = dynamic(() => props.as ?? "button");
   const control = () => <Control {...triggerProps} />;

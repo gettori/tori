@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onSettled, untrack } from "solid-js";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import SelectionToolbar, {
@@ -129,38 +129,49 @@ function PdfDocumentView(props: {
   // scale through a resize. `createMemo` above dedupes by value, so this only
   // restarts the timer when the width really moved.
   const [paintScale, setPaintScale] = createSignal(1);
-  createEffect(
-    on(scale, (s, prev) => {
-      if (prev === undefined) return setPaintScale(s);
-      const t = setTimeout(() => setPaintScale(s), REPAINT_SETTLE_MS);
-      onCleanup(() => clearTimeout(t));
-    }),
-  );
+  let prevPaintScale: number | undefined;
+  createEffect(scale, (s) => {
+    const prev = prevPaintScale;
+    prevPaintScale = s;
+    if (prev === undefined) {
+      setPaintScale(s);
+      return;
+    }
+    const t = setTimeout(() => setPaintScale(s), REPAINT_SETTLE_MS);
+    return () => clearTimeout(t);
+  });
 
-  onMount(() => {
+  onSettled(() => {
     let live = true;
-    onCleanup(() => {
-      live = false;
-      for (const task of tasks.values()) task.cancel();
-      tasks.clear();
+    const stops: (() => void)[] = [
+      () => {
+        live = false;
+        for (const task of tasks.values()) task.cancel();
+        tasks.clear();
+      },
+    ];
+    const stopAll = () => stops.forEach((stop) => stop());
+
+    // Deferred: the document's view store is live state, and a flush from here is a no-op.
+    queueMicrotask(() => {
+      if (!live) return;
+      loadPdf(props.path).then(
+        async (d) => {
+          const page = await d.getPage(1);
+          const vp = page.getViewport({ scale: 1 });
+          if (!live) return;
+          const first = { width: vp.width, height: vp.height };
+          setSizes(Array.from({ length: d.numPages }, (_, i) => (i === 0 ? first : null)));
+          setDoc(d);
+        },
+        (err) => {
+          if (live) setFailure(pdfFailureMessage(props.path, err));
+        },
+      );
     });
 
-    loadPdf(props.path).then(
-      async (d) => {
-        const page = await d.getPage(1);
-        const vp = page.getViewport({ scale: 1 });
-        if (!live) return;
-        const first = { width: vp.width, height: vp.height };
-        setSizes(Array.from({ length: d.numPages }, (_, i) => (i === 0 ? first : null)));
-        setDoc(d);
-      },
-      (err) => {
-        if (live) setFailure(pdfFailureMessage(props.path, err));
-      },
-    );
-
     const el = scroller;
-    if (!el) return;
+    if (!el) return stopAll;
     const measure = () => {
       setWidth(el.clientWidth);
       setHeight(el.clientHeight);
@@ -168,28 +179,29 @@ function PdfDocumentView(props: {
     const onScroll = () => record(el.scrollTop, el.clientHeight);
     measure();
     el.addEventListener("scroll", onScroll, { passive: true });
-    onCleanup(() => el.removeEventListener("scroll", onScroll));
-    installPinch(el);
+    stops.push(() => el.removeEventListener("scroll", onScroll));
+    stops.push(installPinch(el));
     // On the document, because that is where a selection lives: the anchor and
     // the focus can be in two different pages, and there is no element between
     // them but this view's own scroller.
     document.addEventListener("selectionchange", readSelection);
-    onCleanup(() => document.removeEventListener("selectionchange", readSelection));
+    stops.push(() => document.removeEventListener("selectionchange", readSelection));
     // Focusable, so the chord below is the focused pane's and the browser's own
     // routing is what says which pane that is. Set here rather than passed to
     // `OverlayScroll`, whose extra props land on the frame and not on the
     // scroller. Arrow-key scrolling comes with it, which a reader wants anyway.
     el.tabIndex = 0;
     el.addEventListener("keydown", onQuoteKey);
-    onCleanup(() => el.removeEventListener("keydown", onQuoteKey));
+    stops.push(() => el.removeEventListener("keydown", onQuoteKey));
     // Guarded the way OverlayScroll guards its own: jsdom implements neither
     // ResizeObserver nor layout, so there is nothing to observe and nothing is
     // lost by not observing it.
     if (typeof ResizeObserver !== "undefined") {
       const ro = new ResizeObserver(measure);
       ro.observe(el);
-      onCleanup(() => ro.disconnect());
+      stops.push(() => ro.disconnect());
     }
+    return stopAll;
   });
 
   /** A page's own size, asked for as it comes into the window. Until then it
@@ -213,51 +225,72 @@ function PdfDocumentView(props: {
     }
   }
 
-  createEffect(() => {
-    const d = doc();
-    if (!d) return;
-    const { first, last } = win();
-    for (let i = first; i < last; i++) if (!sizes()[i]) void measurePage(d, i);
-  });
+  createEffect(
+    () => ({ d: doc(), w: win(), known: sizes() }),
+    ({ d, w, known }) => {
+      if (!d) return;
+      for (let i = w.first; i < w.last; i++) if (!known[i]) void measurePage(d, i);
+    },
+  );
 
   // An explicit destination beats the remembered one, so this is declared
   // before the restore below and latches `placed` when it fires. Held until the
   // document is loaded, which is what makes a cold open land on the right page
   // rather than at the top; re-applied per nonce, so asking for the same page
   // again after scrolling away scrolls back.
-  createEffect(() => {
-    const g = props.goto;
-    const d = doc();
-    if (!d || !g || g.path !== props.path || g.nonce === appliedNonce) return;
-    appliedNonce = g.nonce;
-    placed = true;
-    scrollToPage(clampPage(g.line, d.numPages), 0);
-  });
+  createEffect(
+    () => ({ g: props.goto, d: doc(), path: props.path }),
+    ({ g, d, path }) => {
+      if (!d || !g || g.path !== path || g.nonce === appliedNonce) return;
+      appliedNonce = g.nonce;
+      placed = true;
+      // Deferred: the reading position is live state, and a flush from here is a no-op.
+      queueMicrotask(() => scrollToPage(clampPage(g.line, d.numPages), 0));
+    },
+  );
 
   // The page the toolbar's field asked for, applied per nonce for the same
   // reason `goto` is: typing the page you are already on has to work.
-  createEffect(() => {
-    const jump = pdfView(props.path).jump;
-    const d = doc();
-    if (!d || !jump || jump.nonce === appliedJump) return;
-    appliedJump = jump.nonce;
-    placed = true;
-    scrollToPage(clampPage(jump.page, d.numPages), 0);
-  });
+  createEffect(
+    () => {
+      const jump = pdfView(props.path).jump;
+      return { jump: jump && { page: jump.page, nonce: jump.nonce }, d: doc() };
+    },
+    ({ jump, d }) => {
+      if (!d || !jump || jump.nonce === appliedJump) return;
+      appliedJump = jump.nonce;
+      placed = true;
+      // Deferred: the reading position is live state, and a flush from here is a no-op.
+      queueMicrotask(() => scrollToPage(clampPage(jump.page, d.numPages), 0));
+    },
+  );
 
   // The reading position this path was left at, restored once the column has a
   // real width behind its heights.
-  createEffect(() => {
-    if (placed || !doc() || !width()) return;
-    placed = true;
-    const { page, offset } = pdfView(props.path);
-    if (page > 1 || offset !== 0) scrollToPage(page, offset);
-  });
+  createEffect(
+    () => {
+      if (placed || !doc() || !width()) return null;
+      const { page, offset } = untrack(() => pdfView(props.path));
+      return { page, offset };
+    },
+    (at) => {
+      if (!at || placed) return;
+      placed = true;
+      // Deferred: the reading position is live state, and a flush from here is a no-op.
+      if (at.page > 1 || at.offset !== 0) queueMicrotask(() => scrollToPage(at.page, at.offset));
+    },
+  );
 
   // What the toolbar needs and cannot work out: the page count, and what the
   // zoom setting actually resolved to at this pane's width.
-  createEffect(() => setPdfView(props.path, { pages: pageCount() }));
-  createEffect(() => setPdfView(props.path, { scale: scale() }));
+  createEffect(pageCount, (pages) => {
+    // Deferred: the view store is live state, and a flush from here is a no-op.
+    queueMicrotask(() => setPdfView(props.path, { pages }));
+  });
+  createEffect(scale, (scale) => {
+    // Deferred: the view store is live state, and a flush from here is a no-op.
+    queueMicrotask(() => setPdfView(props.path, { scale }));
+  });
 
   /**
    * A change of scale rewrites every page's height, so the pixel offset the
@@ -277,14 +310,17 @@ function PdfDocumentView(props: {
    * cannot be worked out here: it is recorded by `record` under the heights that
    * were on screen when the reader was looking at it.
    */
-  createEffect(
-    on(scale, (s, prev) => {
-      if (prev === undefined || prev === s || !placed) return;
-      const held = anchor ?? { ...probeAnchor, viewportY: height() / 3 };
-      anchor = null;
-      scrollTo(scrollTopFor(held.page, heights(), held.offset) - held.viewportY);
-    }),
-  );
+  let prevScale: number | undefined;
+  createEffect(scale, (s) => {
+    const prev = prevScale;
+    prevScale = s;
+    if (prev === undefined || prev === s || !placed) return;
+    const held = anchor ?? { ...probeAnchor, viewportY: height() / 3 };
+    anchor = null;
+    const top = scrollTopFor(held.page, heights(), held.offset) - held.viewportY;
+    // Deferred: scrolling records the reading position into live state.
+    queueMicrotask(() => scrollTo(top));
+  });
 
   function scrollToPage(page: number, offset: number) {
     setPdfView(props.path, { page, offset });
@@ -339,7 +375,7 @@ function PdfDocumentView(props: {
    * `Cmd+=` and its pair are deliberately untouched: those are the app's UI
    * scale, and a PDF tab does not get to redefine a window-wide shortcut.
    */
-  function installPinch(el: HTMLDivElement) {
+  function installPinch(el: HTMLDivElement): () => void {
     // Read once per gesture rather than per event: the pane cannot move under a
     // pinch, and this is a layout read on every frame of one otherwise.
     let paneTop = 0;
@@ -378,25 +414,27 @@ function PdfDocumentView(props: {
     // WebKit entirely, but a wrong guess there leaves pinch silently doing
     // nothing, and the handler is two lines.
     el.addEventListener("wheel", onWheel, { passive: false });
-    onCleanup(() => {
+    return () => {
       el.removeEventListener("gesturestart", onGestureStart);
       el.removeEventListener("gesturechange", onGestureChange);
       el.removeEventListener("wheel", onWheel);
-    });
+    };
   }
 
-  function paint(canvas: HTMLCanvasElement, i: number) {
-    createEffect(() => {
-      const d = doc();
-      const size = sizeOf(i);
-      const s = paintScale();
-      if (!d || !size) return;
-      void render(d, canvas, i, s, size);
-    });
+  function PageCanvas(p: { i: number }) {
+    let canvas!: HTMLCanvasElement;
+    createEffect(
+      () => ({ d: doc(), size: sizeOf(p.i), s: paintScale() }),
+      ({ d, size, s }) => {
+        if (!d || !size) return;
+        void render(d, canvas, p.i, s, size);
+      },
+    );
     onCleanup(() => {
-      tasks.get(i)?.cancel();
-      tasks.delete(i);
+      tasks.get(p.i)?.cancel();
+      tasks.delete(p.i);
     });
+    return <canvas class={styles.canvas} ref={(el) => (canvas = el)} />;
   }
 
   async function render(d: PDFDocumentProxy, canvas: HTMLCanvasElement, i: number, s: number, size: PageSize) {
@@ -428,7 +466,9 @@ function PdfDocumentView(props: {
    * zoom step and - worse - delete the nodes a standing selection is anchored
    * to, collapsing it.
    */
-  function layText(container: HTMLDivElement, i: number) {
+  function PageText(p: { i: number }) {
+    const i = untrack(() => p.i);
+    let container!: HTMLDivElement;
     let live = true;
     let layer: TextLayer | null = null;
     // `doc()` is the only tracked read in the effect below and it transitions
@@ -436,8 +476,7 @@ function PdfDocumentView(props: {
     let started = false;
     const [laid, setLaid] = createSignal<PDFPageProxy | null>(null);
 
-    createEffect(() => {
-      const d = doc();
+    createEffect(doc, (d) => {
       if (!d || started) return;
       started = true;
       const done = build(d).catch(() => {});
@@ -462,17 +501,19 @@ function PdfDocumentView(props: {
     // Reads both, so a layer that lands after a zoom is placed at the scale on
     // screen rather than the one it was built at. pdf.js ignores an update that
     // does not move the scale, so every other run of this costs nothing.
-    createEffect(() => {
-      const page = laid();
-      const s = scale();
-      if (page && layer) layer.update({ viewport: page.getViewport({ scale: s }) });
-    });
+    createEffect(
+      () => [laid(), scale()] as const,
+      ([page, s]) => {
+        if (page && layer) layer.update({ viewport: page.getViewport({ scale: s }) });
+      },
+    );
 
     onCleanup(() => {
       live = false;
       layer?.cancel();
       layer = null;
     });
+    return <div class={styles.textLayer} ref={(el) => (container = el)} />;
   }
 
   /** The 1-based page a node sits in, or null for a node outside every page. */
@@ -557,13 +598,13 @@ function PdfDocumentView(props: {
                 }}
               >
                 <Show when={i >= win().first && i < win().last}>
-                  <canvas class={styles.canvas} ref={(el) => paint(el, i)} />
+                  <PageCanvas i={i} />
                 </Show>
                 {/* Outlives the canvas by as much as the selection needs: a page
                     scrolled away from keeps its words while it holds an end of
                     the selection, even once it has given up its picture. */}
                 <Show when={needsText(i)}>
-                  <div class={styles.textLayer} ref={(el) => layText(el, i)} />
+                  <PageText i={i} />
                 </Show>
               </div>
             )}

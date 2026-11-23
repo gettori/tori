@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, children, For, Show, onSettled } from "solid-js";
+import { createSignal, createEffect, createMemo, children, For, Show, onCleanup, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import { tabGesture } from "../utils/tabGesture";
@@ -114,20 +114,15 @@ export default function OverflowTabBar<T>(props: {
     if (gesture.live()) e.stopPropagation();
   }
 
+  const resized = new ResizeObserver(() => measure());
+  onCleanup(() => {
+    resized.disconnect();
+    bar?.removeEventListener("pointerdown", onPress, true);
+    bar?.removeEventListener("click", gesture.mark, true);
+    bar?.removeEventListener("keydown", gesture.mark, true);
+  });
   onSettled(() => {
-    bar.addEventListener("pointerdown", onPress, true);
-    bar.addEventListener("click", gesture.mark, true);
-    bar.addEventListener("keydown", gesture.mark, true);
     requestAnimationFrame(measure);
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(bar);
-    ro.observe(ghost); // content-width changes (tab added, dirty dot) re-measure
-    return () => {
-      bar.removeEventListener("pointerdown", onPress, true);
-      bar.removeEventListener("click", gesture.mark, true);
-      bar.removeEventListener("keydown", gesture.mark, true);
-      ro.disconnect();
-    };
   });
 
   // On the ids, not the list: every strip gets a fresh array whenever any pane's
@@ -190,6 +185,10 @@ export default function OverflowTabBar<T>(props: {
       class={props.class}
       ref={(el: HTMLDivElement) => {
         bar = el;
+        el.addEventListener("pointerdown", onPress, true);
+        el.addEventListener("click", gesture.mark, true);
+        el.addEventListener("keydown", gesture.mark, true);
+        resized.observe(el);
         props.ref?.(el);
       }}
       style={{ position: "relative" }}
@@ -201,7 +200,15 @@ export default function OverflowTabBar<T>(props: {
       {/* `TabRow inert` keeps the measuring copy out of the accessibility tree
           and the strip's key order, where every key would register twice. */}
       <TabRow inert>
-        <div class={`${props.class ?? ""} otab-ghost`} ref={ghost} aria-hidden="true">
+        <div
+          class={`${props.class ?? ""} otab-ghost`}
+          ref={(el) => {
+            ghost = el;
+            // Content width changes (tab added, dirty dot) re-measure.
+            resized.observe(el);
+          }}
+          aria-hidden="true"
+        >
           <For each={props.items}>{(t) => props.renderTab(t, true)}</For>
           <button class="tab-overflow-count" ref={countSample} disabled>
             +{Math.max(1, props.items.length)}

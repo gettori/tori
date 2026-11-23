@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onCleanup, batch, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitStateFor, refreshStatus } from "../../utils/gitActions";
 import { EditorView, lineNumbers, showPanel, Decoration, WidgetType, type DecorationSet } from "@codemirror/view";
@@ -379,35 +379,32 @@ export default function ConflictView(props: {
       if (mine !== current) return;
       // Together, so the panes are built once with both the documents and the
       // names that go on them.
-      batch(() => {
-        setStages(read);
-        setOp(operation);
-        setSides(behind);
-        setError("");
-      });
+      setStages(read);
+      setOp(operation);
+      setSides(behind);
+      setError("");
     } catch (e) {
       if (mine !== current) return;
-      batch(() => {
-        setStages(null);
-        setError(String(e));
-      });
+      setStages(null);
+      setError(String(e));
     }
   }
 
-  createEffect(on([() => props.workspace, () => props.file], ([w, f]) => void load(w, f)));
+  createEffect(
+    () => [props.workspace, props.file] as const,
+    ([w, f]) => void load(w, f),
+  );
 
   // The tab opens on the first conflict rather than on nothing. Everything that
   // acts on a conflict acts on the one being looked at, so with nothing
   // selected the only control on screen is navigation, and the reader has to
   // discover that pressing it is what reveals the rest.
-  createEffect(
-    on(conflicts, (list) => {
-      if (!list.length) return;
-      const id = currentId();
-      if (id && list.some((r) => r.id === id)) return;
-      setCurrentId(list[0].id);
-    }),
-  );
+  createEffect(conflicts, (list) => {
+    if (!list.length) return;
+    const id = currentId();
+    if (id && list.some((r) => r.id === id)) return;
+    setCurrentId(list[0].id);
+  });
 
   /**
    * Whether the shared store still lists this file as conflicted, or null when
@@ -424,16 +421,17 @@ export default function ConflictView(props: {
   // terminal, or abort the merge, and the stages are gone. The store already
   // re-reads on every watcher burst, so following it costs one read on the
   // transition and keeps the tab from presenting a merge that was abandoned.
-  createEffect(
-    on(listedConflicted, (now, before) => {
-      if (now === null || before == null || now === before) return;
-      // Except when this tab is what resolved it: re-reading then would ask the
-      // backend for stages we just removed and answer with its refusal, which
-      // reads as a failure rather than as the success it followed.
-      if (done() && !now) return;
-      void load(props.workspace, props.file);
-    }),
-  );
+  let wasListed: boolean | null | undefined;
+  createEffect(listedConflicted, (now) => {
+    const before = wasListed;
+    wasListed = now;
+    if (now === null || before == null || now === before) return;
+    // Except when this tab is what resolved it: re-reading then would ask the
+    // backend for stages we just removed and answer with its refusal, which
+    // reads as a failure rather than as the success it followed.
+    if (done() && !now) return;
+    void load(props.workspace, props.file);
+  });
 
   /**
    * Write the resolution and mark the file merged.
@@ -678,10 +676,11 @@ export default function ConflictView(props: {
   // carrying into a different file's conflict. `pair` rebuilds them too, since
   // a different pair is a different pair of documents.
   createEffect(
-    // `op` is a dependency, not just a read: `on` runs its body untracked, and
+    // `op` is a dependency, not just a read: the apply runs untracked, and
     // the labels the panes carry come from it. Without it here, a rebase's
     // panes would keep whatever names the previous read left behind.
-    on([regions, stages, op, pair, sides], ([rs, s, , showing]) => {
+    () => [regions(), stages(), op(), pair(), sides()] as const,
+    ([rs, s, , showing]) => {
       destroy();
       if (!host || !s || s.binary) return;
       // One `Text` per side, built here and handed to both the decorations and
@@ -727,13 +726,14 @@ export default function ConflictView(props: {
       });
       aligner.schedule();
       linkScroll();
-    }),
+    },
   );
 
   // The Result pane is deliberately not rebuilt for a pair switch: it holds the
   // reader's own edits, and the pair is a question about the two candidates.
   createEffect(
-    on([regions, stages, op], ([rs, s]) => {
+    () => [regions(), stages(), op()] as const,
+    ([rs, s]) => {
       destroyResult();
       if (!resultHost || !s || s.binary || deletedSides(s).length) return;
       const seed = seedResult(s, rs);
@@ -768,45 +768,42 @@ export default function ConflictView(props: {
       });
       aligner.schedule();
       linkScroll();
-    }),
+    },
   );
 
   // The language pack is fetched per file and lands after the panes are up, so
   // every view reaches it through a compartment rather than being rebuilt.
   createEffect(
-    on(
-      () => props.file,
-      (file) => {
-        setSyntax(null);
-        void import("./syntaxStyle").then(
-          async (m) => {
-            const ext = await m.syntaxFor(file);
-            if (props.file === file) setSyntax(() => ext);
-          },
-          // A failed chunk load leaves the panes uncoloured, which is what they
-          // looked like before; nothing retries because nothing would change.
-          () => {},
-        );
-      },
-    ),
+    () => props.file,
+    (file) => {
+      setSyntax(null);
+      void import("./syntaxStyle").then(
+        async (m) => {
+          const ext = await m.syntaxFor(file);
+          if (props.file === file) setSyntax(() => ext);
+        },
+        // A failed chunk load leaves the panes uncoloured, which is what they
+        // looked like before; nothing retries because nothing would change.
+        () => {},
+      );
+    },
   );
 
-  createEffect(
-    on(syntax, (ext) => {
-      const applied = ext ?? [];
-      if (merge) {
-        merge.a.dispatch({ effects: syntaxLeft.reconfigure(applied) });
-        merge.b.dispatch({ effects: syntaxRight.reconfigure(applied) });
-      }
-      result?.dispatch({ effects: syntaxResult.reconfigure(applied) });
-    }),
-  );
+  createEffect(syntax, (ext) => {
+    const applied = ext ?? [];
+    if (merge) {
+      merge.a.dispatch({ effects: syntaxLeft.reconfigure(applied) });
+      merge.b.dispatch({ effects: syntaxRight.reconfigure(applied) });
+    }
+    result?.dispatch({ effects: syntaxResult.reconfigure(applied) });
+  });
 
   // Accepting a side repaints its lines and nothing else, so it reconfigures
   // rather than rebuilds: the panes keep the scroll position of the file the
   // reader is working through.
   createEffect(
-    on([choices, ignored], ([picked, skipped]) => {
+    () => [choices(), ignored()] as const,
+    ([picked, skipped]) => {
       if (!merge) return;
       const rs = regions();
       // Which document a pane holds is the pair's answer, not a fixed one: with
@@ -820,19 +817,17 @@ export default function ConflictView(props: {
           effects: deco.reconfigure(paneDecor(rs, side, view.state.doc, picked, skipped)),
         });
       }
-    }),
+    },
   );
 
   // Walking is a change of region, whether it came from a button or (later) an
   // action that resolved one. Scrolling lives here rather than in the handlers
   // so every route to a region lands the same way.
-  createEffect(
-    on(currentRegion, (r) => {
-      if (!r || !merge) return;
-      reveal(merge.a, r[pair().left].from);
-      reveal(merge.b, r[pair().right].from);
-    }),
-  );
+  createEffect(currentRegion, (r) => {
+    if (!r || !merge) return;
+    reveal(merge.a, r[pair().left].from);
+    reveal(merge.b, r[pair().right].from);
+  });
 
   return (
     <div class={styles.conflictView}>

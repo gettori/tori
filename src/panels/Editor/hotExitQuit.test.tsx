@@ -74,9 +74,12 @@ vi.mock("./CodeEditor", async () => {
       // An effect, not a call in the body: `activePath` is null on the first
       // render (nothing is open yet) and arrives later, so a one-shot read
       // would leave every buffer looking clean and this whole suite vacuous.
-      createEffect(() => {
-        if (props.activePath) props.onDirty(props.activePath, true);
-      });
+      createEffect(
+        () => props.activePath,
+        (path) => {
+          if (path) props.onDirty(path, true);
+        },
+      );
       return null;
     },
   };

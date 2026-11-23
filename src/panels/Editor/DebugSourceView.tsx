@@ -28,8 +28,7 @@ export default function DebugSourceView(props: { id: string; name: string }) {
   });
 
   let host: HTMLDivElement | undefined;
-  createEffect(() => {
-    const line = here();
+  createEffect(here, (line) => {
     if (!line || !host) return;
     // Centred rather than merely revealed: a frame at the top edge of the view
     // shows none of the code that called it, which is most of why anyone opens

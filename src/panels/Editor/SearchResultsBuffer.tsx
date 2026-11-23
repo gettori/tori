@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Decoration,
@@ -398,9 +398,8 @@ export default function SearchResultsBuffer(props: {
   let runGen = 0;
   /** Search with the form as it stands. With edits waiting, a search by typing
    *  holds off; Enter asks before dropping them. */
-  async function run(how: "auto" | "ask" = "auto") {
+  async function run(how: "auto" | "ask" = "auto", f = form()) {
     const e = entry();
-    const f = form();
     if (!e || !f) return;
     e.form = f;
     if (pending()) {
@@ -462,10 +461,13 @@ export default function SearchResultsBuffer(props: {
   const runSoon = debounce(() => void run(), 300);
 
   function edit(patch: Partial<EditorForm>, now = true) {
-    setForm((f) => (f ? { ...f, ...patch } : f));
+    const current = form();
+    const next = current ? { ...current, ...patch } : current;
+    setForm(next);
     if (now) {
       runSoon.cancel();
-      void run();
+      // `run` reads the form, which the write above has not landed yet.
+      void run("auto", next);
     } else runSoon();
   }
   const setOption = (patch: Partial<SearchOptions>, now = true) => {
@@ -503,7 +505,8 @@ export default function SearchResultsBuffer(props: {
       setRunning(false);
       if (searchBuffer(id) === e && props.id === id) showDoc();
     } else if (!e.doc && e.form.query) {
-      void run();
+      // Run writes the live tab titles, and flush is refused in an effect callback.
+      queueMicrotask(() => void run());
     }
     if (!e.form.query) requestAnimationFrame(() => queryEl?.focus());
   }
@@ -523,14 +526,15 @@ export default function SearchResultsBuffer(props: {
   // another, so the id is a dependency rather than a one-time read: an effect,
   // not `onMount`. The outgoing buffer's state goes back to the store first, or
   // switching tabs would be the one way to lose edits.
+  let prevId: string | undefined;
   createEffect(
-    on(
-      () => props.id,
-      (id, prev) => {
-        if (prev !== undefined) teardown(prev);
-        void mount(id);
-      },
-    ),
+    () => props.id,
+    (id) => {
+      const prev = prevId;
+      prevId = id;
+      if (prev !== undefined) teardown(prev);
+      void mount(id);
+    },
   );
   onCleanup(() => teardown(props.id));
 

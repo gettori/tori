@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../components/Button/Button";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
@@ -80,11 +80,12 @@ export default function LocalHistory(props: { workspace: string; file: string })
   }
 
   createEffect(
-    on([() => props.workspace, () => props.file], () => {
+    () => [props.workspace, props.file] as const,
+    () => {
       setPicked(null);
       setDiff(null);
       void reload();
-    }),
+    },
   );
 
   // Bumped per request so a slow diff cannot land under a row picked since, the

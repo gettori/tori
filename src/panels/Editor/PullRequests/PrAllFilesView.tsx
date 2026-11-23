@@ -18,7 +18,7 @@
 // It fetches nothing. `ensure` on mount and everything from `prReviewStore`, so
 // this tab open beside the panel and four diff tabs is still one read of each.
 
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { Check, ChevronDown, ChevronRight, ExternalLink, MessageSquare } from "../../../components/Icon/icons";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
@@ -80,14 +80,18 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
     return entry().filesTruncated && total !== null ? `${shown} of ${total}` : `${shown}`;
   };
 
-  createEffect(on([() => props.workspace, number], ([root, n]) => ensure(root, n)));
+  createEffect(
+    () => [props.workspace, number()] as const,
+    // The review store is live state, and flush is refused in an effect callback.
+    ([root, n]) => queueMicrotask(() => ensure(root, n)),
+  );
 
   let paneRef: HTMLDivElement | undefined;
-  onMount(() => {
+  onSettled(() => {
     if (!paneRef) return;
     const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
     ro.observe(paneRef);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   /// The next file past the focused one that holds a conversation and is not

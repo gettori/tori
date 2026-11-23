@@ -559,7 +559,7 @@ describe("stopping", () => {
     // is a pointer move: clicking another repo in the tree stopped the debuggee
     // and blanked the transcript (#160 phase 2). The run belongs to the
     // workspace, so the sweep keys on the workspace.
-    const rootEffect = editorSource.slice(editorSource.indexOf("on(root, (r) => {"));
+    const rootEffect = editorSource.slice(editorSource.indexOf("createEffect(root, (r) => {"));
     // `touchWarmRoot`, not `retainLspRoots`: the switch reaches the LRU through
     // the cycle-free `lspWarmRoots` module now, and only asks `lspClient` to
     // stop what fell off.
@@ -567,7 +567,7 @@ describe("stopping", () => {
     // And the run is no longer in that effect at all.
     expect(rootEffect.slice(0, rootEffect.indexOf("watchRoots"))).not.toContain("stopAllDap()");
 
-    const wsEffect = editorSource.slice(editorSource.indexOf("on(wsKey, () => {"));
+    const wsEffect = editorSource.slice(editorSource.indexOf("createEffect(wsKey, () => {"));
     const dap = wsEffect.indexOf("stopAllDap()");
     const console = wsEffect.indexOf("clearDebugConsole()");
     expect(dap).toBeGreaterThan(-1);

@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, on, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, flush, onSettled, onCleanup, untrack, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -313,7 +313,7 @@ export default function SearchPanel(props: {
 
   /** One root's leg. With Search Only in Open Editors on, a root holding no
    *  open file is not searched at all. */
-  function legFor(root: string, q: string): Promise<RootOutcome> {
+  function legFor(root: string, q: string, searched = options()): Promise<RootOutcome> {
     const only = openOnly() ? openUnder(root, props.openPaths ?? []) : undefined;
     if (only && !only.length) {
       return Promise.resolve({
@@ -321,7 +321,7 @@ export default function SearchPanel(props: {
         result: { matches: [], truncated: false, backend: caps().backend, unsupported: [], files: [] },
       });
     }
-    return grepRoot(root, q, { ...options(), only });
+    return grepRoot(root, q, { ...searched, only });
   }
 
   /** `user` searches come from a query, toggle or glob change; `refresh` ones
@@ -332,7 +332,11 @@ export default function SearchPanel(props: {
    *  every root failed, or a newer search overtook this one. Only `openSaved`
    *  reads the return: it opens an editor over the matches, and the signal is
    *  only the answer if it was not raced. */
-  async function runSearch(q: string, source: "user" | "refresh" = "user"): Promise<SearchSection[] | null> {
+  async function runSearch(
+    q: string,
+    source: "user" | "refresh" = "user",
+    searched = options(),
+  ): Promise<SearchSection[] | null> {
     const roots = searchRoots();
     if (source === "user") {
       setDismissed(new Set<string>());
@@ -347,7 +351,7 @@ export default function SearchPanel(props: {
     const gen = ++searchGen;
     setLoading(true);
     try {
-      const legs = await Promise.all(roots.map((r) => legFor(r.path, q)));
+      const legs = await Promise.all(roots.map((r) => legFor(r.path, q, searched)));
       if (gen !== searchGen) return null;
       const merged = mergeSearchResults(legs);
       // Only a fan-out where every root failed is a panel-level error: with one
@@ -437,8 +441,12 @@ export default function SearchPanel(props: {
   const recallList = () => historyFor(history(), ws());
   const savedList = () => savedFor(saved(), ws());
 
-  createEffect(() => saveSearchHistory(history()));
-  createEffect(() => saveSavedSearches(saved()));
+  createEffect(history, (store) => {
+    saveSearchHistory(store);
+  });
+  createEffect(saved, (store) => {
+    saveSavedSearches(store);
+  });
 
   /**
    * Record the current query as one that was run.
@@ -543,7 +551,7 @@ export default function SearchPanel(props: {
     setQuery(s.query);
     setOptions({ ...s.options });
     setHistory((h) => noteQuery(h, ws(), s.query, s.options, []));
-    const fresh = await runSearch(s.query);
+    const fresh = await runSearch(s.query, "user", { ...s.options });
     if (!fresh) return;
     const matches = fresh.flatMap((sec) => sec.matches.map((m) => ({ ...m, root: sec.root })));
     if (matches.length) {
@@ -555,11 +563,15 @@ export default function SearchPanel(props: {
   // immediately instead of waiting out the input debounce.
   function toggleOption(key: ToggleKey) {
     setOptions((o) => ({ ...o, [key]: !o[key] }));
+    // The search reads the options and the restriction synchronously.
+    flush();
     void runSearch(query());
   }
 
   function toggleOpenOnly() {
     setOpenOnly((v) => !v);
+    // The search reads the options and the restriction synchronously.
+    flush();
     void runSearch(query());
   }
 
@@ -809,6 +821,8 @@ export default function SearchPanel(props: {
         onClick: () => {
           setOptions((o) => ({ ...o, include: `${node.path}/**` }));
           setShowGlobs(true);
+          // The search reads the options synchronously.
+          flush();
           void runSearch(query());
         },
       },
@@ -817,6 +831,8 @@ export default function SearchPanel(props: {
         onClick: () => {
           setOptions((o) => ({ ...o, exclude: [o.exclude, `${node.path}/**`].filter(Boolean).join(", ") }));
           setShowGlobs(true);
+          // The search reads the options synchronously.
+          flush();
           void runSearch(query());
         },
       },
@@ -1006,24 +1022,22 @@ export default function SearchPanel(props: {
   // them) and not on the searched set either, which the restriction moves.
   // A real workspace change moves both of these.
   createEffect(
-    on(
-      () => `${props.workspace ?? ""}${NUL}${membersKey()}`,
-      () => {
-        setSections([]);
-        setError(null);
-        // Everything below is scoped to a workspace, and none of it means
-        // anything in the next one: a cursor indexes the history that was
-        // there, and the draft it would restore is a query for the project you
-        // just left. Carrying them over is how the first arrow press after a
-        // switch puts someone else's half-typed text in the box.
-        setCursor(DRAFT);
-        draft = { query: "", options: { ...DEFAULT_SEARCH_OPTIONS } };
-        setRenaming(null);
-        setSaveName("");
-        setSavedNotice(null);
-        void probeCapabilities();
-      },
-    ),
+    () => `${props.workspace ?? ""}${NUL}${membersKey()}`,
+    () => {
+      setSections([]);
+      setError(null);
+      // Everything below is scoped to a workspace, and none of it means
+      // anything in the next one: a cursor indexes the history that was
+      // there, and the draft it would restore is a query for the project you
+      // just left. Carrying them over is how the first arrow press after a
+      // switch puts someone else's half-typed text in the box.
+      setCursor(DRAFT);
+      draft = { query: "", options: { ...DEFAULT_SEARCH_OPTIONS } };
+      setRenaming(null);
+      setSaveName("");
+      setSavedNotice(null);
+      void probeCapabilities();
+    },
   );
 
   // Re-preview when the replacement text or its case rule changes, a new result
@@ -1031,42 +1045,49 @@ export default function SearchPanel(props: {
   // dependency and not just a read: reopening the row after the results changed
   // underneath it would otherwise show no preview until the text was retyped.
   createEffect(
-    on([replacement, preserveCase, visibleByRoot, showReplace], () => {
-      if (showReplace()) debouncedPreview();
+    () => [replacement(), preserveCase(), visibleByRoot(), showReplace()] as const,
+    ([, , , replaceOpen]) => {
+      if (replaceOpen) debouncedPreview();
       else setPreview([]);
-    }),
+    },
   );
 
   // A replace outcome describes one past action. Anything that changes what is
   // on screen retires it, so a success line can never sit above results it had
   // nothing to do with.
-  createEffect(on([query, options, rootsKey], () => setOutcome(null), { defer: true }));
-
   createEffect(
-    on(
-      () => props.focusNonce,
-      (_n, prev) => {
-        // Deferred to the next frame: Cmd+Shift+F can reveal the editor + right
-        // panel on the same event, and a synchronous focus would hit the panel
-        // while it is still display:none and be dropped.
-        if (prev !== undefined) requestAnimationFrame(() => inputEl?.focus());
-      },
-    ),
+    () => [query(), options(), rootsKey()] as const,
+    () => {
+      setOutcome(null);
+    },
+    { defer: true },
+  );
+
+  let focusedAt: number | undefined;
+  createEffect(
+    () => props.focusNonce,
+    (nonce) => {
+      const prev = focusedAt;
+      focusedAt = nonce;
+      // Deferred to the next frame: Cmd+Shift+F can reveal the editor + right
+      // panel on the same event, and a synchronous focus would hit the panel
+      // while it is still display:none and be dropped.
+      if (prev !== undefined) requestAnimationFrame(() => inputEl?.focus());
+    },
   );
 
   createEffect(
-    on(
-      () => props.scope?.nonce,
-      () => {
-        const s = props.scope;
-        if (!s) return;
-        setOptions((o) => ({ ...o, include: `${s.rel}/**` }));
-        setShowGlobs(true);
-        props.onScoped?.();
-        if (query()) void runSearch(query());
-        requestAnimationFrame(() => inputEl?.focus());
-      },
-    ),
+    () => ({ nonce: props.scope?.nonce, scope: untrack(() => props.scope) }),
+    ({ scope: s }) => {
+      if (!s) return;
+      const scoped = { ...options(), include: `${s.rel}/**` };
+      setOptions(scoped);
+      setShowGlobs(true);
+      props.onScoped?.();
+      // The write above has not landed, and a flush is refused in an effect callback.
+      if (query()) void runSearch(query(), "user", scoped);
+      requestAnimationFrame(() => inputEl?.focus());
+    },
   );
 
   /** The results on screen as a Search Editor tab. */
@@ -1080,22 +1101,24 @@ export default function SearchPanel(props: {
   }
 
   let unlistenFs: UnlistenFn | undefined;
-  onMount(() => {
+  onSettled(() => {
     inputEl?.focus();
   });
-  onMount(async () => {
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      if (!query()) return;
-      const changed = e.payload.root;
-      // An event names one root, so only that root is re-grepped and its section
-      // is merged back over the others. Re-running the whole fan-out would cost
-      // one grep per member per burst, in exactly the Topic that has an agent
-      // writing in one of them. An event with no root refreshes everything.
-      if (!changed) return debouncedRefresh();
-      if (!searchRoots().some((r) => r.path === changed)) return;
-      dirtyRoots.add(changed);
-      debouncedRefreshRoots();
-    });
+  onSettled(() => {
+    void (async () => {
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        if (!query()) return;
+        const changed = e.payload.root;
+        // An event names one root, so only that root is re-grepped and its section
+        // is merged back over the others. Re-running the whole fan-out would cost
+        // one grep per member per burst, in exactly the Topic that has an agent
+        // writing in one of them. An event with no root refreshes everything.
+        if (!changed) return debouncedRefresh();
+        if (!searchRoots().some((r) => r.path === changed)) return;
+        dirtyRoots.add(changed);
+        debouncedRefreshRoots();
+      });
+    })();
   });
   onCleanup(() => {
     unlistenFs?.();

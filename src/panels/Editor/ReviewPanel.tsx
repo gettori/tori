@@ -1,4 +1,14 @@
-import { createSignal, createMemo, createEffect, createResource, on, onMount, onCleanup, For, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  createDeferred,
+  onSettled,
+  onCleanup,
+  untrack,
+  For,
+  Show,
+} from "solid-js";
 import { pendingReveal } from "../../utils/checkpointReveal";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -254,11 +264,6 @@ export default function ReviewPanel(props: {
     return repo?.kind === "pick" ? repo : null;
   };
   const connectable = () => (settings.forge.enabled ? connectHost(origin(), forgeHosts()) : null);
-  // Accounts changing clears every resolution in the store, so ask again.
-  createEffect(() => {
-    const root = viewedRoot();
-    if (root && !forgeAccount()) void resolveForgeRepo(root);
-  });
   const [applying, setApplying] = createSignal(false);
   const [stashes, setStashes] = createSignal<StashEntry[]>([]);
   // Which stashes show their files, by sha: a selector shifts as entries come
@@ -302,25 +307,27 @@ export default function ReviewPanel(props: {
   const memberOf = (key: string | null) => props.members?.find((m) => m.key === key);
   /** The member on screen: the chip pressed, else the one holding the file in
    *  front, else the first. */
-  const viewed = () =>
-    memberOf(picked()) ??
-    memberOf(
-      rootOf(
-        props.activePath,
-        (props.members ?? []).map((m) => m.key),
-      ),
-    ) ??
-    props.members?.[0];
+  // A memo, so an effect's apply can read it: `members` reaches this panel as a
+  // computed expression, which an apply cannot read straight off the props.
+  const viewed = createMemo(
+    () =>
+      memberOf(picked()) ??
+      memberOf(
+        rootOf(
+          props.activePath,
+          (props.members ?? []).map((m) => m.key),
+        ),
+      ) ??
+      props.members?.[0],
+  );
   // The member picked in the sidebar is a press too, made somewhere else: it
   // seeds the chip when the panel opens and moves it whenever it changes.
   createEffect(
-    on(
-      () => props.root,
-      (root) => {
-        const m = props.members?.find((x) => !!x.root && x.root === root);
-        if (m) setPicked(m.key);
-      },
-    ),
+    () => ({ root: props.root, members: untrack(() => props.members) }),
+    ({ root, members }) => {
+      const m = members?.find((x) => !!x.root && x.root === root);
+      if (m) setPicked(m.key);
+    },
   );
   /** The root every list below is about. One member at a time: a stack of every
    *  member's changes is a list nobody reads.
@@ -328,20 +335,33 @@ export default function ReviewPanel(props: {
    *  Falls back to `root` rather than to null, because `headed()` reads `roots`
    *  while the chips read `members`: a caller that passes one and not the other
    *  would otherwise blank the whole panel instead of showing one repo. */
-  const viewedRoot = () => (headed() ? (viewed()?.key ?? props.root) : props.root);
+  const viewedRoot = createMemo(() => (headed() ? (viewed()?.key ?? props.root) : props.root));
 
-  // The tab's total, read again each time the status store answers for this
-  // member, which is what follows an edit landing on disk. `latest`, so a
-  // refetch keeps the old numbers up rather than blanking the line.
-  const [total] = createResource(
+  // Accounts changing clears every resolution in the store, so ask again.
+  createEffect(
     () => {
       const root = viewedRoot();
-      return root ? { root, state: gitStateFor(root) } : null;
+      return root && !forgeAccount() ? root : null;
     },
-    ({ root }) =>
-      invoke<{ files: number; insertions: number; deletions: number }>("git_worktree_stat", {
+    (root) => {
+      if (root) void resolveForgeRepo(root);
+    },
+  );
+
+  // The tab's total, read again each time the status store answers for this
+  // member, which is what follows an edit landing on disk. Deferred, so a
+  // refetch keeps the old numbers up rather than blanking the line.
+  const total = createDeferred<{ files: number; insertions: number; deletions: number } | null | undefined>(
+    (was) => {
+      const root = viewedRoot();
+      if (!root) return was;
+      // The status store's answer for this member is what re-asks.
+      void gitStateFor(root);
+      return invoke<{ files: number; insertions: number; deletions: number }>("git_worktree_stat", {
         projectPath: root,
-      }).catch(() => null),
+      }).catch(() => null);
+    },
+    { loadingValue: undefined },
   );
   const viewedSection = () => sections().find((sec) => sec.root === viewedRoot());
   /** A reference member's checkout is the user's own: it can be fetched and
@@ -359,19 +379,19 @@ export default function ReviewPanel(props: {
   // every step of one does.
   const [op, setOp] = createSignal<ConflictOp>("none");
   createEffect(
-    on(
-      () => {
-        const root = viewedRoot();
-        const st = gitStateFor(root);
-        return [root, st.files, st.head] as const;
-      },
-      async ([root]) => {
+    () => {
+      const root = viewedRoot();
+      const st = gitStateFor(root);
+      return [root, st.files, st.head] as const;
+    },
+    ([root]) => {
+      void (async () => {
         const now = root
           ? await invoke<ConflictOp>("git_conflict_op", { projectPath: root }).catch(() => "none" as const)
           : "none";
         if (root === viewedRoot()) setOp(now);
-      },
-    ),
+      })();
+    },
   );
   const [rebaseReq, setRebaseReq] = createSignal<{ root: string; plan: RebasePlan } | null>(null);
   const [ontoPick, setOntoPick] = createSignal<{ root: string; items: string[] } | null>(null);
@@ -1026,28 +1046,24 @@ export default function ReviewPanel(props: {
   // of them are read here rather than from the store: the stash reflog, and the
   // origin plus base branch the "Open PR" button needs. The file lists are the
   // store's and every member's slot is already filled, so those just re-read.
-  createEffect(
-    on(viewedRoot, () => {
-      void refreshHeader();
-      void loadStashes();
-    }),
-  );
+  createEffect(viewedRoot, () => {
+    void refreshHeader();
+    void loadStashes();
+  });
 
   // Keyed on the member set rather than the member in front: moving between
   // members inside a Topic leaves every section's numbers standing, so
   // re-reading all of them would be a switch that did not happen. A repaired
   // member joining is a real one.
   createEffect(
-    on(
-      () =>
-        sections()
-          .map((s) => s.root)
-          .join("\n"),
-      () => {
-        setCommitTarget(null);
-        refreshAll();
-      },
-    ),
+    () =>
+      sections()
+        .map((s) => s.root)
+        .join("\n"),
+    () => {
+      setCommitTarget(null);
+      void refreshAll();
+    },
   );
 
   const prFlow = createPrFlow({
@@ -1081,46 +1097,48 @@ export default function ReviewPanel(props: {
   }, AGENT_WRITE_DEBOUNCE_MS);
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
-  onMount(async () => {
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      const from = e.payload.root;
-      // The status refresh is the store's now (`startGitWatch`), so that it
-      // happens with this panel closed and for every member at once. The stash
-      // list is the one thing left that only a mounted panel holds.
+  onSettled(() => {
+    void (async () => {
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        const from = e.payload.root;
+        // The status refresh is the store's now (`startGitWatch`), so that it
+        // happens with this panel closed and for every member at once. The stash
+        // list is the one thing left that only a mounted panel holds.
+        //
+        // A `git stash` run in a terminal shows up as a working-tree burst like
+        // any other, and the entry it created would otherwise stay invisible
+        // until a fetch or a window focus. Reading the stash reflog is cheap.
+        if (!from || from === viewedRoot()) void loadStashes();
+      });
+      // A chat session's own report of what it just wrote, ahead of the watcher's
+      // debounce. Same two refreshes the watcher drives, and both are re-entrant,
+      // so the echo that follows is a second read rather than a second opinion.
       //
-      // A `git stash` run in a terminal shows up as a working-tree burst like
-      // any other, and the entry it created would otherwise stay invisible
-      // until a fetch or a window focus. Reading the stash reflog is cheap.
-      if (!from || from === viewedRoot()) void loadStashes();
-    });
-    // A chat session's own report of what it just wrote, ahead of the watcher's
-    // debounce. Same two refreshes the watcher drives, and both are re-entrant,
-    // so the echo that follows is a second read rather than a second opinion.
-    //
-    // Debounced, because this event is per tool call where the watcher's is per
-    // burst: a turn making fifty edits would otherwise run fifty `git status`
-    // refreshes. Shorter than the watcher's own window so the panel still moves
-    // well inside the budget, long enough that a burst collapses into one. The
-    // paths accumulate across the window rather than the last event winning,
-    // or an edit to the open file early in a burst would lose its refresh.
-    offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
-      for (const p of paths) agentWritten.add(p);
-      flushAgentWrites();
-    });
-    // .git is watcher-filtered (gotchas), so a terminal-side commit/stage/push
-    // emits no fs://changed - window focus and the askpass-bridge git events
-    // (fetch here, push above) pick up the slack.
-    // Scoped to this panel's own sections. A scheduled sweep emits for every
-    // repo the sidebar knows, and refreshing all of them on each of those would
-    // re-read a Topic's whole file list once per unrelated container.
-    const mine = (repo?: string) => !!repo && sections().some((sec) => sec.root === repo);
-    unlistenFetchDone = await listen<{ repo?: string }>("git://fetch-done", (e) => {
-      if (mine(e.payload?.repo)) refreshAll();
-    });
-    unlistenFetchError = await listen<{ repo?: string }>("git://fetch-error", (e) => {
-      if (mine(e.payload?.repo)) refreshAll();
-    });
-    window.addEventListener("focus", refreshAll);
+      // Debounced, because this event is per tool call where the watcher's is per
+      // burst: a turn making fifty edits would otherwise run fifty `git status`
+      // refreshes. Shorter than the watcher's own window so the panel still moves
+      // well inside the budget, long enough that a burst collapses into one. The
+      // paths accumulate across the window rather than the last event winning,
+      // or an edit to the open file early in a burst would lose its refresh.
+      offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
+        for (const p of paths) agentWritten.add(p);
+        flushAgentWrites();
+      });
+      // .git is watcher-filtered (gotchas), so a terminal-side commit/stage/push
+      // emits no fs://changed - window focus and the askpass-bridge git events
+      // (fetch here, push above) pick up the slack.
+      // Scoped to this panel's own sections. A scheduled sweep emits for every
+      // repo the sidebar knows, and refreshing all of them on each of those would
+      // re-read a Topic's whole file list once per unrelated container.
+      const mine = (repo?: string) => !!repo && sections().some((sec) => sec.root === repo);
+      unlistenFetchDone = await listen<{ repo?: string }>("git://fetch-done", (e) => {
+        if (mine(e.payload?.repo)) refreshAll();
+      });
+      unlistenFetchError = await listen<{ repo?: string }>("git://fetch-error", (e) => {
+        if (mine(e.payload?.repo)) refreshAll();
+      });
+      window.addEventListener("focus", refreshAll);
+    })();
   });
   onCleanup(() => {
     unlistenFs?.();
@@ -1344,7 +1362,10 @@ export default function ReviewPanel(props: {
   }
 
   // showHistory reads the layout it writes, so tracking it would loop.
-  createEffect(on(pendingReveal, (want) => want && showHistory("checkpoints")));
+  createEffect(pendingReveal, (want) => {
+    // The layout and the tab are live state, and flush is refused in an effect callback.
+    if (want) queueMicrotask(() => showHistory("checkpoints"));
+  });
 
   /** Picking a tab out of the `+N` menu reorders the strip. The order keeps
    *  the tabs the ... menu hid, so they come back where they were. */
@@ -1540,7 +1561,7 @@ export default function ReviewPanel(props: {
           do to it. Here rather than over the file list, which is not drawn once
           everything is committed. */}
       <div class={styles.branchBar}>
-        <Show when={total.latest?.files ? total.latest : null}>
+        <Show when={total()?.files ? total() : null}>
           {(t) => (
             <span class={styles.changesTotal} data-changes-total>
               {plural(t().files, "file")} · <span class={styles.added}>{`+${t().insertions}`}</span>/

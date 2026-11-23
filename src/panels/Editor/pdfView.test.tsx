@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 import PdfView from "./PdfView";
 import { pdfView, releasePdfsExcept, setPdfView } from "./pdfDocument";
@@ -149,6 +149,7 @@ function selectAcross(container: HTMLElement, from: number, to: number) {
   sel.removeAllRanges();
   sel.addRange(range);
   document.dispatchEvent(new Event("selectionchange"));
+  flush();
 }
 
 /** A 12-page document in a laid-out pane, scrolled to the top. */

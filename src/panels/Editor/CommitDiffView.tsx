@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Columns2, Copy, FileCode } from "../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
@@ -39,34 +39,37 @@ export default function CommitDiffView(props: { workspace: string; arg: string }
   let current = 0;
 
   createEffect(
-    on([() => props.workspace, target], async ([workspace, { sha, file }]) => {
+    () => [props.workspace, target()] as const,
+    ([workspace, { sha, file }]) => {
       const mine = ++current;
       setLoading(true);
       setDiff("");
       setError("");
-      try {
-        // The commit's file list first: a rename's patch needs the old path,
-        // and the status letter comes from the same read.
-        const detail = await invoke<CommitDetailData>("git_commit_detail", { projectPath: workspace, sha });
-        if (mine !== current) return;
-        const found = detail.files.find((x) => x.path === file) ?? null;
-        setEntry(found);
-        setShort(detail.short);
-        const text = await invoke<string>("git_commit_file_diff", {
-          projectPath: workspace,
-          sha,
-          file,
-          oldPath: found?.old_path ?? undefined,
-          context: DIFF_CONTEXT,
-        });
-        if (mine !== current) return;
-        setDiff(text);
-      } catch (e) {
-        if (mine === current) setError(String(e));
-      } finally {
-        if (mine === current) setLoading(false);
-      }
-    }),
+      void (async () => {
+        try {
+          // The commit's file list first: a rename's patch needs the old path,
+          // and the status letter comes from the same read.
+          const detail = await invoke<CommitDetailData>("git_commit_detail", { projectPath: workspace, sha });
+          if (mine !== current) return;
+          const found = detail.files.find((x) => x.path === file) ?? null;
+          setEntry(found);
+          setShort(detail.short);
+          const text = await invoke<string>("git_commit_file_diff", {
+            projectPath: workspace,
+            sha,
+            file,
+            oldPath: found?.old_path ?? undefined,
+            context: DIFF_CONTEXT,
+          });
+          if (mine !== current) return;
+          setDiff(text);
+        } catch (e) {
+          if (mine === current) setError(String(e));
+        } finally {
+          if (mine === current) setLoading(false);
+        }
+      })();
+    },
   );
 
   async function copyDiff() {
@@ -83,11 +86,11 @@ export default function CommitDiffView(props: { workspace: string; arg: string }
   }
 
   let paneRef: HTMLDivElement | undefined;
-  onMount(() => {
+  onSettled(() => {
     if (!paneRef) return;
     const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
     ro.observe(paneRef);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   return (

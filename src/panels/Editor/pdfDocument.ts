@@ -9,7 +9,7 @@
 // the open-tab set rather than off a mount, for exactly that reason.
 
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { createStore, produce } from "solid-js";
+import { createLiveStore } from "../../lib/liveState";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFWorker } from "pdfjs-dist";
 import type { PdfZoom } from "./pdfLayout";
 
@@ -70,7 +70,7 @@ type Held = {
 };
 
 const held = new Map<string, Held>();
-const [views, setViews] = createStore<Record<string, PdfViewState>>({});
+const [views, setViews] = createLiveStore<Record<string, PdfViewState>>({});
 let loads = 0;
 let jumps = 0;
 
@@ -157,7 +157,9 @@ export function loadPdf(path: string): Promise<PDFDocumentProxy> {
   void task.catch(() => {});
   void load.catch(() => {});
   held.set(path, { task, load });
-  setViews(path, { ...DEFAULT_VIEW });
+  setViews((all) => {
+    all[path] = { ...DEFAULT_VIEW };
+  });
   return load;
 }
 
@@ -167,7 +169,9 @@ export function releasePdf(path: string): void {
   const entry = held.get(path);
   if (!entry) return;
   held.delete(path);
-  setViews(produce((all) => void delete all[path]));
+  setViews((all) => {
+    delete all[path];
+  });
   void entry.task.then((t) => t.destroy()).catch(() => {});
 }
 
@@ -190,7 +194,10 @@ export function pdfView(path: string): PdfViewState {
 /** Write the fields this caller owns. Ignored for a path with no document: the
  *  entry is the document's, and one created here would never be released. */
 export function setPdfView(path: string, patch: Partial<PdfViewState>): void {
-  if (held.has(path)) setViews(path, patch);
+  if (!held.has(path)) return;
+  setViews((all) => {
+    Object.assign((all[path] ??= { ...DEFAULT_VIEW }), patch);
+  });
 }
 
 /** Ask the view to go to a page, from the toolbar's page field. A nonce rather

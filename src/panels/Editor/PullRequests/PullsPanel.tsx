@@ -30,7 +30,7 @@
 // tab stacks Scripts, Outline and TODOs under its tree. A verdict row is the way
 // into its own tab, so the summary and the detail are not two things to find.
 
-import { createEffect, createMemo, createSignal, on, onCleanup, For, Match, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, For, Match, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
@@ -190,10 +190,15 @@ export default function PullsPanel(props: {
   // Accounts changing clears every resolution in the store, so ask again. Same
   // as `PrList`: the pause is derived from the repo's account, and an
   // unresolved repo reads as no pause at all.
-  createEffect(() => {
-    const root = props.root;
-    if (root && !forgeRepo(root)) void resolveForgeRepo(root);
-  });
+  createEffect(
+    () => {
+      const root = props.root;
+      return root && !forgeRepo(root) ? root : null;
+    },
+    (root) => {
+      if (root) void resolveForgeRepo(root);
+    },
+  );
 
   async function askDirectly(root: string, on: string, mine: number, refreshIt = false) {
     setDirect({ kind: "loading" });
@@ -210,7 +215,8 @@ export default function PullsPanel(props: {
   }
 
   createEffect(
-    on([() => props.root, branch, paused], ([root, on, why]) => {
+    () => [props.root, branch(), paused()] as const,
+    ([root, on, why]) => {
       const mine = ++current;
       setDirect({ kind: "idle" });
       setOrigin(undefined);
@@ -233,7 +239,7 @@ export default function PullsPanel(props: {
       // Nothing the forge could answer while it is paused, and a request the
       // frontend does not make is the half that costs nothing at all.
       if (on && why === null) void askDirectly(root, on, mine);
-    }),
+    },
   );
 
   /// A branch change is a different question, so the pull request somebody
@@ -244,13 +250,12 @@ export default function PullsPanel(props: {
   /// otherwise clear the override on its way in, which is the one moment it is
   /// guaranteed to be wrong.
   createEffect(
-    on(
-      [() => props.root, branch],
-      ([root]) => {
-        if (root) setViewingPr(root, null);
-      },
-      { defer: true },
-    ),
+    () => [props.root, branch()] as const,
+    ([root]) => {
+      // The viewing map is live state, and flush is refused in an effect callback.
+      if (root) queueMicrotask(() => setViewingPr(root, null));
+    },
+    { defer: true },
   );
 
   // A pull request opened from the Changes panel is one no read here has seen.
@@ -407,13 +412,15 @@ export default function PullsPanel(props: {
   /// The store owns the three reads and is idempotent per pull request, so a
   /// panel coming back to one already open costs nothing.
   createEffect(
-    on([() => props.root, () => shown()?.number], ([root, number]) => {
+    () => [props.root, shown()?.number] as const,
+    ([root, number]) => {
       ++landing;
       setMergeBusy(false);
       setMergeError(null);
       setMerged(false);
-      if (root && number !== undefined) ensure(root, number);
-    }),
+      // The review store is live state, and flush is refused in an effect callback.
+      if (root && number !== undefined) queueMicrotask(() => ensure(root, number));
+    },
   );
 
   const entry = createMemo(() => {

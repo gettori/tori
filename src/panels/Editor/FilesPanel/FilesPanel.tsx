@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   Check,
   ChevronDown,
@@ -80,10 +80,12 @@ export default function FilesPanel(props: {
   // with nothing on disk can be looked at (for its repair) but not pointed at.
   const [picked, setPicked] = createSignal<string | null>(null);
 
-  const multiMember = () => props.members.length > 1;
-  const memberOf = (key: string | null) => props.members.find((m) => m.key === key);
+  // Held in a memo: the parent passes a conditional, and a handler reading it from an effect callback would create one there.
+  const members = createMemo(() => props.members);
+  const multiMember = () => members().length > 1;
+  const memberOf = (key: string | null) => members().find((m) => m.key === key);
   const viewed = (): TintedMember | undefined =>
-    memberOf(picked()) ?? props.members.find((m) => !!m.root && m.root === props.root);
+    memberOf(picked()) ?? members().find((m) => !!m.root && m.root === props.root);
   const treeRoot = () => {
     const m = viewed();
     if (!m) return props.root;
@@ -94,18 +96,16 @@ export default function FilesPanel(props: {
   // Pointing the workspace at another member from anywhere else wins over the
   // chip picked here, and a new root is a new file list for the filter.
   createEffect(
-    on(
-      () => props.root,
-      () => setPicked(null),
-      { defer: true },
-    ),
+    () => props.root,
+    () => {
+      setPicked(null);
+    },
+    { defer: true },
   );
-  createEffect(
-    on(treeRoot, () => {
-      setFilter("");
-      setWantFiles(false);
-    }),
-  );
+  createEffect(treeRoot, () => {
+    setFilter("");
+    setWantFiles(false);
+  });
 
   function pick(key: string) {
     setPicked(key);
@@ -173,7 +173,7 @@ export default function FilesPanel(props: {
   return (
     <div class={styles.filesPanel}>
       <Show when={multiMember()}>
-        <MemberTabs members={props.members} activeKey={viewed()?.key ?? null} onPick={(m) => pick(m.key)} />
+        <MemberTabs members={members()} activeKey={viewed()?.key ?? null} onPick={(m) => pick(m.key)} />
       </Show>
       <div class={styles.topBar}>
         <input

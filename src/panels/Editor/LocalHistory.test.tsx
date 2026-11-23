@@ -138,7 +138,7 @@ describe("restoring one", () => {
   it("re-reads the list, since the restore is itself a version to come", async () => {
     mount();
     await waitFor(() => expect(argsFor("local_history_list")).toHaveLength(1));
-    fireEvent.click(screen.getAllByText("Restore")[0]);
+    fireEvent.click((await screen.findAllByText("Restore"))[0]);
     await waitFor(() => expect(argsFor("local_history_list")).toHaveLength(2));
   });
 

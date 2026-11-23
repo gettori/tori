@@ -1,6 +1,6 @@
 // The Changes tab's editor layout: the file itself in a read-only buffer, with
 // git's hunks drawn over it. Behind the fence; DiffView loads it lazily.
-import { createEffect, on, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, onCleanup, onSettled, untrack } from "solid-js";
 import {
   EditorView,
   drawSelection,
@@ -63,20 +63,21 @@ export default function DiffBufferView(props: {
     run: (hunk, action) => props.onHunk(hunk, action),
   });
 
-  function load() {
+  // The defaults read props, so an effect passes what it read in its compute:
+  // an apply cannot read a prop the parent hands over as a computed expression.
+  function load(text = props.text, hunks = props.hunks, blame = props.blame) {
     if (!view) return;
     const doc = view.state.sliceDoc();
     view.dispatch({
-      changes: doc === props.text ? undefined : { from: 0, to: view.state.doc.length, insert: props.text },
-      effects: setDiffHunks.of({ hunks: props.hunks, language }),
+      changes: doc === text ? undefined : { from: 0, to: view.state.doc.length, insert: text },
+      effects: setDiffHunks.of({ hunks, language }),
     });
-    placeBlame();
+    placeBlame(blame);
   }
 
   // After the text: a whole-document replace drops the markers it maps through.
-  function placeBlame() {
+  function placeBlame(blame = props.blame) {
     if (!view) return;
-    const blame = props.blame;
     if (!!blame !== blameShown) {
       blameShown = !!blame;
       view.dispatch({ effects: blameConf.reconfigure(blame ? blameExtension() : []) });
@@ -84,18 +85,26 @@ export default function DiffBufferView(props: {
     if (blame) setBlameMarkers(view, blame);
   }
 
-  onMount(() => {
+  const [mounted, setMounted] = createSignal(false);
+  const first = untrack(() => ({
+    text: props.text,
+    hunks: props.hunks,
+    blame: props.blame,
+    canStage: props.canStage,
+    controls: props.controls,
+  }));
+  onSettled(() => {
     view = new EditorView({
       parent: host,
       state: EditorState.create({
-        doc: props.text,
+        doc: first.text,
         extensions: [
           // First, for CodeEditor's reason: vim claims a key before any keymap sees it.
           vimConf.of(vimExtension(vimModeOn())),
           diffBufferExtension(),
           lineNumbers(),
           blameConf.of([]),
-          stageConf.of(props.canStage ? stageGutter : []),
+          stageConf.of(first.canStage ? stageGutter : []),
           highlightActiveLine(),
           highlightActiveLineGutter(),
           drawSelection(),
@@ -129,39 +138,47 @@ export default function DiffBufferView(props: {
       command(view);
       view.focus();
     };
-    props.controls?.({ next: go(nextChange), previous: go(previousChange) });
-    load();
+    first.controls?.({ next: go(nextChange), previous: go(previousChange) });
+    load(first.text, first.hunks, first.blame);
+    setMounted(true);
   });
 
+  // The two that ran at mount read `mounted` too: the view is made in
+  // onSettled, after the first run of an effect.
   createEffect(
-    on(
-      () => props.path,
-      async (path) => {
+    () => [props.path, mounted()] as const,
+    ([path, ready]) => {
+      if (!ready) return;
+      void (async () => {
         const [ext, lang] = await Promise.all([syntaxFor(path), languageForPath(path)]);
         if (path !== props.path || !view) return;
         language = lang;
         view.dispatch({ effects: syntaxConf.reconfigure(ext) });
         load();
-      },
-    ),
-  );
-  createEffect(on([() => props.text, () => props.hunks], load, { defer: true }));
-  createEffect(on(() => props.blame, placeBlame, { defer: true }));
-  createEffect(
-    on(vimModeOn, (vimOn) => view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimOn)) }), { defer: true }),
+      })();
+    },
   );
   createEffect(
-    on(
-      () => props.busy,
-      (busy) => view?.dispatch({ effects: setHunksBusy.of(busy) }),
-    ),
+    () => [props.text, props.hunks, untrack(() => props.blame)] as const,
+    ([text, hunks, blame]) => load(text, hunks, blame),
+    { defer: true },
   );
   createEffect(
-    on(
-      () => props.canStage,
-      (can) => view?.dispatch({ effects: stageConf.reconfigure(can ? stageGutter : []) }),
-      { defer: true },
-    ),
+    () => props.blame,
+    (blame) => placeBlame(blame),
+    { defer: true },
+  );
+  createEffect(vimModeOn, (vimOn) => view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimOn)) }), {
+    defer: true,
+  });
+  createEffect(
+    () => [props.busy, mounted()] as const,
+    ([busy]) => view?.dispatch({ effects: setHunksBusy.of(busy) }),
+  );
+  createEffect(
+    () => props.canStage,
+    (can) => view?.dispatch({ effects: stageConf.reconfigure(can ? stageGutter : []) }),
+    { defer: true },
   );
   onCleanup(() => {
     view?.destroy();

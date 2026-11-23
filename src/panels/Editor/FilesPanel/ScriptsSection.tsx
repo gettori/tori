@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Globe, MousePointerClick, Play } from "../../../components/Icon/icons";
@@ -68,8 +68,7 @@ export default function ScriptsSection(props: { root: string | null }) {
   // Bumped per read so a slow fs-refresh cannot overwrite a newer one.
   let scanGen = 0;
 
-  async function scan() {
-    const root = props.root;
+  async function scan(root = props.root) {
     const gen = ++scanGen;
     if (!root) {
       setTasks([]);
@@ -86,7 +85,7 @@ export default function ScriptsSection(props: { root: string | null }) {
       const web = await invoke<WebApp[]>("web_setup", { root }).catch(() => [] as WebApp[]);
       if (gen !== scanGen) return;
       setTasks(found);
-      setApps(web);
+      setApps(web ?? []);
       setError(null);
     } catch (e) {
       // Said rather than swallowed: an empty list would read as "this project
@@ -99,10 +98,8 @@ export default function ScriptsSection(props: { root: string | null }) {
 
   const debouncedScan = debounce(() => void scan(), FS_CHANGE_DEBOUNCE_MS);
   createEffect(
-    on(
-      () => props.root,
-      () => void scan(),
-    ),
+    () => props.root,
+    (root) => void scan(root),
   );
 
   const mark = (id: string, on: boolean) =>
@@ -116,19 +113,21 @@ export default function ScriptsSection(props: { root: string | null }) {
 
   const unlisten: UnlistenFn[] = [];
   let gone = false;
-  onMount(async () => {
-    const offs = await Promise.all([
-      listen<FsChanged>("fs://changed", (e) => {
-        if (e.payload.root && e.payload.root !== props.root) return;
-        if (e.payload.paths.some(isTaskSource)) debouncedScan();
-      }),
-      listen<{ id: string; busy: boolean }>("pty://busy", (e) => mark(e.payload.id, e.payload.busy)),
-      listen<{ id: string }>("pty://exit", (e) => mark(e.payload.id, false)),
-    ]);
-    if (gone) return offs.forEach((off) => off());
-    unlisten.push(...offs);
-    const ids = await invoke<string[]>("pty_busy_ids").catch(() => [] as string[]);
-    if (!gone) setBusy(new Set(ids));
+  onSettled(() => {
+    void (async () => {
+      const offs = await Promise.all([
+        listen<FsChanged>("fs://changed", (e) => {
+          if (e.payload.root && e.payload.root !== props.root) return;
+          if (e.payload.paths.some(isTaskSource)) debouncedScan();
+        }),
+        listen<{ id: string; busy: boolean }>("pty://busy", (e) => mark(e.payload.id, e.payload.busy)),
+        listen<{ id: string }>("pty://exit", (e) => mark(e.payload.id, false)),
+      ]);
+      if (gone) return offs.forEach((off) => off());
+      unlisten.push(...offs);
+      const ids = await invoke<string[]>("pty_busy_ids").catch(() => [] as string[]);
+      if (!gone) setBusy(new Set(ids));
+    })();
   });
   onCleanup(() => {
     gone = true;
