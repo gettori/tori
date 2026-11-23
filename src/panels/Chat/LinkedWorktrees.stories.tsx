@@ -1,4 +1,4 @@
-import { onSettled, untrack } from "solid-js";
+import { onSettled, runWithOwner, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -57,6 +57,10 @@ function unit(over: Partial<ForgeUnit>): ForgeUnit {
 // The workshop has no Tauri host: the session names, the waiting messages and
 // the links are answered here, and the sidebar's unit list is fed by hand.
 function stubHost() {
+  runWithOwner(null, seedHost);
+}
+
+function seedHost() {
   mockIPC(
     (cmd, args) => {
       const a = (args ?? {}) as Record<string, string>;

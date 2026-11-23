@@ -1,3 +1,4 @@
+import { seedStores } from "../../../.storybook/seedStores";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import Omnibox from "./Omnibox";
@@ -64,6 +65,10 @@ const SYMBOLS = normalizeDocumentSymbols(
 /** Every story starts from the same known state rather than from whatever the
  *  one before it left in module scope and browser storage. */
 function seed(options: { file?: boolean; recents?: boolean; symbols?: boolean } = {}) {
+  seedStores(() => writeSeed(options));
+}
+
+function writeSeed(options: { file?: boolean; recents?: boolean; symbols?: boolean }) {
   clearSymbols();
   clearEditorState();
   localStorage.clear();
@@ -175,6 +180,10 @@ function status(branch: string): UnitStatus {
 }
 
 function seedPlaces() {
+  seedStores(writePlaces);
+}
+
+function writePlaces() {
   mockIPC(
     (cmd, args) => {
       const a = (args ?? {}) as Record<string, unknown>;

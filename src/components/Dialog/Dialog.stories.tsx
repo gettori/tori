@@ -1,3 +1,4 @@
+import { lazyArg } from "../../../.storybook/lazyArg";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { For } from "solid-js";
 import Button from "../Button/Button";
@@ -39,7 +40,7 @@ const Actions = (props: { confirm?: string; danger?: boolean }) => (
 export const Playground: Story = {
   args: {
     children: "Delete `feature/omnibox` and everything on it?",
-    actions: <Actions confirm="Delete" danger />,
+    actions: lazyArg(() => <Actions confirm="Delete" danger />),
   },
 };
 
@@ -48,7 +49,7 @@ export const Confirm: Story = {
   args: {
     size: "confirm",
     children: "Delete `feature/omnibox` and everything on it?",
-    actions: <Actions confirm="Delete" danger />,
+    actions: lazyArg(() => <Actions confirm="Delete" danger />),
   },
 };
 
@@ -58,13 +59,13 @@ export const Sheet: Story = {
     size: "sheet",
     title: "New project",
     description: "Names may not contain spaces.",
-    children: (
+    children: lazyArg(() => (
       <label style={{ display: "grid", gap: "var(--tori-space-2)" }}>
         Project name
         <input />
       </label>
-    ),
-    actions: <Actions confirm="Create" />,
+    )),
+    actions: lazyArg(() => <Actions confirm="Create" />),
   },
 };
 
@@ -76,7 +77,7 @@ export const Wide: Story = {
     size: "wide",
     title: "Keyboard shortcuts",
     description: undefined,
-    children: (
+    children: lazyArg(() => (
       <div
         style={{
           display: "grid",
@@ -93,7 +94,7 @@ export const Wide: Story = {
           )}
         </For>
       </div>
-    ),
+    )),
   },
 };
 
@@ -136,11 +137,11 @@ export const Overflowing: Story = {
     size: "sheet",
     title: "Select a debug target",
     description: undefined,
-    children: (
+    children: lazyArg(() => (
       <ul style={{ margin: 0, "padding-left": "var(--tori-space-6)" }}>
         <For each={Array.from({ length: 60 }, (_, i) => i)}>{(i) => <li>Target {i}</li>}</For>
       </ul>
-    ),
-    actions: <Actions confirm="Attach" />,
+    )),
+    actions: lazyArg(() => <Actions confirm="Attach" />),
   },
 };

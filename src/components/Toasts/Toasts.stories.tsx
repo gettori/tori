@@ -1,5 +1,5 @@
+import { seedStores } from "../../../.storybook/seedStores";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Button from "../Button/Button";
 import ToastRegion, { clearToasts, pushToast } from "./Toasts";
@@ -12,7 +12,7 @@ const meta = {
   component: ToastRegion,
   decorators: [
     (Story) => {
-      clearToasts();
+      seedStores(() => clearToasts());
       return <Story />;
     },
   ],
@@ -28,7 +28,7 @@ type Story = StoryObj<typeof meta>;
  *  the deck in the app, where the command registry owns that key. */
 export const Stack: Story = {
   render: () => {
-    onSettled(() => {
+    seedStores(() => {
       pushToast("Could not remove the worktree: it has uncommitted changes.", "error");
       pushToast("Pulled.", "success");
       pushToast("Renamed 12 files", "info", { label: "Undo", run: () => {} });
@@ -73,7 +73,7 @@ function Backdrop(props: { children: JSX.Element }) {
  *  notice with Undo. */
 export const Gallery: Story = {
   render: () => {
-    onSettled(() => {
+    seedStores(() => {
       pushToast("Push rejected: the remote moved.", "error");
       pushToast(
         "git fetch failed:\nfatal: unable to access 'https://github.com/gettori/tori/': Could not resolve host",
@@ -96,7 +96,7 @@ export const Gallery: Story = {
  *  fanned out. */
 export const Overflow: Story = {
   render: () => {
-    onSettled(() => {
+    seedStores(() => {
       for (let i = 1; i <= 8; i++) pushToast(`Push ${i} rejected: the remote moved.`, "error");
     });
     return (

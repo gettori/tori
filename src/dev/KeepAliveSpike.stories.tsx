@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { onSettled } from "solid-js";
+import { onSettled, runWithOwner } from "solid-js";
 import { Portal } from "@solidjs/web";
 import { stageHost } from "../tabs/stageHost";
 import PaneTree, { type PaneRoles } from "../layout/PaneTree";
@@ -162,12 +162,14 @@ export const TabDragCycle: Story = {
 
     localStorage.removeItem("tori.panes.v1");
     localStorage.removeItem("tori.tabpanes.v1");
-    resetPaneLayoutModel();
-    resetTabPlacement();
-    setOpen([mk("sh:1"), mk("sh:2")]);
-    setActiveWorkspace(P10_WS);
-    setActiveByWorkspace({ [P10_WS]: "sh:1" });
-    ensureEnvelope(P10_WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true }));
+    runWithOwner(null, () => {
+      resetPaneLayoutModel();
+      resetTabPlacement();
+      setOpen([mk("sh:1"), mk("sh:2")]);
+      setActiveWorkspace(P10_WS);
+      setActiveByWorkspace({ [P10_WS]: "sh:1" });
+      ensureEnvelope(P10_WS, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true }));
+    });
     registerKind("shell", {
       icon: () => undefined,
       title: (u) => u.id,
