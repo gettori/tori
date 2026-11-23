@@ -8,7 +8,7 @@
 // back to a freshly seeded envelope rather than crashing the shell. The
 // stored value is never repaired in place; only focusedPaneId, whose loss is
 // recoverable, is patched to a visible pane.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal, getOwner, untrack } from "solid-js";
 import { deferredWrite } from "../utils/deferredWrite";
 import { dockFocused } from "./dockStore";
 import { pinRulesFor } from "./tabPlacement";
@@ -89,11 +89,20 @@ function loadAll(): Record<string, LayoutEnvelope> {
   return out;
 }
 
-const [envelopes, setEnvelopes] = createLiveSignal<Record<string, LayoutEnvelope>>(loadAll());
+const [envelopes, setEnvelopes] = createSignal<Record<string, LayoutEnvelope>>(loadAll());
+
+// Edits build on what an earlier write in this tick left, which only an updater
+// can see. Under an owner a write is refused, so there it is a plain read.
+function latestEnvelopes(): Record<string, LayoutEnvelope> {
+  if (getOwner()) return untrack(envelopes);
+  let held!: Record<string, LayoutEnvelope>;
+  setEnvelopes((prev) => (held = prev));
+  return held;
+}
 
 const envelopeWrite = deferredWrite(() => {
   try {
-    localStorage.setItem(LS_PANES, JSON.stringify(envelopes()));
+    localStorage.setItem(LS_PANES, JSON.stringify(latestEnvelopes()));
   } catch {
     // ignore
   }
@@ -118,20 +127,22 @@ export function envelopeFor(ws: string, seed: () => LayoutEnvelope): LayoutEnvel
 
 /** Drop a workspace's envelope outright: the key is gone, not empty. */
 export function forgetWorkspace(ws: string) {
-  if (!envelopes()[ws]) return;
-  const { [ws]: _gone, ...rest } = envelopes();
+  const all = latestEnvelopes();
+  if (!all[ws]) return;
+  const { [ws]: _gone, ...rest } = all;
   setEnvelopes(rest);
   persistEnvelopes();
 }
 
 export function moveWorkspaceLayouts(moves: readonly PathMove[]) {
-  setEnvelopes(moveDeep(envelopes(), moves));
+  setEnvelopes((all) => moveDeep(all, moves));
   persistEnvelopes();
 }
 
 export function ensureEnvelope(ws: string, seed: () => LayoutEnvelope) {
-  if (envelopes()[ws]) return;
-  setEnvelopes({ ...envelopes(), [ws]: seed() });
+  const all = latestEnvelopes();
+  if (all[ws]) return;
+  setEnvelopes({ ...all, [ws]: seed() });
   persistEnvelopes();
 }
 
@@ -146,7 +157,8 @@ export function updateLayout(
   fn: (root: PaneNode) => PaneNode | null,
   opts?: { persist?: boolean },
 ): boolean {
-  const env = envelopes()[ws];
+  const all = latestEnvelopes();
+  const env = all[ws];
   if (!env) return false;
   const next = fn(env.layout);
   if (!next || next === env.layout) return false;
@@ -155,7 +167,7 @@ export function updateLayout(
   // never makes (closing the last visible pane while hidden ones remain).
   const focused =
     focusedLeaf && !focusedLeaf.hidden ? env.focusedPaneId : (visibleLeaves(next)[0] ?? leaves(next)[0]).id;
-  setEnvelopes({ ...envelopes(), [ws]: { ...env, layout: next, focusedPaneId: focused } });
+  setEnvelopes({ ...all, [ws]: { ...env, layout: next, focusedPaneId: focused } });
   if (opts?.persist !== false) persistEnvelopes();
   return true;
 }
@@ -171,10 +183,11 @@ export function focusedPaneId(ws: string): string | null {
 }
 
 export function setFocusedPane(ws: string, paneId: string) {
-  const env = envelopes()[ws];
+  const all = latestEnvelopes();
+  const env = all[ws];
   if (!env || env.focusedPaneId === paneId) return;
   if (!leaves(env.layout).some((l) => l.id === paneId)) return;
-  setEnvelopes({ ...envelopes(), [ws]: { ...env, focusedPaneId: paneId } });
+  setEnvelopes({ ...all, [ws]: { ...env, focusedPaneId: paneId } });
   persistEnvelopes();
 }
 
@@ -195,7 +208,7 @@ export function kindPaneFocused(ws: string, kind: string): boolean {
  *  every programmatic "take me to this tab" (sidebar session click,
  *  next-waiting, focus-session-tab). No envelope means no pane to reveal. */
 export function revealKindPane(ws: string, kind: string) {
-  const env = envelopes()[ws];
+  const env = latestEnvelopes()[ws];
   if (!env) return;
   const pane = resolvePinPane(env.layout, kind, pinRulesFor(ws, kind));
   if (!pane) return;

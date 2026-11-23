@@ -9,7 +9,6 @@ import {
   type Accessor,
   onSettled,
 } from "solid-js";
-import { createLiveSignal } from "../../lib/liveState";
 import { Portal } from "@solidjs/web";
 import { CircleAlert, CircleCheck, Info, X } from "../Icon/icons";
 import { createPresence, watchTopModal } from "../../lib/layer";
@@ -53,7 +52,7 @@ type ToastItem = {
   dismiss: () => void;
 };
 
-const [toasts, setToasts] = createLiveSignal<readonly ToastItem[]>([]);
+const [toasts, setToasts] = createSignal<readonly ToastItem[]>([]);
 let nextId = 0;
 let regions = 0;
 
@@ -89,8 +88,7 @@ function ToastCard(props: { toast: ToastItem; duration: number; paused: Accessor
   createEffect(presence.mounted, (mounted) => {
     if (mounted) return;
     const gone = props.toast;
-    // Live state flushes on write, which an effect callback cannot do.
-    queueMicrotask(() => setToasts((list) => list.filter((other) => other !== gone)));
+    setToasts((list) => list.filter((other) => other !== gone));
   });
 
   let timer: ReturnType<typeof setTimeout> | undefined;

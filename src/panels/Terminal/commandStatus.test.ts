@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { commandStatus, dropCommandStatus, reportCommandExit, resetCommandStatus } from "./commandStatus";
 import type { OpenTerm } from "./terminalTabStore";
@@ -19,8 +20,10 @@ describe("commandStatus", () => {
   it("reads running until a report lands, then the verdict the code says", () => {
     expect(commandStatus("install:claude")).toBe("running");
     expect(reportCommandExit("install:claude", 0)).toBe(true);
+    flush();
     expect(commandStatus("install:claude")).toBe("ok");
     expect(reportCommandExit("clone:x", 130)).toBe(true);
+    flush();
     expect(commandStatus("clone:x")).toBe("failed");
   });
 
@@ -29,6 +32,7 @@ describe("commandStatus", () => {
   it("keeps the first report and refuses a second", () => {
     expect(reportCommandExit("signin:claude:work", 3)).toBe(true);
     expect(reportCommandExit("signin:claude:work", 0)).toBe(false);
+    flush();
     expect(commandStatus("signin:claude:work")).toBe("failed");
   });
 
@@ -39,6 +43,7 @@ describe("commandStatus", () => {
     const before = JSON.stringify(t);
     reportCommandExit(t.id, 2);
     expect(JSON.stringify(t)).toBe(before);
+    flush();
     expect(commandStatus(t.id)).toBe("failed");
   });
 
@@ -49,6 +54,7 @@ describe("commandStatus", () => {
     dropCommandStatus("install:claude");
     expect(commandStatus("install:claude")).toBe("running");
     expect(reportCommandExit("install:claude", 0)).toBe(true);
+    flush();
     expect(commandStatus("install:claude")).toBe("ok");
     dropCommandStatus("never-reported");
   });

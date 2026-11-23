@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 // The dock's one pane exists before anything opens in it, so a command started
 // from any workspace has a pane to land in. It takes both kinds that live there:
 // what Tori runs, and the shells you open yourself.
@@ -18,6 +19,7 @@ describe("the Shells workspace", () => {
   it("is one pane that takes both a command and a shell you opened", () => {
     expect(layoutRoot(SHELLS_KEY)).toBeNull();
     ensureShellsWorkspace();
+    flush();
     const root = layoutRoot(SHELLS_KEY)!;
     expect(root).toBeTruthy();
     expect(leaves(root)).toHaveLength(1);

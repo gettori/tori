@@ -5,7 +5,7 @@
 // The rule set lives here rather than in the settings store so the layout layer
 // never imports it: the shell pushes the user's answer in with `setPinSides`,
 // and everything that resolves a pin reads it back out of one signal.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 /** Which end of the tree a kind opens at. */
 export type PinSide = "leftmost" | "rightmost";
@@ -25,7 +25,7 @@ export const DEFAULT_PIN_SIDES: PinSides = {
 
 export const pinGroup = (kind: string): PinGroup => (kind === "file" ? "file" : kind === "chat" ? "chat" : "terminal");
 
-const [sides, setSides] = createLiveSignal<PinSides>(DEFAULT_PIN_SIDES);
+const [sides, setSides] = createSignal<PinSides>(DEFAULT_PIN_SIDES);
 
 export function setPinSides(next: Partial<PinSides>): void {
   setSides({ ...DEFAULT_PIN_SIDES, ...next });
