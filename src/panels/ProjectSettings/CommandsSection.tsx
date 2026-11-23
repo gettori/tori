@@ -1,3 +1,4 @@
+import { createMemo } from "solid-js";
 import Switch from "../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { repoValues, type Answered } from "../../utils/proposals";
@@ -12,6 +13,10 @@ import styles from "./ProjectSettingsDialog.module.css";
  *  `.tori/project.json` runs instead, and typing one overrides them all. */
 export default function CommandsSection(props: { projectPath: string; answered: Answered[] | undefined }) {
   const setup = () => worktreePrefs(props.projectPath);
+  // Memos: saving one field makes a new `setup()`, which would erase another being typed.
+  const setupCommand = createMemo(() => setup().setupCommand);
+  const runCommand = createMemo(() => setup().runCommand);
+  const teardownCommand = createMemo(() => setup().teardownCommand);
   function saveSetup(patch: Partial<WorktreePrefs>) {
     rememberWorktreePrefs(props.projectPath, patch).catch((e) =>
       emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
@@ -36,9 +41,13 @@ export default function CommandsSection(props: { projectPath: string; answered: 
             type="text"
             class={`${s.input} ${s.text}`}
             aria-label="Setup command"
-            value={setup().setupCommand}
+            value={setupCommand()}
             placeholder="pnpm install"
-            onChange={(e) => saveSetup({ setupCommand: e.currentTarget.value.trim() })}
+            onChange={(e) => {
+              const value = e.currentTarget.value.trim();
+              e.currentTarget.value = value;
+              saveSetup({ setupCommand: value });
+            }}
           />
           <RepoValues values={repo("setupCommand")} overridden={!!setup().setupCommand} />
         </div>
@@ -66,9 +75,13 @@ export default function CommandsSection(props: { projectPath: string; answered: 
             type="text"
             class={`${s.input} ${s.text}`}
             aria-label="Run command"
-            value={setup().runCommand}
+            value={runCommand()}
             placeholder="pnpm dev --port $TORI_PORT"
-            onChange={(e) => saveSetup({ runCommand: e.currentTarget.value.trim() })}
+            onChange={(e) => {
+              const value = e.currentTarget.value.trim();
+              e.currentTarget.value = value;
+              saveSetup({ runCommand: value });
+            }}
           />
           <RepoValues values={repo("runCommand")} overridden={!!setup().runCommand} />
         </div>
@@ -110,9 +123,13 @@ export default function CommandsSection(props: { projectPath: string; answered: 
             type="text"
             class={`${s.input} ${s.text}`}
             aria-label="Teardown command"
-            value={setup().teardownCommand}
+            value={teardownCommand()}
             placeholder="docker compose down"
-            onChange={(e) => saveSetup({ teardownCommand: e.currentTarget.value.trim() })}
+            onChange={(e) => {
+              const value = e.currentTarget.value.trim();
+              e.currentTarget.value = value;
+              saveSetup({ teardownCommand: value });
+            }}
           />
           <RepoValues values={repo("teardownCommand")} overridden={!!setup().teardownCommand} />
         </div>
