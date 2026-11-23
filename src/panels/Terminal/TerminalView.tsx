@@ -1,4 +1,4 @@
-import { onCleanup, onSettled, createEffect, createSignal, Show } from "solid-js";
+import { onCleanup, onSettled, createEffect, createSignal, Show, untrack } from "solid-js";
 import { Terminal, type ILink, type IDisposable } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -269,7 +269,7 @@ export default function TerminalView(props: {
         Promise.all(
           matches.map(async ({ token, index }): Promise<ILink | null> => {
             const [filePart, lineStr, colStr] = token.split(":");
-            const abs = filePart.startsWith("/") ? filePart : `${props.cwd}/${filePart}`;
+            const abs = filePart.startsWith("/") ? filePart : `${untrack(() => props.cwd)}/${filePart}`;
             const ok = await invoke<boolean>("file_exists", { path: abs }).catch(() => false);
             if (!ok) return null;
             return {
@@ -306,7 +306,7 @@ export default function TerminalView(props: {
         openSearch();
         return false;
       }
-      if (props.hotkeys !== false && dispatchHotkey(e)) {
+      if (untrack(() => props.hotkeys) !== false && dispatchHotkey(e)) {
         e.preventDefault();
         e.stopPropagation();
         return false;
@@ -317,7 +317,7 @@ export default function TerminalView(props: {
     fit.fit();
 
     term.onData((data) => {
-      invoke("pty_write", { id: props.id, data }).catch(() => {});
+      invoke("pty_write", { id: untrack(() => props.id), data }).catch(() => {});
     });
 
     // Per-session output channel (replaces the global base64 pty://output event).
@@ -331,7 +331,7 @@ export default function TerminalView(props: {
       term?.write(bytes, () => {
         drawn += bytes.length;
         if (drawn < ACK_BYTES) return;
-        invoke("pty_ack", { id: props.id, bytes: drawn }).catch(() => {});
+        invoke("pty_ack", { id: untrack(() => props.id), bytes: drawn }).catch(() => {});
         drawn = 0;
       });
     };

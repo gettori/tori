@@ -1,4 +1,4 @@
-import { createEffect, createSignal, Show } from "solid-js";
+import { createEffect, createSignal, Show, untrack } from "solid-js";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Upload } from "../Icon/icons";
 import styles from "./ProjectIconPicker.module.css";
@@ -56,9 +56,9 @@ export default function ProjectIconPicker(props: {
   /** Opens the native file picker; resolves to a path, or null when cancelled. */
   onPickFile: () => Promise<string | null>;
 }) {
-  const [source, setSource] = createSignal<Source>(sourceOf(props.icon, props.iconFile));
-  const [icon, setIcon] = createSignal<string | null>(props.icon);
-  const [file, setFile] = createSignal<string | null>(props.iconFile);
+  const [source, setSource] = createSignal<Source>(untrack(() => sourceOf(props.icon, props.iconFile)));
+  const [icon, setIcon] = createSignal<string | null>(untrack(() => props.icon));
+  const [file, setFile] = createSignal<string | null>(untrack(() => props.iconFile));
   const [picking, setPicking] = createSignal(false);
   const [over, setOver] = createSignal(false);
   // Mirrors the grid's own query, which it does not publish otherwise, so the

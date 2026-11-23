@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test"
 import { render, screen, waitFor, fireEvent, within, cleanup } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
-import { omit, type ComponentProps } from "solid-js";
+import { omit, untrack, type ComponentProps } from "solid-js";
 import { LAST_MEMBER, topicKey, type Topic, type Member, type MemberState } from "../../utils/topics";
 import type { TopicActions, TopicActionsHost } from "./topicActions";
 
@@ -229,7 +229,7 @@ function Listed(props: Omit<ComponentProps<typeof TopicList>, "actions"> & HostP
     countRunning: (path) => props.countRunning?.(path),
     onExpanded: (ids) => props.onExpanded?.(ids),
   });
-  props.onActions?.(actions);
+  untrack(() => props.onActions)?.(actions);
   return <TopicList {...rest} actions={actions} />;
 }
 

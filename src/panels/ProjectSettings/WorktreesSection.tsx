@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { CornerDownRight, Folder, GitBranch, RefreshCw, Trash2, TriangleAlert } from "../../components/Icon/icons";
@@ -123,7 +123,7 @@ export default function WorktreesSection(props: { workspace: string }) {
   function link(name: string, worktree?: string) {
     void run(`link:${worktree ?? ""}:${name}`, async () => {
       const n = await invoke<number>("shared_link", {
-        container: props.workspace,
+        container: untrack(() => props.workspace),
         name,
         worktree: worktree ?? null,
       });
@@ -133,7 +133,7 @@ export default function WorktreesSection(props: { workspace: string }) {
 
   function unlink(name: string, worktree: string) {
     void run(`unlink:${worktree}:${name}`, async () => {
-      await invoke("shared_unlink", { container: props.workspace, worktree, name });
+      await invoke("shared_unlink", { container: untrack(() => props.workspace), worktree, name });
       return `${basename(worktree)} no longer has ${name}.`;
     });
   }
@@ -166,8 +166,8 @@ export default function WorktreesSection(props: { workspace: string }) {
       ),
       run: () =>
         void run(`keep:${e.name}`, async () => {
-          const worktree = keepIn();
-          await invoke("shared_keep_in", { container: props.workspace, worktree, name: e.name });
+          const worktree = untrack(() => keepIn());
+          await invoke("shared_keep_in", { container: untrack(() => props.workspace), worktree, name: e.name });
           return `${e.name} is a normal ${e.is_dir ? "folder" : "file"} in ${basename(worktree)} now.`;
         }),
     });
@@ -184,7 +184,7 @@ export default function WorktreesSection(props: { workspace: string }) {
       confirmLabel: "Delete",
       run: () =>
         void run(`remove:${e.name}`, async () => {
-          await invoke("shared_remove", { container: props.workspace, name: e.name });
+          await invoke("shared_remove", { container: untrack(() => props.workspace), name: e.name });
           return `${e.name} is no longer shared.`;
         }),
     });

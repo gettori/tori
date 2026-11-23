@@ -1,4 +1,4 @@
-import { omit } from "solid-js";
+import { omit, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Tooltip, { type TooltipPlacement } from "../Tooltip/Tooltip";
 import styles from "./Button.module.css";
@@ -55,7 +55,7 @@ export default function Button(props: ButtonProps) {
   // name, so the text a mouse user hovers for doubles as the accessible name.
   const ariaLabel = () => props["aria-label"] ?? (iconOnly() ? props.tooltip : undefined);
 
-  if (import.meta.env.DEV && iconOnly() && ariaLabel() == null) {
+  if (import.meta.env.DEV && untrack(() => iconOnly() && ariaLabel() == null)) {
     console.warn("[Button] icon-only button is missing an accessible name; pass `aria-label` (or a `tooltip`).");
   }
 

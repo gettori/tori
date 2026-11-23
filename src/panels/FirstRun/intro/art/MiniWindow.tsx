@@ -17,7 +17,7 @@ export default function MiniWindow(props: {
   children: JSX.Element;
 }) {
   return (
-    <div class={`${styles.window} ${props.class ?? ""}`} style={{ "--h": props.height }} inert>
+    <div class={[styles.window, props.class]} style={{ "--h": props.height }} inert>
       <div class={styles.mini} style={{ zoom: props.zoom, "--z": props.zoom }}>
         <div class={styles.titleBar}>
           <span class={styles.lights}>

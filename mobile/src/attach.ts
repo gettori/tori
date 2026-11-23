@@ -105,8 +105,9 @@ export function createAttachments(client: RemoteClient, onError: (message: strin
       }
       const id = ++next;
       setFiles((f) => [...f, { id, name: ready.file.name, kind: ready.kind, path: null }]);
+      const dropped = () => !files().some((a) => a.id === id);
       try {
-        const path = await upload(client, ready.file, () => !files().some((a) => a.id === id));
+        const path = await upload(client, ready.file, dropped);
         if (path) setFiles((f) => f.map((a) => (a.id === id ? { ...a, path } : a)));
       } catch (e) {
         setFiles((f) => f.filter((a) => a.id !== id));

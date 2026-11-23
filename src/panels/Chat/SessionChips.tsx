@@ -122,7 +122,7 @@ export default function SessionChips(props: {
       data-related-session={p.session.id}
       onClick={() => props.onOpen?.(p.session.id)}
     >
-      <span class={`${styles.laneDot} ${tone(p.session.state)}`} aria-hidden="true" />
+      <span class={[styles.laneDot, tone(p.session.state)]} aria-hidden="true" />
       <span class={styles.sessionGlyph} aria-hidden="true">
         {GLYPH[p.session.relation]({})}
       </span>
@@ -177,7 +177,7 @@ export default function SessionChips(props: {
                               props.onOpen?.(s.id);
                             }}
                           >
-                            <span class={`${styles.laneDot} ${tone(s.state)}`} aria-hidden="true" />
+                            <span class={[styles.laneDot, tone(s.state)]} aria-hidden="true" />
                             <span class={styles.sessionGlyph} aria-hidden="true">
                               {GLYPH[s.relation]({})}
                             </span>

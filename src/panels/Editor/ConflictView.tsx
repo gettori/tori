@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, onCleanup, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, onCleanup, untrack, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitStateFor, refreshStatus } from "../../utils/gitActions";
 import { EditorView, lineNumbers, showPanel, Decoration, WidgetType, type DecorationSet } from "@codemirror/view";
@@ -546,17 +546,17 @@ export default function ConflictView(props: {
       sideActionDecorations(rs, side, doc, picked, skipped, sideName(side, names()), actOnSide),
     ),
   ];
-  const slots = resultField(optionsFor, {
+  const slots = resultField((id) => untrack(() => optionsFor(id)), {
     choose: (id, choice) => void chooseRegion(id, choice),
     reset: (id) => void resetRegion(id),
   });
 
   const aligner = paneAligner(() => {
     if (!merge || !result) return [];
-    const { left, right } = pair();
+    const { left, right } = untrack(() => pair());
     const state = result.state.field(slots, false);
     const spans = new Map([...(state?.slots ?? []), ...(state?.carried ?? [])].map((s) => [s.id, s]));
-    const rs = regions();
+    const rs = untrack(() => regions());
     if (rs.some((r) => !spans.has(r.id))) return [];
     const pane = (view: EditorView, side: PaneSide): AlignMember => ({
       view,

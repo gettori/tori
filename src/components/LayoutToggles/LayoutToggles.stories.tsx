@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal, onCleanup } from "solid-js";
+import { createSignal, onCleanup, untrack } from "solid-js";
 import LayoutToggles from "./LayoutToggles";
 import { on, TOGGLE_SIDEBAR } from "../../utils/events";
 
@@ -16,7 +16,7 @@ type Story = StoryObj<typeof meta>;
  *  close the loop itself to be interactive. This is the topbar's wiring in
  *  miniature. */
 function Live(props: { showSidebar: boolean }) {
-  const [sidebar, setSidebar] = createSignal(props.showSidebar);
+  const [sidebar, setSidebar] = createSignal(untrack(() => props.showSidebar));
   const off = on(TOGGLE_SIDEBAR, () => setSidebar((v) => !v));
   onCleanup(off);
   return <LayoutToggles showSidebar={sidebar()} />;

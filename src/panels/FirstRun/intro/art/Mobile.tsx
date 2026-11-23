@@ -224,7 +224,7 @@ export default function MobileArt() {
               cwd=""
               modelLabelFor={() => null}
               onSetMode={() => {}}
-              onRevertHunk={async () => false}
+              onRevertHunk={() => Promise.resolve(false)}
             />
           </div>
           <Pending client={noClient} session="s1" rows={PHONE_PENDING} onSettled={() => {}} />

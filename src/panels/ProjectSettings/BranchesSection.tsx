@@ -1,4 +1,4 @@
-import { createDeferred, createSignal, For, onSettled, refresh, Show } from "solid-js";
+import { createDeferred, createSignal, For, onSettled, refresh, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -61,11 +61,11 @@ export default function BranchesSection(props: { projectPath: string; projectNam
       void refresh(origin);
       void refresh(base);
       void refresh(author);
-      void resolveForgeRepo(props.projectPath);
+      void resolveForgeRepo(untrack(() => props.projectPath));
     });
     return () => void unlisten.then((stop) => stop());
   });
-  void resolveForgeRepo(props.projectPath);
+  void resolveForgeRepo(untrack(() => props.projectPath));
 
   async function setOrigin(url: string) {
     setBusy(true);

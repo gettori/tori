@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createMemo, createSignal, onSettled } from "solid-js";
+import { Match, Show, Switch, createMemo, createSignal, onSettled, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../components/Button/Button";
@@ -157,22 +157,24 @@ export default function FirstRun() {
   };
 
   const applyGrouping = () =>
-    withBusy(async () => {
-      const p = pending();
-      if (!p?.plan) return;
-      const done = await applyPlan(p.scan, p.plan, { setRoot: true });
-      for (const warning of done.warnings) emitWith<ToastEvent>(TOAST, { message: warning, kind: "error" });
-      setPending(null);
-      await reloadFirstRunConfig();
-      setPicked(null);
-      setSpaceMode("pick");
-      if (spaces().length > 0) {
-        activate(spaces()[0].name);
-        go("hosts");
-      } else {
-        go("space");
-      }
-    });
+    withBusy(() =>
+      untrack(async () => {
+        const p = pending();
+        if (!p?.plan) return;
+        const done = await applyPlan(p.scan, p.plan, { setRoot: true });
+        for (const warning of done.warnings) emitWith<ToastEvent>(TOAST, { message: warning, kind: "error" });
+        setPending(null);
+        await reloadFirstRunConfig();
+        setPicked(null);
+        setSpaceMode("pick");
+        if (spaces().length > 0) {
+          activate(spaces()[0].name);
+          go("hosts");
+        } else {
+          go("space");
+        }
+      }),
+    );
 
   const creating = () => step() === "space" && (spaceMode() === "create" || spaces().length === 0);
   const canCreate = () => !busy() && !badName(newName());

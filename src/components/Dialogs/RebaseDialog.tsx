@@ -1,4 +1,4 @@
-import { createMemo, For, Show, createStore } from "solid-js";
+import { createMemo, For, Show, createStore, untrack } from "solid-js";
 import { ArrowDown, ArrowUp } from "../Icon/icons";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -33,7 +33,7 @@ export default function RebaseDialog(props: {
   onCancel: () => void;
 }) {
   const [rows, setRows] = createStore<Row[]>(
-    props.plan.commits.map((commit): Row => ({ commit, action: "pick", message: commit.message })),
+    untrack(() => props.plan.commits.map((commit): Row => ({ commit, action: "pick", message: commit.message }))),
   );
 
   const move = (from: number, to: number) =>

@@ -72,7 +72,7 @@ function renderCard(item: ToolItem) {
       cwd="/repo"
       onAnswer={() => {}}
       onSetMode={() => {}}
-      onRevertHunk={async () => false}
+      onRevertHunk={() => Promise.resolve(false)}
     />
   ));
 }

@@ -1,4 +1,4 @@
-import { onSettled, runWithOwner, untrack } from "solid-js";
+import { For, onSettled, runWithOwner, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -393,11 +393,13 @@ function KitchenSink() {
         heading="Parent: the worktree card"
         detail="In the transcript of the chat that made the worktree, in place of the generic tool card."
       >
-        {CARDS.map(([label, card]) => (
-          <State label={label}>
-            <WorktreeCard card={card} cwd={`${API}/main`} onOpenWorktree={open} />
-          </State>
-        ))}
+        <For each={CARDS}>
+          {([label, card]) => (
+            <State label={label}>
+              <WorktreeCard card={card} cwd={`${API}/main`} onOpenWorktree={open} />
+            </State>
+          )}
+        </For>
         <State label="On the phone (no units, no Open)">
           <WorktreeCard card={tool({})} cwd={`${API}/main`} />
         </State>

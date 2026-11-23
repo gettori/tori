@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onSettled, Show, untrack } from "solid-js";
 import type { PanelWindow } from "../devtools";
 import { PANEL_PORT } from "../pick";
 import type { Chat, CommentOn, LogEntry, LogKind, PanelIn, PanelOut, PanelRequest, PanelState, Sent } from "../pick";
@@ -183,13 +183,14 @@ export default function Panel() {
   onCleanup(() => unlisten());
 
   onSettled(() => {
-    (window as PanelWindow).attach = (found) => {
-      if (network() === found) return;
-      unlisten();
-      setNetwork(found);
-      setRequests(found.list());
-      unlisten = found.listen(() => setRequests(found.list()));
-    };
+    (window as PanelWindow).attach = (found) =>
+      untrack(() => {
+        if (network() === found) return;
+        unlisten();
+        setNetwork(found);
+        setRequests(found.list());
+        unlisten = found.listen(() => setRequests(found.list()));
+      });
     chrome.devtools.network.onNavigated.addListener(navigated);
     connect();
     watch();

@@ -1247,15 +1247,13 @@ export default function Editor(props: {
     ];
   }
 
-  /** The tab, with its right-click menu around it or without. `when` is fixed
-   *  for the life of the node (a ghost never becomes a real row), so this is a
-   *  plain branch rather than a `Show`. */
   function MaybeTabMenu(p: { when: boolean; tab: FileTab; children: JSX.Element }) {
-    if (!p.when) return p.children;
     return (
-      <ContextMenu class={styles.tabMenu} disabled={tabMenuItems(p.tab).length === 0} items={tabMenuItems(p.tab)}>
-        {p.children}
-      </ContextMenu>
+      <Show when={p.when} fallback={p.children}>
+        <ContextMenu class={styles.tabMenu} disabled={tabMenuItems(p.tab).length === 0} items={tabMenuItems(p.tab)}>
+          {p.children}
+        </ContextMenu>
+      </Show>
     );
   }
 
@@ -1922,7 +1920,14 @@ export default function Editor(props: {
     // opened it (a commit, a conflict), so putting its id back would name a tab
     // rather than a file; and a scratch just deleted would come back as a failed
     // read of a file that is no longer there.
-    if (!isSyntheticId(tab.path) && !spent) setClosedByWs((s) => rememberClosedTab(s, ws(), tab.path));
+    if (!isSyntheticId(tab.path) && !spent)
+      setClosedByWs((s) =>
+        rememberClosedTab(
+          s,
+          untrack(() => ws()),
+          tab.path,
+        ),
+      );
     // Right neighbor, then left: the unified active-after-close policy (plan
     // phase 5). Computed before the list shrinks, or the closed id has no index.
     const nextActive = nextActiveAfterClose(tabs().map(tabId), id);
@@ -2885,8 +2890,8 @@ export default function Editor(props: {
         event.preventDefault();
         flushDeferredWrites();
         await getCurrentWindow().hide();
-        if (!editorDefaults().hotExit) return;
-        const anyDirty = Object.values(dirty()).some(Boolean);
+        if (!untrack(() => editorDefaults().hotExit)) return;
+        const anyDirty = Object.values(untrack(() => dirty())).some(Boolean);
         const kept = anyDirty ? await requestStash() : await saveStash(stashToWrite({}));
         if (!kept) console.error("the hot-exit stash was not written on hide");
       });

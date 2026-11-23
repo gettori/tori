@@ -264,7 +264,7 @@ export default function TodoPanel(props: {
               <Tooltip
                 as="button"
                 type="button"
-                class={`${styles.chip} ${selectedTags().has(tag) ? styles.chipOn : ""}`}
+                class={[styles.chip, { [styles.chipOn]: selectedTags().has(tag) }]}
                 aria-pressed={selectedTags().has(tag) ? "true" : "false"}
                 label={`Show only ${tag}`}
                 onClick={() => toggleTag(tag)}

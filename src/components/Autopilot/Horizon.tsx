@@ -1,4 +1,4 @@
-import { For, createEffect, createSignal } from "solid-js";
+import { For, createEffect, createSignal, untrack } from "solid-js";
 import dawn from "./scenes/dawn.svg?raw";
 import morning from "./scenes/morning.svg?raw";
 import midday from "./scenes/midday.svg?raw";
@@ -6,6 +6,7 @@ import golden from "./scenes/golden.svg?raw";
 import dusk from "./scenes/dusk.svg?raw";
 import night from "./scenes/night.svg?raw";
 import storm from "./scenes/storm.svg?raw";
+import TrustedHtml from "../TrustedHtml/TrustedHtml";
 import styles from "./Horizon.module.css";
 
 /** The times of day, and the storm, which shows at any hour. */
@@ -32,7 +33,7 @@ const FADE_MS = 1200;
 /** The animated sea and sky behind the cockpit's banner. A new scene fades in
  *  over the old one, which goes once it is covered. */
 export default function Horizon(props: { scene: SceneKey }) {
-  const [layers, setLayers] = createSignal<SceneKey[]>([props.scene]);
+  const [layers, setLayers] = createSignal<SceneKey[]>([untrack(() => props.scene)]);
   createEffect(
     () => props.scene,
     (next) => {
@@ -44,7 +45,7 @@ export default function Horizon(props: { scene: SceneKey }) {
   );
   return (
     <div class={styles.horizon} aria-hidden="true">
-      <For each={layers()}>{(key) => <div class={styles.scene} innerHTML={SCENES[key]} />}</For>
+      <For each={layers()}>{(key) => <TrustedHtml class={styles.scene} html={SCENES[key]} />}</For>
     </div>
   );
 }

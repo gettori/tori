@@ -7,7 +7,7 @@
 // own, and never answers a question about it (save, dirty, hot exit, the live
 // buffer the preview and the language workspace read).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
@@ -105,7 +105,7 @@ async function mountPanes(left: string | null, right: string | null) {
     </>
   ));
   const viewIn = (pane: "left" | "right") =>
-    EditorView.findFromDOM(hosts()[pane].querySelector(".cm-editor") as HTMLElement)!;
+    EditorView.findFromDOM(untrack(() => hosts())[pane].querySelector(".cm-editor") as HTMLElement)!;
   await waitFor(() => {
     for (const pane of ["left", "right"] as const) {
       const want = pane === "left" ? left : right;

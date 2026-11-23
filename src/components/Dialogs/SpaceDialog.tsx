@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import { Lock } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
@@ -65,9 +65,9 @@ export default function SpaceDialog(props: {
 }) {
   const isNew = () => props.mode === "new";
 
-  const [name, setName] = createSignal(props.name);
+  const [name, setName] = createSignal(untrack(() => props.name));
   const [look, setLook] = createSignal<Appearance>(
-    isNew() ? randomAppearance() : { color: props.color, icon: props.icon },
+    untrack(() => (isNew() ? randomAppearance() : { color: props.color, icon: props.icon })),
   );
   let first: HTMLInputElement | undefined;
 

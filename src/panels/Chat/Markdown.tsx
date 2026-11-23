@@ -8,6 +8,7 @@ import { openPlaced, placeOf, type FilePlace } from "./filePlace";
 import { linkTarget, pathTarget, pathWords } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
 import CodeBlock from "./CodeBlock";
+import TrustedHtml from "../../components/TrustedHtml/TrustedHtml";
 import styles from "./Chat.module.css";
 
 type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
@@ -128,7 +129,7 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
   // The lexer below reads the whole message, so a delta per token is quadratic
   // over a long answer. The first change after a quiet frame lands at once;
   // the rest of that frame's deltas land together on the next one.
-  const [text, setText] = createSignal(props.text);
+  const [text, setText] = createSignal(untrack(() => props.text));
   let frame: number | undefined;
   const settle = () => {
     frame = undefined;
@@ -238,11 +239,11 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
                 // The handler sits on the prose block rather than a wrapper: the
                 // transcript's spacing rules select `.mdProse` as a direct child
                 // of `.assistant`, so an extra element would break them.
-                <div
+                <TrustedHtml
                   ref={prose}
                   class={styles.mdProse}
                   onClick={onLinkClick}
-                  innerHTML={(s() as Extract<Segment, { kind: "prose" }>).html}
+                  html={(s() as Extract<Segment, { kind: "prose" }>).html}
                 />
               );
             }}

@@ -1,21 +1,15 @@
 export type IdiomClass =
-  | "batch"
   | "boolean-attr"
   | "camelcase-attr"
   | "cleanup-in-ref"
-  | "destructured-props"
   | "effect-in-handler"
   | "effect-writes"
   | "function-signal"
   | "handler-ternary"
-  | "lowercase-on"
   | "nested-root"
-  | "on-namespace"
   | "onmount-primitive"
   | "read-after-write"
-  | "timing"
-  | "top-prop-read"
-  | "use-directive";
+  | "timing";
 
 export interface LedgerEntry {
   file: string;
@@ -24,23 +18,17 @@ export interface LedgerEntry {
 }
 
 export const ENFORCED: readonly IdiomClass[] = [
-  "batch",
   "boolean-attr",
   "camelcase-attr",
   "cleanup-in-ref",
-  "destructured-props",
   "effect-in-handler",
   "effect-writes",
   "function-signal",
   "handler-ternary",
-  "lowercase-on",
   "nested-root",
-  "on-namespace",
   "onmount-primitive",
   "read-after-write",
   "timing",
-  "top-prop-read",
-  "use-directive",
 ];
 
 export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {

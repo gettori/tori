@@ -6,6 +6,7 @@ import {
   createUniqueId,
   onCleanup,
   omit,
+  untrack,
   useContext,
   type Component,
 } from "solid-js";
@@ -157,7 +158,7 @@ function Trigger(props: TabsTriggerProps) {
     "onFocus",
     "onBlur",
   );
-  const item = tabs.roving.item(props.value);
+  const item = untrack(() => tabs.roving.item(props.value));
   const isSelected = () => tabs.selected() === props.value;
   let pointerType: string | undefined;
   let element: HTMLButtonElement | undefined;

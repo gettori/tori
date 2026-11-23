@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { createSignal, flush } from "solid-js";
+import { createSignal, flush, untrack } from "solid-js";
 import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
@@ -85,7 +85,7 @@ describe("Select", () => {
     fireEvent.keyDown(document.activeElement!, { key: "Enter" });
     await macrotask();
 
-    expect(value()).toBe("banana");
+    expect(untrack(value)).toBe("banana");
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
@@ -97,7 +97,7 @@ describe("Select", () => {
     fireEvent.keyDown(trigger(), { key: "p" });
     await macrotask();
 
-    expect(value()).toBe("pineapple");
+    expect(untrack(value)).toBe("pineapple");
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
@@ -113,7 +113,7 @@ describe("Select", () => {
 
     pointerClick(screen.getByRole("option", { name: "Custom" }));
     await macrotask();
-    expect(value()).toBe("custom");
+    expect(untrack(value)).toBe("custom");
   });
 
   // The guard against normalizing the options at setup time: AppearancePane's

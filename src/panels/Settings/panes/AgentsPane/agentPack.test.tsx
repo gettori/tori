@@ -62,7 +62,13 @@ beforeEach(async () => {
 describe("a catalog agent's page", () => {
   it("offers Update pack and Remove pack", async () => {
     render(() => (
-      <AgentDetail agent={health} projectRoot={null} onBack={() => {}} onRecheck={async () => {}} rechecking={false} />
+      <AgentDetail
+        agent={health}
+        projectRoot={null}
+        onBack={() => {}}
+        onRecheck={() => Promise.resolve()}
+        rechecking={false}
+      />
     ));
 
     fireEvent.click(await waitFor(() => screen.getByLabelText("Update the Pi pack")));

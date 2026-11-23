@@ -1136,7 +1136,10 @@ export default function SearchPanel(props: {
    *  about another, and one notice over three members names none of them. */
   const noticeFor = (s: SearchSection) => truncationNotice(s.truncated, MAX_RESULTS, countOccurrences(s.matches));
   const hitCount = () => allMatches().length;
-  const fileCount = () => sectionRoots().reduce((n, r) => n + groupByFile(visibleOf(r.path)).length, 0);
+  const fileCount = () =>
+    sectionRoots()
+      .map((r) => groupByFile(visibleOf(r.path)).length)
+      .reduce((n, k) => n + k, 0);
 
   return (
     <div class={styles.searchPanel}>

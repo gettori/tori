@@ -2,6 +2,7 @@
 // Ctrl+Tab act on the file tabs only while the file pane holds pane focus, and
 // Cmd+W rides closeTab, so a dirty buffer is asked about before it is lost.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { untrack } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
 globalThis.ResizeObserver ??= class {
@@ -53,7 +54,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 // so the stub hands that callback out and renders nothing.
 vi.mock("./CodeEditor", () => ({
   default: (props: { onDirty: (path: string, dirty: boolean) => void }) => {
-    bridge.onDirty = props.onDirty;
+    bridge.onDirty = untrack(() => props.onDirty);
     return null;
   },
 }));
