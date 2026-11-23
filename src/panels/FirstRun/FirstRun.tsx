@@ -1,4 +1,4 @@
-import { Match, Show, Switch, createMemo, createSignal, onMount } from "solid-js";
+import { Match, Show, Switch, createMemo, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../components/Button/Button";
@@ -66,8 +66,8 @@ export default function FirstRun() {
   const [pending, setPending] = createSignal<Pending | null>(null);
   const agentsSetup = createAgentsSetup({ home, onScreen: () => page() === "setup" && step() === "agents" });
 
-  onMount(() => {
-    homeDir()
+  onSettled(() => {
+    void homeDir()
       .then(setHome)
       .catch(() => {
         // Paths then show in full rather than folded to ~.

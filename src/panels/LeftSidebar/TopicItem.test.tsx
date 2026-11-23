@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import TopicItem, { CHIP_CAP, type SpaceTint } from "./TopicItem";
@@ -331,6 +331,7 @@ describe("a Topic's chat status", () => {
     expect(head.querySelector("[title='Waiting for approval']")).toBeNull();
 
     setStatus({ ...none, waitingForApproval: 1, executing: 2 });
+    flush();
     expect(head.querySelector("[title='Waiting for approval']")).toBeTruthy();
     expect(head.querySelector("[title='Executing']")?.textContent).toBe("2");
   });

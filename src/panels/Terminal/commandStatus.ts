@@ -1,14 +1,14 @@
 // How a command tab's process exited, keyed by tab id. A signal beside the tab
 // model, never a field on `OpenTerm`: the strip keys by object identity, and
 // replacing a tab to record its exit remounts its surface (gotcha: For over items).
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 
 export type CommandStatus = "running" | "ok" | "failed";
 
 // The code, not the verdict it maps to: a failed tab says `exit 1` rather than
 // "failed", and a verdict cannot be un-derived back into a number. `null` is an
 // exit whose code never arrived.
-const [reported, setReported] = createSignal<Record<string, number | null>>({});
+const [reported, setReported] = createLiveSignal<Record<string, number | null>>({});
 
 /** A tab nothing has reported for is running: a command tab exists to run one. */
 export const commandStatus = (id: string): CommandStatus => {

@@ -1,4 +1,4 @@
-import { For, Show, onMount } from "solid-js";
+import { For, Show, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Button from "../../../components/Button/Button";
 import SegmentedControl from "../../../components/SegmentedControl/SegmentedControl";
@@ -85,7 +85,9 @@ export default function ProjectStep(props: {
   // Only the field the step opens on: a field that appears later, on a mode
   // switch, would take focus off the segment the user just pressed.
   let opening = true;
-  onMount(() => (opening = false));
+  onSettled(() => {
+    opening = false;
+  });
   // A ref runs before the element is in the document.
   const focusFirst = (el: HTMLInputElement) => opening && queueMicrotask(() => el.focus());
 

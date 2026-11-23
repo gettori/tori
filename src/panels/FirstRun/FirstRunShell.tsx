@@ -1,4 +1,4 @@
-import { For, Show, onMount } from "solid-js";
+import { For, Show, onSettled } from "solid-js";
 import { type JSX, Portal } from "@solidjs/web";
 import { Check } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
@@ -89,7 +89,9 @@ export default function FirstRunShell(props: {
 }) {
   let panelEl!: HTMLDivElement;
 
-  onMount(() => panelEl.focus());
+  onSettled(() => {
+    panelEl.focus();
+  });
 
   function onPanelKeyDown(e: KeyboardEvent) {
     props.onKeyDown?.(e);

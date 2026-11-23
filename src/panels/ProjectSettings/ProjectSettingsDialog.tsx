@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, onSettled, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Bot, FolderSymlink, SlidersHorizontal, Wrench, X, Zap, type IconGlyph } from "../../components/Icon/icons";
 
@@ -60,9 +60,12 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
   // Held while the record loads, so a request for Worktrees is not lost to the
   // moment before the layout is known. Once it is known, a section this project
   // does not have is dropped, so it cannot surface later when one appears.
-  createEffect(() => {
-    if (found() && !sections().includes(picked())) setPicked("general");
-  });
+  createEffect(
+    () => !!found() && !sections().includes(picked()),
+    (stale) => {
+      if (stale) setPicked("general");
+    },
+  );
   const section = () => (sections().includes(picked()) ? picked() : "general");
 
   // The rail's search, as Settings' is: every pane opens on its matches and
@@ -81,9 +84,23 @@ export default function ProjectSettingsDialog(props: { path: string; section?: P
     setQuery("");
     return true;
   };
-  onMount(() => requestAnimationFrame(() => searchEl?.focus()));
+  onSettled(() => {
+    requestAnimationFrame(() => searchEl?.focus());
+  });
 
-  onCleanup(markProjectShown(props.path));
+  const shownPath = untrack(() => props.path);
+  onSettled(() => {
+    let stop: (() => void) | undefined;
+    let gone = false;
+    // Module level state: a write here would not flush inside an effect callback.
+    queueMicrotask(() => {
+      if (!gone) stop = markProjectShown(shownPath);
+    });
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  });
   // The doors out of here (the trusted list, the hosts) lead into Settings,
   // which sits under this dialog, so this one gets out of the way.
   onCleanup(onWith(OPEN_SETTINGS, () => props.onClose()));

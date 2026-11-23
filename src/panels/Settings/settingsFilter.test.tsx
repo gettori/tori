@@ -6,7 +6,7 @@
 // selects nothing. A command points at one setting, so it lands you on that
 // setting's category with the box seeded.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
 
 const invoke = vi.fn();
@@ -214,6 +214,7 @@ describe("a command that opens the panel at one setting", () => {
     expect(activeTab()).toBe("Appearance");
 
     setQ("Sticky scroll");
+    flush();
 
     expect(box().value).toBe("Sticky scroll");
     expect(activeTab()).toBe("Editor");

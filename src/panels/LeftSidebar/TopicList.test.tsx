@@ -73,6 +73,11 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "create_topic") return Promise.resolve(bridge.created);
     if (cmd === "worktree_status") {
       const answer = {
+        ignoredWork: [],
+        operation: null,
+        largeFiles: [],
+        keepsCopy: false,
+        keepsCopyWithBranch: false,
         ...(bridge.wtStatus[String(args?.path)] ?? { dirty: false, unpushed: false }),
         hasRemote: false,
       };

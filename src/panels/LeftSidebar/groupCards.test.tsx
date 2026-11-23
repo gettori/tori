@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { createEvent, fireEvent, render, screen, waitFor, within } from "../../test/harness";
 import { rightClick, pointerClick } from "../../test/menus";
@@ -354,6 +355,8 @@ describe("custom groups", () => {
     await waitFor(() => expect(lastWrite()).toEqual([{ name: "G1", colour: FIRST.name, branches: ["a"] }]));
     await waitFor(() => expect(card()?.style.getPropertyValue("--card-icon")).toBe(FIRST.hex));
 
+    // The write's reload replaces the rows the drag would otherwise aim at.
+    flush();
     drag(rowOf("c"), rowOf("b"), "middle");
     await waitFor(() => expect(lastWrite()).toHaveLength(2));
     expect(GROUP_COLORS.slice(1).map((c) => c.name)).toContain((lastWrite()[1] as { colour?: string }).colour);

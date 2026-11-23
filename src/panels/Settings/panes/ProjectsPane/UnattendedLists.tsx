@@ -1,4 +1,4 @@
-import { createResource, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import { Group, Row, rowLabelId, type PaneProps } from "../../components/paneKit";
@@ -34,7 +34,11 @@ function ListRow(props: PaneProps & { id: string; label: string; key: keyof Unat
 /** What a session nobody is watching may not run, and where a boxed session may
  *  reach. One list for every project; the level is set per project. */
 export default function UnattendedLists(props: PaneProps) {
-  const [defaults] = createResource(() => invoke<Unattended>("unattended_defaults"));
+  // Catches inside: an uncaught rejection would halt the reactive system.
+  const defaults = createMemo<Unattended | undefined>(
+    () => invoke<Unattended>("unattended_defaults").catch(() => undefined),
+    { loadingValue: undefined },
+  );
   return (
     <Group {...props} title="Unattended sessions" ids={["unattended-deny", "unattended-domains"]}>
       <ListRow

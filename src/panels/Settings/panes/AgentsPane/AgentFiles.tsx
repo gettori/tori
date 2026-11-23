@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal } from "solid-js";
+import { For, Show, createDeferred, createSignal, refresh } from "solid-js";
 import { ArrowUpRight, File, Folder, X } from "../../../../components/Icon/icons";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
@@ -398,9 +398,14 @@ export default function AgentFiles(props: {
   // One string, not a tuple: a fresh array literal is a new identity on every
   // read, so an array key would refetch on any re-render of the page rather
   // than when the thing it names actually moved.
-  const [view, { refetch }] = createResource(
-    () => `${props.agentId}:${props.accountsNonce ?? 0}`,
-    (key) => invoke<ConfigFilesView>("agent_config_files", { adapterId: key.split(":")[0] }),
+  // Catches inside: an uncaught rejection would halt the reactive system.
+  const view = createDeferred<ConfigFilesView | undefined>(
+    (was) => {
+      const key = `${props.agentId}:${props.accountsNonce ?? 0}`;
+      if (!props.agentId) return was;
+      return invoke<ConfigFilesView>("agent_config_files", { adapterId: key.split(":")[0] }).catch(() => undefined);
+    },
+    { loadingValue: undefined },
   );
 
   const profiles = () => view()?.profiles ?? [];
@@ -455,7 +460,7 @@ export default function AgentFiles(props: {
                           agentId={props.agentId}
                           agentLabel={props.agentLabel}
                           projectRoot={props.projectRoot}
-                          onChanged={() => void refetch()}
+                          onChanged={() => void refresh(view)}
                         />
                       )}
                     </For>

@@ -56,9 +56,12 @@ vi.mock("./TerminalView", async () => {
       let el!: HTMLDivElement;
       // The real view focuses its term whenever it becomes the active tab;
       // the stub keeps that contract so focus-follows-active is observable.
-      createEffect(() => {
-        if (props.active) el.focus();
-      });
+      createEffect(
+        () => props.active,
+        (active) => {
+          if (active) el.focus();
+        },
+      );
       return <div data-testid="pty" data-id={props.id} tabindex="-1" ref={el} />;
     },
   };

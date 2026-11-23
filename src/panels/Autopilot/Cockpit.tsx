@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
@@ -170,10 +170,10 @@ export function CockpitView() {
 export function CockpitPopup() {
   let anchor!: HTMLDivElement;
   createEffect(
-    on(
-      () => [popupOpen(), runner().state, runner().session] as const,
-      ([open]) => open && void loadThread(),
-    ),
+    () => [popupOpen(), runner().state, runner().session] as const,
+    ([open]) => {
+      if (open) void loadThread();
+    },
   );
   const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPopupOpen(false);
   // The switch toggles it itself, so a press there is not an outside click.
@@ -188,7 +188,7 @@ export function CockpitPopup() {
     const body = anchor.offsetParent?.getBoundingClientRect();
     if (at && body) anchor.style.setProperty("--anchor-right", `${body.right - at.right}px`);
   };
-  onMount(place);
+  onSettled(place);
   window.addEventListener("resize", place);
   window.addEventListener("keydown", onKey);
   window.addEventListener("pointerdown", onPointer);

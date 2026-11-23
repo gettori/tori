@@ -1,4 +1,4 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createSignal, onCleanup, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView, { type PtyExit } from "../../Terminal/TerminalView";
@@ -44,7 +44,7 @@ export default function InlineJob(props: {
 
   let frameEl: HTMLDivElement | undefined;
 
-  onMount(async () => {
+  const attach = async () => {
     // It mounts under a list that can already fill the pane.
     frameEl?.scrollIntoView?.({ block: "nearest" });
     report("running");
@@ -71,6 +71,9 @@ export default function InlineJob(props: {
     // Only now: a program that cannot start reports its exit at spawn, before
     // a listener attached after it would hear anything.
     if (!disposed) setListening(true);
+  };
+  onSettled(() => {
+    void attach();
   });
 
   function cancel() {

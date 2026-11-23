@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent, cleanup, within } from "../../../../test/harness";
 import { pointerClick } from "../../../../test/menus";
 import userEvent from "@testing-library/user-event";
+import { flush } from "solid-js";
 import type {
   AuthState,
   ForgeAccount,
@@ -220,6 +221,7 @@ beforeEach(() => {
 async function startBrowserSignIn() {
   fireEvent.click(await screen.findByText("Another host..."));
   pointerClick(await screen.findByRole("radio", { name: /gitlab\.com/ }));
+  flush();
   fireEvent.click(flowCard().getByText("Continue"));
   await screen.findByTestId("device-code");
 }
@@ -230,6 +232,7 @@ const flowCard = () => within(screen.getByTestId("add-flow"));
 async function reachEnterpriseToken(url = "https://ghe.example.com") {
   fireEvent.click(await screen.findByText("Another host..."));
   pointerClick(await screen.findByRole("radio", { name: /GitHub Enterprise/ }));
+  flush();
   fireEvent.click(flowCard().getByText("Continue"));
   fireEvent.input(await screen.findByLabelText("Host URL"), { target: { value: url } });
   fireEvent.click(flowCard().getByText("Continue"));
@@ -480,6 +483,7 @@ describe("the forge accounts settings section", () => {
     render(() => <ForgeSection />);
     fireEvent.click(await screen.findByText("Another host..."));
     pointerClick(await screen.findByRole("radio", { name: /GitLab, self-managed/ }));
+    flush();
     fireEvent.click(flowCard().getByText("Continue"));
 
     expect(await screen.findByLabelText("Host URL")).toBeTruthy();

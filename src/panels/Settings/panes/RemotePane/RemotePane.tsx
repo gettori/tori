@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Group, Row, idsIn, rowLabelId, type PaneProps } from "../../components/paneKit";
@@ -85,7 +85,7 @@ export default function RemotePane(props: PaneProps) {
 
   const loadDevices = () =>
     void invoke<Device[]>("devices_list")
-      .then(setDevices)
+      .then((list) => setDevices(Array.isArray(list) ? list : []))
       .catch(() => {});
   const end = (why: Ended) => {
     setOffer(null);
@@ -96,14 +96,14 @@ export default function RemotePane(props: PaneProps) {
   // comes back, and its address joins the picker only then.
   const loadNetwork = () => {
     void invoke<Interface[]>("remote_interfaces")
-      .then(setInterfaces)
+      .then((list) => setInterfaces(Array.isArray(list) ? list : []))
       .catch(() => {});
     void invoke<Tailscale>("remote_tailscale")
       .then(setTailscale)
       .catch(() => {});
   };
 
-  onMount(() => {
+  onSettled(() => {
     loadNetwork();
     window.addEventListener("focus", loadNetwork);
     void invoke<RemoteStatus>("remote_status")
@@ -120,7 +120,7 @@ export default function RemotePane(props: PaneProps) {
       const live = offer();
       if (live && Date.now() >= live.expires_ms) end("expired");
     }, 1000);
-    onCleanup(() => {
+    return () => {
       clearInterval(tick);
       window.removeEventListener("focus", loadNetwork);
       void unlisten.then((f) => f());
@@ -128,7 +128,7 @@ export default function RemotePane(props: PaneProps) {
       // A code left live after the pane closes is one nobody is watching.
       if (offer())
         void invoke("pairing_cancel").catch((e) => pushToast(`The pairing code was not cancelled: ${String(e)}`));
-    });
+    };
   });
 
   const startPairing = () => {

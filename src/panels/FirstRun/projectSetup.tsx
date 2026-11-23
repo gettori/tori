@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, onMount } from "solid-js";
+import { Show, createEffect, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Check } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
@@ -48,8 +48,8 @@ export function createProjectSetup(opts: {
 
   const running = () => creating() || jobState() === "running" || jobState() === "waiting";
 
-  onMount(() => {
-    invoke<GitReport>("git_health")
+  onSettled(() => {
+    void invoke<GitReport>("git_health")
       .then(setGit)
       .catch(() => {
         // Left unanswered, the step offers clone as if git were there, and
@@ -58,8 +58,8 @@ export function createProjectSetup(opts: {
   });
 
   // As on the agents step: a job left behind would mount, and so run, again.
-  createEffect(() => {
-    if (opts.onScreen()) return;
+  createEffect(opts.onScreen, (shown) => {
+    if (shown) return;
     clearJob();
     setSettled(false);
     setError(null);

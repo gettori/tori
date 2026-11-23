@@ -9,7 +9,12 @@ function TabApproval(props: { ask: SocketAsk; active: boolean }) {
   let reject: HTMLButtonElement | undefined;
   const { sending, send } = answering(() => props.ask.id);
   // Only on a shown tab: a hidden one taking focus would pull it out of whatever has it.
-  createEffect(() => props.active && reject?.focus());
+  createEffect(
+    () => props.active,
+    (active) => {
+      if (active) reject?.focus();
+    },
+  );
   return (
     <div class={styles.tabApproval} role="alertdialog" aria-label={props.ask.question}>
       <span class={styles.termRestoreText}>This tab asks: {props.ask.question}</span>

@@ -1,4 +1,5 @@
-import { Show, createResource, createSignal } from "solid-js";
+import { Show, createSignal } from "solid-js";
+import { createFetchState } from "../../../../lib/fetchState";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeftRight, Play, Trash2, X } from "../../../../components/Icon/icons";
 import { homeDir } from "@tauri-apps/api/path";
@@ -219,7 +220,7 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
 export default function ChatPane(props: PaneProps) {
   void refreshVoice().catch((e) => toast(`Couldn't check the downloaded voice: ${String(e)}`));
   void refreshDictation().catch((e) => toast(`Couldn't check the dictation model: ${String(e)}`));
-  const [voices] = createResource(
+  const [voices] = createFetchState(
     () => voiceStatus().model ?? false,
     () =>
       listVoices().catch(() => {
