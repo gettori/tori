@@ -1,5 +1,4 @@
 import { createSignal, createEffect, onSettled, onCleanup, For, Show, untrack } from "solid-js";
-import { createLiveSignal } from "../../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -268,7 +267,7 @@ function relTo(root: string, path: string): string {
  *  the pasteboard's: a paste has to know a cut from a copy, and module-level so
  *  it survives switching members or tabs in between. */
 type Held = { paths: string[]; cut: boolean };
-const [held, setHeld] = createLiveSignal<Held | null>(null);
+const [held, setHeld] = createSignal<Held | null>(null);
 
 // --- editable mutations (each scoped to ctx.root, then reloads the caller) ---
 
@@ -1158,7 +1157,7 @@ export default function FileTree(props: {
   };
 
   function reveal() {
-    const p = revealable();
+    const p = untrack(revealable);
     if (p) setRevealing({ path: p, nonce: ++revealNonce });
   }
 

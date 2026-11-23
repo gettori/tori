@@ -9,7 +9,7 @@
 // the open-tab set rather than off a mount, for exactly that reason.
 
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { createLiveStore } from "../../lib/liveState";
+import { createStore } from "solid-js";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFWorker } from "pdfjs-dist";
 import type { PdfZoom } from "./pdfLayout";
 
@@ -70,7 +70,7 @@ type Held = {
 };
 
 const held = new Map<string, Held>();
-const [views, setViews] = createLiveStore<Record<string, PdfViewState>>({});
+const [views, setViews] = createStore<Record<string, PdfViewState>>({});
 let loads = 0;
 let jumps = 0;
 

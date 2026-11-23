@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { fireEvent, render, screen, waitFor } from "../../test/harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import PdfToolbar from "./PdfToolbar";
@@ -85,6 +86,7 @@ describe("the PDF toolbar", () => {
       // view's half of the exchange has to happen for the second click to mean
       // anything, and here that is by hand.
       viewResolved(125);
+      flush();
       fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
       expect(pdfView(PATH).zoom).toBe(100);
     });

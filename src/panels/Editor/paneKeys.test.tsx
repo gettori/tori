@@ -95,6 +95,7 @@ async function open(path: string) {
 /** Which file is active, read through staging: layout-independent, since jsdom
  *  folds the whole strip into the overflow menu. */
 async function expectActive(rel: string) {
+  flush();
   const before = invokes.filter((i) => i.cmd === "git_stage").length;
   emitWith(GIT_STAGE_ACTIVE, null);
   await waitFor(() => {
