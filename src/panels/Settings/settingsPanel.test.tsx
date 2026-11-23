@@ -452,6 +452,7 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
 
     zoomIn();
+    flush();
     expect(numberFor("Zoom").value).toBe("110");
 
     fireEvent.change(numberFor("Zoom"), { target: { value: "150" } });
@@ -479,6 +480,7 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
     render(() => <Settings onClose={() => {}} />);
     fireEvent.click(screen.getByRole("tab", { name: "Appearance" }));
     setZoom(3);
+    flush();
     expect(numberFor("Zoom").value).toBe("300");
 
     fireEvent.change(numberFor("Zoom"), { target: { value: "900" } });
