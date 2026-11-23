@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../src/lib/liveState";
 import { METHOD_NOT_FOUND, RpcError, type RemoteClient } from "./remote";
 
 const RELAY = import.meta.env.VITE_TORI_RELAY ?? "https://relay.gettori.app";
@@ -10,8 +10,8 @@ const NO_SHELL = "Alerts with the app closed need the Android app.";
 type Pair = { on: boolean; handle?: string; key?: string };
 export type Tap = { session: string; project: string; folder: string | null; branch: string | null };
 
-const [alerts, setAlerts] = createSignal(false);
-const [alertsNote, setAlertsNote] = createSignal<string | null>(null);
+const [alerts, setAlerts] = createLiveSignal(false);
+const [alertsNote, setAlertsNote] = createLiveSignal<string | null>(null);
 export { alerts, alertsNote };
 
 const native = <T = void>(command: string, args: Record<string, unknown> = {}) =>

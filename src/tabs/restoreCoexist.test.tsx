@@ -695,7 +695,7 @@ describe("reload reattach", () => {
     expect(mountedPtys()).toEqual([]);
     expect(startedChats()).toEqual([]);
     // One surface, the active tab's, and it opened to read rather than started.
-    expect(screen.getAllByTestId("chat").map((el) => el.dataset.started)).toEqual(["false"]);
+    expect((await screen.findAllByTestId("chat")).map((el) => el.dataset.started)).toEqual(["false"]);
   });
 
   // A terminal is keyed by the tab id itself, so an id the backend never heard

@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onSettled, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, onSettled, onCleanup, For, Show, untrack } from "solid-js";
 import { createLiveSignal } from "../../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -554,6 +554,7 @@ function TreeNode(props: {
 
   // Lazily, and on restore too: a directory that comes back open on mount has
   // never read its children.
+  let asked: string | null = null;
   createEffect(
     () => ({
       want: open() && children() === null,
@@ -561,7 +562,10 @@ function TreeNode(props: {
       compact: !!props.compactFolders,
     }),
     ({ want, path, compact }) => {
-      if (want) void listChildrenCached(path, compact, setChildren);
+      // Apply reruns whenever compute does, and one read in flight is enough.
+      const key = want ? `${compact}:${path}` : null;
+      if (key && key !== asked) void listChildrenCached(path, compact, setChildren);
+      asked = key;
     },
   );
 
@@ -989,9 +993,15 @@ function RootBody(props: {
 
   // Turning compaction on or off restructures every row, so the visible level
   // is rebuilt rather than left describing the other setting.
+  let compactWas = untrack(() => props.compactFolders);
   createEffect(
     () => props.compactFolders,
-    (compact) => void reloadRoot(compact),
+    (compact) => {
+      // Apply also reruns when a neighbouring editor default changes.
+      if (compact === compactWas) return;
+      compactWas = compact;
+      void reloadRoot(compact);
+    },
     { defer: true },
   );
 

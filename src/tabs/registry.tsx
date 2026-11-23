@@ -70,7 +70,8 @@ const entries = new Map<UnifiedTabKind, TabDescriptor>();
 // Registration order is render order now that panes and panels are separate
 // components: a pane mounted before its panel must pick the descriptor up when
 // it lands, and a Map alone is invisible to tracking scopes.
-const [generation, setGeneration] = createSignal(0);
+// Panels register from their component body.
+const [generation, setGeneration] = createSignal(0, { ownedWrite: true });
 
 // Re-registering overwrites: a panel remount (tests) refreshes its closures.
 export function registerKind(kind: UnifiedTabKind, d: TabDescriptor): void {

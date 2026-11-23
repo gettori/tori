@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createDeferred, createSignal, onCleanup, onSettled, refresh, untrack } from "solid-js";
 import SegmentedControl from "../../src/components/SegmentedControl/SegmentedControl";
 import {
   digestCount,
@@ -31,10 +31,14 @@ const LIST_REPLY_MS = 30_000;
 const REFRESH_DELAY_MS = 3000;
 
 export function watchInbox(client: RemoteClient) {
-  const [items, { refetch }] = createResource<ReviewItem[], number>(
-    () => client.generation() || undefined,
-    (_, info) => client.request<ReviewItem[]>("review.list", {}, LIST_REPLY_MS).catch(() => info.value ?? []),
+  const items = createDeferred<ReviewItem[] | undefined>(
+    (was) => {
+      if (!client.generation()) return was;
+      return untrack(() => client.request<ReviewItem[]>("review.list", {}, LIST_REPLY_MS).catch(() => was ?? []));
+    },
+    { loadingValue: undefined },
   );
+  const refetch = () => refresh(items);
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(
     client.subscribe("sessions", () => {
@@ -47,10 +51,14 @@ export function watchInbox(client: RemoteClient) {
 }
 
 export function watchNeedsYou(client: RemoteClient) {
-  const [events, { refetch }] = createResource<NeedsYouEvent[], number>(
-    () => client.generation() || undefined,
-    (_, info) => client.request<NeedsYouEvent[]>("needs_you.list").catch(() => info.value ?? []),
+  const events = createDeferred<NeedsYouEvent[] | undefined>(
+    (was) => {
+      if (!client.generation()) return was;
+      return untrack(() => client.request<NeedsYouEvent[]>("needs_you.list").catch(() => was ?? []));
+    },
+    { loadingValue: undefined },
   );
+  const refetch = () => refresh(events);
   onCleanup(
     client.subscribe("sessions", (data) => {
       if ((data as { kind?: string } | null)?.kind === "needs_you.changed") void refetch();
@@ -60,10 +68,14 @@ export function watchNeedsYou(client: RemoteClient) {
 }
 
 export function watchPermissions(client: RemoteClient) {
-  const [rows, { refetch }] = createResource<PermissionRow[], number>(
-    () => client.generation() || undefined,
-    (_, info) => client.request<PermissionRow[]>("permissions.pending").catch(() => info.value ?? []),
+  const rows = createDeferred<PermissionRow[] | undefined>(
+    (was) => {
+      if (!client.generation()) return was;
+      return untrack(() => client.request<PermissionRow[]>("permissions.pending").catch(() => was ?? []));
+    },
+    { loadingValue: undefined },
   );
+  const refetch = () => refresh(rows);
   onCleanup(
     client.subscribe("sessions", (data) => {
       if ((data as { kind?: string } | null)?.kind === "permissions.changed") void refetch();
@@ -78,17 +90,22 @@ export function watchPermissions(client: RemoteClient) {
 export function watchDigest(client: RemoteClient) {
   let shown = false;
   let pinned: number | undefined;
-  const [digest, { refetch }] = createResource<Digest | null, number>(
-    () => client.generation() || undefined,
-    (_, info) =>
-      client
-        .request<Digest>("digest.list", shown && pinned !== undefined ? { since: pinned } : {}, LIST_REPLY_MS)
-        .then((d) => {
-          if (shown && pinned === undefined) pinned = d.since;
-          return d;
-        })
-        .catch(() => info.value ?? null),
+  const digest = createDeferred<Digest | null | undefined>(
+    (was) => {
+      if (!client.generation()) return was;
+      return untrack(() =>
+        client
+          .request<Digest>("digest.list", shown && pinned !== undefined ? { since: pinned } : {}, LIST_REPLY_MS)
+          .then((d) => {
+            if (shown && pinned === undefined) pinned = d.since;
+            return d;
+          })
+          .catch(() => was ?? null),
+      );
+    },
+    { loadingValue: undefined },
   );
+  const refetch = () => refresh(digest);
   onCleanup(
     client.subscribe("sessions", (data) => {
       if ((data as { kind?: string } | null)?.kind === "needs_you.changed") void refetch();
@@ -159,7 +176,9 @@ function Rows(props: { label: string; rows: { title: string; meta: string; open:
 }
 
 function SinceList(props: { watch: ReturnType<typeof watchDigest>; onOpen: (e: NeedsYouEvent) => void }) {
-  onMount(props.watch.show);
+  onSettled(() => {
+    props.watch.show();
+  });
   onCleanup(props.watch.hide);
   const d = () => props.watch.digest();
   const where = (project: string, folder: string) => project || folderName(folder);
@@ -427,7 +446,9 @@ export default function InboxScreen(props: {
   onPermission: (row: PermissionRow) => void;
   onBack: () => void;
 }) {
-  props.inbox.refetch();
+  onSettled(() => {
+    props.inbox.refetch();
+  });
   const [tab, setTab] = createSignal<Tab>(
     props.digest.count() > 0
       ? "since"

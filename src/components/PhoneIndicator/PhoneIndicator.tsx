@@ -19,7 +19,7 @@ export default function PhoneIndicator() {
 
   const load = () =>
     void invoke<Device[]>("devices_list")
-      .then(setDevices)
+      .then((list) => setDevices(list ?? []))
       .catch(() => {});
   onSettled(() => {
     load();

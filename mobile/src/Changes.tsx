@@ -1,4 +1,5 @@
-import { For, Show, createResource, createSignal } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
+import { createFetchState } from "../../src/lib/fetchState";
 import AskSheet, { type Ask } from "./AskSheet";
 import type { RemoteClient } from "./remote";
 import styles from "./shell.module.css";
@@ -22,13 +23,13 @@ function DiffText(props: { text: string }) {
 }
 
 export default function ChangesSheet(props: { client: RemoteClient; id: string; onDone: () => void }) {
-  const [list] = createResource(() =>
+  const [list] = createFetchState(() =>
     props.client
       .request<Checkpoint[]>("checkpoints.list", { id: props.id })
       .then((rows) => rows.filter((row) => row.kind === "")),
   );
   const [shown, setShown] = createSignal<Shown | null>(null);
-  const [diff] = createResource(shown, (s) =>
+  const [diff] = createFetchState(shown, (s) =>
     props.client.request<Diff>("checkpoint.diff", { id: props.id, turn: s.turn, to: s.to }),
   );
   const [ask, setAsk] = createSignal<Ask | null>(null);
