@@ -87,8 +87,9 @@ function tab(id: string, kind: OpenTerm["kind"], sessionId?: string): OpenTerm {
 }
 
 function openTab(t: OpenTerm) {
-  setOpen([...open(), t]);
+  setOpen((list) => [...list, t]);
   focusTab(t.workspace, t.id);
+  flush();
 }
 
 beforeEach(() => {
@@ -181,6 +182,7 @@ describe("pane-aware focus", () => {
     expect(focusedPaneId(REPO)).toBe("right");
 
     emitWith(FOCUS_SESSION_TAB, { tabId: "sh:1" });
+    flush();
     expect(findPane(envelopeFor(REPO, seed).layout, "left")!.hidden).toBe(false);
     expect(focusedPaneId(REPO)).toBe("left");
     expect(visibleId()).toBe("sh:1");
