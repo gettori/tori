@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 import { editorState, publishEditorState, clearEditorState } from "./editorState";
 
@@ -25,6 +26,7 @@ describe("published editor state", () => {
       projectRoot: "/proj",
       recentJumps: [],
     });
+    flush();
     expect(editorState().activePath).toBe("/proj/src/a.ts");
     expect(editorState().dirty).toBe(true);
     expect(editorState().tabCount).toBe(2);
@@ -43,6 +45,7 @@ describe("published editor state", () => {
       recentJumps: [],
     });
     publishEditorState({ activePath: null, dirty: false, tabCount: 0, projectRoot: "/proj", recentJumps: [] });
+    flush();
     expect(editorState()).toEqual({
       activePath: null,
       dirty: false,

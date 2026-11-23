@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -98,6 +99,7 @@ describe("a dragged path is a labelled mention", () => {
   it("labels by kind, and resolves an @ mention against the cwd", () => {
     claude.onAttachPaths(["/repo/shot.png", "/repo/src/main.rs"]);
     claude.onAttachFile("docs/spec.pdf");
+    flush();
     expect(labels()).toEqual([
       ["[Image 1]", "/repo/shot.png"],
       ["[File 1]", "/repo/src/main.rs"],
@@ -115,6 +117,7 @@ describe("a dragged path is a labelled mention", () => {
   // whether it would open an image off a path is unmeasured.
   it("keeps a source file for an ACP agent and refuses an image", () => {
     acp.onAttachPaths(["/repo/src/main.rs", "/repo/shot.png"]);
+    flush();
     expect(labels()).toEqual([["[File 1]", "/repo/src/main.rs"]]);
     expect(rejected[0]).toMatch(/shot\.png.*It opens: file\./);
   });
@@ -173,8 +176,11 @@ describe("session references", () => {
   it("names a picked session once, and a second with the same title apart", () => {
     const a = withMcp();
     expect(a.onAttachSession(session("a", "Fix [login]"))).toBe("[Session: Fix login]");
+    flush();
     expect(a.onAttachSession(session("a", "Fix [login]"))).toBe("[Session: Fix login]");
+    flush();
     expect(a.onAttachSession(session("b", "Fix login"))).toBe("[Session: Fix login (2)]");
+    flush();
     expect(pendingFor(KEY).map((p) => (p.block.type === "ref" ? p.block.label : null))).toEqual([
       "[Session: Fix login]",
       "[Session: Fix login (2)]",

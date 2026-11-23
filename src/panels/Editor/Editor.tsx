@@ -2171,12 +2171,17 @@ export default function Editor(props: {
     // The clean-to-dirty edge, not every keypress: CodeEditor reports this on
     // each document change, so counting them all would score a file by how much
     // was typed into it rather than by how often it was worked in.
-    if (isDirty && !dirty()[path]) noteTouch(path, "edit");
+    let edge = false;
+    setDirty((prev) => {
+      if (prev[path] === isDirty) return prev;
+      edge = isDirty;
+      return { ...prev, [path]: isDirty };
+    });
+    if (edge) noteTouch(path, "edit");
     // Typing into a file is the plainest statement there is that it is not
     // passing through, and the alternative is the next open throwing away a
     // buffer somebody was editing.
     if (isDirty) pinTab(path);
-    setDirty((prev) => (prev[path] === isDirty ? prev : { ...prev, [path]: isDirty }));
     // A breakpoint in an unsaved buffer names a line the adapter has never seen,
     // so it waits. The clean edge is the moment it can be armed, and it arrives
     // after the on-save pipeline has finished moving lines around.

@@ -2,8 +2,7 @@
 // (`chats/<space>/<id>`, Home's under `.home`).
 // Every session spawned there (the first send, forks, rewinds, handoffs) keeps
 // that cwd, so the folder is the chat and its newest session names the row.
-import { createMemo } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createMemo, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 import { sessions, trackFolders, type SessionMeta } from "./sessionStore";
@@ -23,7 +22,7 @@ export type Chat = {
   updated: number;
 };
 
-const [root, setRoot] = createLiveSignal<string | null>(null);
+const [root, setRoot] = createSignal<string | null>(null);
 export const chatsRoot = root;
 
 export async function ensureChatsRoot(): Promise<string | null> {
@@ -39,7 +38,7 @@ export async function ensureChatsRoot(): Promise<string | null> {
 // A chat whose folder exists but whose first send has not landed yet: nothing
 // lists it, so the row is kept from here until a session shows up.
 type Pending = { space: string | null; folder: string; at: number };
-const [fresh, setFresh] = createLiveSignal<Record<string, Pending>>({});
+const [fresh, setFresh] = createSignal<Record<string, Pending>>({});
 
 const HOME_DIR = ".home";
 

@@ -1,8 +1,7 @@
 // A repo's `.tori/project.json` for a worktree, and the user's answer to it.
 // Rust owns the answer; this asks for it, raises one toast per proposal, and
 // holds the proposal the Review dialog is showing.
-import { createDeferred, onSettled, refresh } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createDeferred, onSettled, refresh, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -28,7 +27,7 @@ export type Reviewing = {
   proposal: Extract<Proposal, { state: "unaccepted" | "declined" }>;
 };
 
-const [reviewing, setReviewing] = createLiveSignal<Reviewing | null>(null);
+const [reviewing, setReviewing] = createSignal<Reviewing | null>(null);
 export { reviewing };
 
 const askedThisLaunch = new Set<string>();

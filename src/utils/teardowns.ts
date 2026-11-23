@@ -1,8 +1,8 @@
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 import type { SetupReport } from "./setupToasts";
 
-const [live, setLive] = createLiveSignal<ReadonlySet<string>>(new Set());
+const [live, setLive] = createSignal<ReadonlySet<string>>(new Set());
 
 export function noteTeardown(r: SetupReport): void {
   if (r.kind !== "teardown") return;

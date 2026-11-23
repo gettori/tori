@@ -13,7 +13,7 @@
 // reason: an entry naming a trashed folder can never be removed by hand, since
 // there is no row left to click.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { moveDeep, type PathMove } from "./moveWorkspace";
 
 /** One workspace's tree state: the directories left open, and the section
@@ -126,12 +126,16 @@ export function saveExpanded(store: ExpandedStore): void {
 // gets written back: a save built from what is on screen right now would erase
 // every workspace this run has not visited.
 
-const [store, setStore] = createLiveSignal<ExpandedStore>(loadExpanded());
+const [store, setStore] = createSignal<ExpandedStore>(loadExpanded());
 
-function write(next: ExpandedStore, persist = true): void {
-  if (next === store()) return;
-  setStore(next);
-  if (persist) saveExpanded(next);
+function write(change: (cur: ExpandedStore) => ExpandedStore, persist = true): void {
+  let changed = null as ExpandedStore | null;
+  setStore((cur) => {
+    const next = change(cur);
+    if (next !== cur) changed = next;
+    return next;
+  });
+  if (changed && persist) saveExpanded(changed);
 }
 
 export function isDirOpen(ws: string, path: string): boolean {
@@ -139,20 +143,24 @@ export function isDirOpen(ws: string, path: string): boolean {
 }
 
 export function setDirOpen(ws: string, path: string, open: boolean): void {
-  const entry = entryOf(store(), ws);
-  if (entry.dirs.includes(path) === open) return;
-  const dirs = open ? [...entry.dirs, path] : entry.dirs.filter((d) => d !== path);
-  write(withEntry(store(), ws, { ...entry, dirs }), persists(ws));
+  write((cur) => {
+    const entry = entryOf(cur, ws);
+    if (entry.dirs.includes(path) === open) return cur;
+    const dirs = open ? [...entry.dirs, path] : entry.dirs.filter((d) => d !== path);
+    return withEntry(cur, ws, { ...entry, dirs });
+  }, persists(ws));
 }
 
 /** Collapse-all: every directory closes, the section headers stay as they are.
  *  Closing them too would hide the members themselves, which is a different
  *  request from closing the folders inside them. */
 export function collapseDirs(ws: string, under?: string): void {
-  const entry = entryOf(store(), ws);
-  const dirs = under ? entry.dirs.filter((d) => !d.startsWith(`${under}/`)) : [];
-  if (dirs.length === entry.dirs.length) return;
-  write(withEntry(store(), ws, { ...entry, dirs }), persists(ws));
+  write((cur) => {
+    const entry = entryOf(cur, ws);
+    const dirs = under ? entry.dirs.filter((d) => !d.startsWith(`${under}/`)) : [];
+    if (dirs.length === entry.dirs.length) return cur;
+    return withEntry(cur, ws, { ...entry, dirs });
+  }, persists(ws));
 }
 
 /** Sections start open, so a member that has never been closed is open, and one
@@ -162,26 +170,30 @@ export function isSectionOpen(ws: string, root: string): boolean {
 }
 
 export function setSectionOpen(ws: string, root: string, open: boolean): void {
-  const entry = entryOf(store(), ws);
-  if (entry.closed.includes(root) === !open) return;
-  const closed = open ? entry.closed.filter((r) => r !== root) : [...entry.closed, root];
-  write(withEntry(store(), ws, { ...entry, closed }), persists(ws));
+  write((cur) => {
+    const entry = entryOf(cur, ws);
+    if (entry.closed.includes(root) === !open) return cur;
+    const closed = open ? entry.closed.filter((r) => r !== root) : [...entry.closed, root];
+    return withEntry(cur, ws, { ...entry, closed });
+  }, persists(ws));
 }
 
 /** The workspace is gone (a Topic was deleted): drop everything filed under
  *  it, so a relaunch cannot revive it. */
 export function dropWorkspaceExpanded(ws: string): void {
-  if (!(ws in store())) return;
-  const { [ws]: _gone, ...rest } = store();
-  write(rest);
+  write((cur) => {
+    if (!(ws in cur)) return cur;
+    const { [ws]: _gone, ...rest } = cur;
+    return rest;
+  });
 }
 
 export function moveExpandedWorkspaces(moves: readonly PathMove[]): void {
-  write(moveDeep(store(), moves));
+  write((cur) => moveDeep(cur, moves));
 }
 
 export function mapExpandedFiles(map: (path: string) => string | null): void {
-  write(mapExpandedPaths(store(), map));
+  write((cur) => mapExpandedPaths(cur, map));
 }
 
 /** Re-read from storage, so one suite's mounts cannot see another's and a test

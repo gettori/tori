@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, expect, it, afterEach } from "vite-plus/test";
 import {
   clearDraftPick,
@@ -23,6 +24,7 @@ describe("a draft's pick", () => {
   it("patches one field without disturbing the rest", () => {
     setDraftPick(TAB, { model: "sonnet" });
     setDraftPick(TAB, { effort: "high" });
+    flush();
     expect(draftPick(TAB)).toEqual({ model: "sonnet", mode: null, effort: "high", optionValues: {} });
     expect(hasPick(draftPick(TAB))).toBe(true);
   });
@@ -33,6 +35,7 @@ describe("a draft's pick", () => {
     setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });
     setDraftOption(TAB, "web_search", true);
     resetDraftPick(TAB, "gpt-5");
+    flush();
     expect(draftPick(TAB)).toEqual({ model: "gpt-5", mode: null, effort: null, optionValues: {} });
   });
 
@@ -41,6 +44,7 @@ describe("a draft's pick", () => {
   it("flips one lever without disturbing the others", () => {
     setDraftOption(TAB, "web_search", true);
     setDraftOption(TAB, "collaboration_mode", "pair");
+    flush();
     expect(draftPick(TAB).optionValues).toEqual({ web_search: true, collaboration_mode: "pair" });
   });
 
@@ -48,19 +52,23 @@ describe("a draft's pick", () => {
   // does not, so counting it there would make a flipped switch block a send.
   it("counts a lever as a pick of its own, not as one of the three", () => {
     setDraftOption(TAB, "web_search", true);
+    flush();
     expect(hasOptionPick(draftPick(TAB))).toBe(true);
     expect(hasPick(draftPick(TAB))).toBe(false);
   });
 
   it("is forgotten when the tab is", () => {
     setDraftPick(TAB, { model: "sonnet" });
+    flush();
     clearDraftPick(TAB);
+    flush();
     expect(draftPick(TAB).model).toBeNull();
   });
 
   it("keeps tabs apart", () => {
     setDraftPick(TAB, { model: "sonnet" });
     setDraftPick("chat:pick-2", { model: "haiku" });
+    flush();
     expect(draftPick(TAB).model).toBe("sonnet");
     clearDraftPick("chat:pick-2");
   });

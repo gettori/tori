@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import * as concurrency from "./chatConcurrency";
 import { capNotice, chatTabLabel, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "./chatConcurrency";
@@ -64,8 +65,10 @@ describe("the retired attribution marker", () => {
 
   it("still notices a second chat on the worktree", () => {
     chat("a");
+    flush();
     expect(shouldNotice(chatsInFolder(REPO).length, REPO, new Set())).toBe(false);
     chat("b");
+    flush();
     expect(shouldNotice(chatsInFolder(REPO).length, REPO, new Set())).toBe(true);
   });
 

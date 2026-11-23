@@ -92,8 +92,12 @@ async function flush(times = 12): Promise<void> {
   for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
+// The solid-js instance the fresh modules use, which is not the one imported here.
+let flushSignals: () => void = () => {};
+
 async function freshModules() {
   vi.resetModules();
+  ({ flush: flushSignals } = await import("solid-js"));
   const sessions = await import("./dapSessions");
   const stack = await import("./debugStack");
   return { sessions, stack };
@@ -252,6 +256,7 @@ describe("the controls", () => {
   it("clear the stack the moment one is sent", async () => {
     const { stack } = await paused();
     stack.continueDebug();
+    flushSignals();
 
     // Not on the adapter's answer: a step's own `stopped` can arrive before the
     // `continued` event, and a stack left standing in between is a highlight on
@@ -265,6 +270,7 @@ describe("the controls", () => {
     failCommands.add("next");
 
     stack.stepOver();
+    flushSignals();
     expect(stack.debugPaused()).toBe(false);
     await flush();
 
@@ -318,6 +324,7 @@ describe("when the pause ends", () => {
   it("drops the stack on continued", async () => {
     const { stack, id } = await paused();
     event(id, "continued", { threadId: 3 });
+    flushSignals();
 
     expect(stack.debugPaused()).toBe(false);
     expect(stack.selectedFrame()).toBeNull();

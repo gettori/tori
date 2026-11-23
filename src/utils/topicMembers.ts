@@ -3,8 +3,7 @@
 // Toolbar's crumb chips, the sidebar's Topic rows and now the editor's file
 // tree, each carrying its own copy of the Space-to-repo match.
 
-import { createDeferred, createMemo } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createDeferred, createMemo, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { memberRoot, memberState, rootOf, type Member, type MemberStateSummary, type Topic } from "./topics";
@@ -272,7 +271,7 @@ export function focusMemberRoot(
 // same switch, and three of each is what this replaces. The listeners are never
 // removed: they outlive every consumer by design, and refcounting them would
 // buy nothing in a window that always has a sidebar in it.
-const [tick, setTick] = createLiveSignal(0);
+const [tick, setTick] = createSignal(0);
 let listening = false;
 
 function watchTopicSources(): void {

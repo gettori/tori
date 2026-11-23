@@ -1,4 +1,4 @@
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { IssueId } from "./navNumber";
@@ -9,7 +9,7 @@ export type Mention = { owner: string; repo: string; number: number };
 const LS_DISMISSED = "tori.mentionsDismissed";
 const KEEP_DISMISSED = 500;
 
-const [mentions, setMentions] = createLiveSignal<Readonly<Record<string, readonly Mention[]>>>({});
+const [mentions, setMentions] = createSignal<Readonly<Record<string, readonly Mention[]>>>({});
 
 function loadDismissed(): Set<string> {
   try {
@@ -20,7 +20,7 @@ function loadDismissed(): Set<string> {
   }
 }
 
-const [dismissed, setDismissed] = createLiveSignal<ReadonlySet<string>>(loadDismissed());
+const [dismissed, setDismissed] = createSignal<ReadonlySet<string>>(loadDismissed());
 
 const dismissKey = (session: string, m: Mention) => `${session} ${m.owner}/${m.repo}#${m.number}`;
 

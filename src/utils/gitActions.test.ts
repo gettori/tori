@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 // The point of this module is that nothing has to be mounted for it to be true:
@@ -211,6 +212,7 @@ describe("the shared git store", () => {
     // the palette must never offer "Commit" on the strength of a workspace
     // nobody is in any more.
     enterRoots(["/b", "/c"]);
+    flush();
     expect(gitStateFor("/a").files).toEqual([]);
     expect(gitStateFor("/c").files).toEqual([]);
     expect(gitState().root).toBe("/b");
@@ -276,6 +278,7 @@ describe("the shared git store", () => {
     expect(changedAcross()).toHaveLength(2);
 
     enterRoots([]);
+    flush();
     expect(changedAcross()).toEqual([]);
     expect(gitState().root).toBeNull();
   });
@@ -338,6 +341,7 @@ describe("the shared git store", () => {
     };
     const seen = await toastsFrom(async () => {
       for (const fn of listeners["git://fetch-error"] ?? []) fn({ payload: quietFailure });
+      flush();
       await vi.waitFor(() => expect(gitState().lastFetch).toBeTruthy());
     });
 
@@ -354,6 +358,7 @@ describe("the shared git store", () => {
     // A success clears the error rather than leaving the last one to age.
     for (const fn of listeners["git://fetch-done"] ?? [])
       fn({ payload: { repo: "/proj", ok: true, error: "", quiet: true, fetchedAt: 1_700_000_900 } });
+    flush();
     await vi.waitFor(() => expect(gitState().lastFetch?.error).toBe(""));
 
     stop();

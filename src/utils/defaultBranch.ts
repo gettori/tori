@@ -1,9 +1,9 @@
 // Each repo's default branch (origin/HEAD's target), asked once per repo for the
 // life of the window: it moves only when someone changes the remote's HEAD.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
-const [known, setKnown] = createLiveSignal<Record<string, string | null>>({});
+const [known, setKnown] = createSignal<Record<string, string | null>>({});
 const asked = new Set<string>();
 
 export function defaultBranchOf(repo: string): string | null {

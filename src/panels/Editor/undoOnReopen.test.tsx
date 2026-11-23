@@ -7,7 +7,7 @@
 // (not the copy stashed before the last keystroke), and the one handed back has
 // to be reachable by `undo` rather than merely present in memory.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, waitFor } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
 import { undo } from "@codemirror/commands";
@@ -280,9 +280,11 @@ describe("what closing takes with it regardless", () => {
     // there is a row whose click has nowhere to go.
     const ed = await mountEditor(FILE);
     publishDiagnostics(FILE, [{ line: 1, endLine: 1, column: 1, severity: "error", message: "boom" }]);
+    flush();
     expect(diagnostics()[FILE]).toHaveLength(1);
 
     await ed.close([FILE]);
+    flush();
 
     expect(diagnostics()[FILE]).toBeUndefined();
   });

@@ -1,9 +1,9 @@
 // The forge polls the active space only, so after a restart every other space
 // has no pull requests until it is opened. This keeps the last answer per
 // branch so the navigator can still find a branch by its pull request number.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import type { PrState, UnitStatus } from "./forgeTypes";
-import { onForgeReport, projectStatuses } from "./forgeStatus";
+import { onForgeReport } from "./forgeStatus";
 
 const LS_PR_MEMORY = "tori.prMemory";
 const CAP = 500;
@@ -52,7 +52,7 @@ function capped(store: Store): Store {
   return out;
 }
 
-const [memory, setMemory] = createLiveSignal<Store>(load());
+const [memory, setMemory] = createSignal<Store>(load());
 
 const same = (a: RememberedPr | undefined, b: Omit<RememberedPr, "changedAt">) =>
   !!a && a.number === b.number && a.title === b.title && a.state === b.state && a.url === b.url;
@@ -60,24 +60,27 @@ const same = (a: RememberedPr | undefined, b: Omit<RememberedPr, "changedAt">) =
 /** Fold in what one tick said about a project's branches: a branch with a pull
  *  request is remembered, a branch the forge says has none is forgotten. */
 export function rememberPrs(project: string, statuses: Record<string, UnitStatus>, now = Date.now()) {
-  const before = memory()[project] ?? {};
-  const branches = { ...before };
-  let changed = false;
-  for (const [branch, status] of Object.entries(statuses)) {
-    const pr = status.pullRequest;
-    if (!pr) {
-      changed ||= branch in branches;
-      delete branches[branch];
-      continue;
+  let store = null as Store | null;
+  setMemory((prev) => {
+    const branches = { ...prev[project] };
+    let changed = false;
+    for (const [branch, status] of Object.entries(statuses)) {
+      const pr = status.pullRequest;
+      if (!pr) {
+        changed ||= branch in branches;
+        delete branches[branch];
+        continue;
+      }
+      const next = { number: pr.number, title: pr.title, state: pr.state, url: pr.url };
+      if (same(branches[branch], next)) continue;
+      branches[branch] = { ...next, changedAt: now };
+      changed = true;
     }
-    const next = { number: pr.number, title: pr.title, state: pr.state, url: pr.url };
-    if (same(branches[branch], next)) continue;
-    branches[branch] = { ...next, changedAt: now };
-    changed = true;
-  }
-  if (!changed) return;
-  const store = capped({ ...memory(), [project]: branches });
-  setMemory(store);
+    if (!changed) return prev;
+    store = capped({ ...prev, [project]: branches });
+    return store;
+  });
+  if (!store) return;
   try {
     localStorage.setItem(LS_PR_MEMORY, JSON.stringify(store));
   } catch {
@@ -92,5 +95,5 @@ export function rememberedPr(project: string, branch: string): RememberedPr | nu
 
 /** Keep every forge answer from now on, until the returned function is called. */
 export function startPrMemory(): () => void {
-  return onForgeReport((project) => rememberPrs(project, projectStatuses(project)));
+  return onForgeReport((project, statuses) => rememberPrs(project, statuses));
 }

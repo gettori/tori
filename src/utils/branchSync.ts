@@ -9,7 +9,7 @@
 // carries no label on purpose: a row that draws "in sync" on every clean branch
 // spends the reader's attention on the news that there is no news.
 
-import { createLiveStore } from "../lib/liveState";
+import { createStore } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 import type { PrRelation } from "./prRelation";
@@ -39,7 +39,7 @@ const ASKABLE = new Set(["worktree", "plain"]);
 
 const keyOf = (folderPath: string, branch: string | null | undefined) => `${folderPath}\u0000${branch ?? ""}`;
 
-const [answers, setAnswers] = createLiveStore<Record<string, BranchSync>>({});
+const [answers, setAnswers] = createStore<Record<string, BranchSync>>({});
 
 /** The units currently drawn, so a reply that outlived its row is dropped and
  *  a container refresh knows which branches it covers. */

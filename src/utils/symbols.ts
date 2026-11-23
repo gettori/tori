@@ -18,7 +18,7 @@
 // lazy boundary around `CodeEditor`. The half that needs a live client lives in
 // `panels/Editor/lspSymbols.ts`.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 /** LSP `SymbolKind`. The wire values, so a response needs no translation. */
 export const SYMBOL_KIND_NAMES: Record<number, string> = {
@@ -306,7 +306,7 @@ export function flattenSymbols(nodes: SymbolNode[]): SymbolNode[] {
 // Keyed by absolute path. `null` is a real and distinct answer: the file has a
 // server and that server has no document-symbol provider, which is what hides
 // the Outline tab. An absent key means nobody has asked yet.
-const [symbols, setSymbols] = createLiveSignal<Record<string, SymbolNode[] | null>>({});
+const [symbols, setSymbols] = createSignal<Record<string, SymbolNode[] | null>>({});
 export { symbols };
 
 /** Publish a file's symbol tree, or `null` when its server offers none.

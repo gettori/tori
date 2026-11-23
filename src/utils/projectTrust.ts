@@ -1,7 +1,7 @@
 // Project trust as the frontend sees it. The backend holds the answer and
 // enforces it (`src-tauri/src/trust.rs`); this module asks the user and tells
 // whoever started servers, without importing the editor, so Settings can too.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import { isUnderPath } from "./pathScope";
@@ -14,7 +14,7 @@ export const UNTRUSTED = "untrusted";
  *  asked under: trusting a worktree trusts the whole project. */
 export type TrustChange = { path: string; trusted: boolean };
 
-const [refused, setRefused] = createLiveSignal<string[]>([]);
+const [refused, setRefused] = createSignal<string[]>([]);
 /** Projects a server was refused in this session, still untrusted. */
 export { refused as refusedProjects };
 
@@ -64,7 +64,7 @@ export function askToTrust(projectPath: string, message: string): void {
  *  not turn its code on. */
 export const FORK_REVIEW = "Fork review, project code off";
 
-const [forks, setForks] = createLiveSignal<Readonly<Record<string, boolean>>>({});
+const [forks, setForks] = createSignal<Readonly<Record<string, boolean>>>({});
 const forkAsked = new Set<string>();
 
 /** Whether `worktree` holds a fork's pull request. False until Rust answers. */
@@ -104,7 +104,7 @@ export async function revokeProject(path: string): Promise<void> {
 // One read of the trusted list for every surface that marks an untrusted
 // project, refreshed on each change made here. Null until the first read lands,
 // so nothing is marked while the answer is unknown.
-const [trustedList, setTrustedList] = createLiveSignal<string[] | null>(null);
+const [trustedList, setTrustedList] = createSignal<string[] | null>(null);
 let watching = false;
 
 function watchTrusted() {

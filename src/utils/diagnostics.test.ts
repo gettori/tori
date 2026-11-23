@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect } from "vite-plus/test";
 import { EditorState } from "@codemirror/state";
 import { setDiagnostics } from "@codemirror/lint";
@@ -165,19 +166,23 @@ describe("problemsFromState (against real CodeMirror)", () => {
 describe("store round trip", () => {
   it("publishes, caps, and drops a file", () => {
     publishDiagnostics("/a.ts", [p(1, "error")]);
+    flush();
     expect(diagnostics()["/a.ts"]).toHaveLength(1);
 
     // An empty publish removes the file rather than leaving a zero count.
     publishDiagnostics("/a.ts", []);
+    flush();
     expect("/a.ts" in diagnostics()).toBe(false);
 
     publishDiagnostics(
       "/b.ts",
       Array.from({ length: 500 }, (_, i) => p(i + 1, "warning")),
     );
+    flush();
     expect(diagnostics()["/b.ts"].length).toBe(MAX_PER_FILE);
 
     dropDiagnostics("/b.ts");
+    flush();
     expect(diagnostics()).toEqual({});
   });
 });

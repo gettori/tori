@@ -14,7 +14,7 @@
 //
 // The trust boundary is unchanged and is the whole point: blocks land in the
 // composer as removable chips and wait there. Nothing here sends anything.
-import { createLiveSignal, createLiveStore } from "../lib/liveState";
+import { createSignal, createStore } from "solid-js";
 import type { ContentBlock } from "./chatTypes";
 import { isPdfPath } from "./pathScope";
 import { attributed, type HunkNote } from "./safeSend";
@@ -224,7 +224,7 @@ export type PendingBlock = { id: string; block: ContentBlock };
  */
 export type ComposerKey = string;
 
-const [pending, setPending] = createLiveSignal<Record<ComposerKey, PendingBlock[]>>({});
+const [pending, setPending] = createSignal<Record<ComposerKey, PendingBlock[]>>({});
 
 let seq = 0;
 
@@ -247,10 +247,9 @@ export function dropPending(key: ComposerKey, id: string) {
   const gone = pendingFor(key).find((p) => p.id === id);
   const label = gone?.block.type === "fileRef" || gone?.block.type === "ref" ? gone.block.label : null;
   setPending((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((p) => p.id !== id) }));
-  const draft = drafts[key];
-  if (label && draft !== undefined) {
+  if (label) {
     setDrafts((all) => {
-      all[key] = stripToken(draft, label);
+      if (all[key] !== undefined) all[key] = stripToken(all[key], label);
     });
   }
 }
@@ -259,8 +258,11 @@ export function dropPending(key: ComposerKey, id: string) {
  *  carries them is sent, and on the tab closing so a reopened chat does not
  *  inherit chips from a session that is gone. */
 export function takePending(key: ComposerKey): ContentBlock[] {
-  const held = pendingFor(key);
-  if (held.length) clearPending(key);
+  let held: PendingBlock[] = [];
+  setPending((prev) => {
+    held = prev[key] ?? [];
+    return held.length ? dropKey(prev, key) : prev;
+  });
   return held.map((p) => p.block);
 }
 
@@ -292,7 +294,7 @@ export function clearPending(key: ComposerKey) {
 // Per-composer history of what was actually sent, for Up-arrow recall. Bounded,
 // because a long session's composer should not be a transcript of its own.
 const HISTORY_CAP = 50;
-const [histories, setHistories] = createLiveSignal<Record<ComposerKey, string[]>>({});
+const [histories, setHistories] = createSignal<Record<ComposerKey, string[]>>({});
 
 // The typed half of a composer's state, kept beside the attachment half so the
 // two are one thing: cleared together, moved together by send-to-new-session,
@@ -307,11 +309,11 @@ const [histories, setHistories] = createLiveSignal<Record<ComposerKey, string[]>
 //
 // A store rather than one signal over the record: a keystroke then wakes only
 // the composer it was typed in, not every chat that reads a draft.
-const [drafts, setDrafts] = createLiveStore<Record<ComposerKey, string | undefined>>({});
+const [drafts, setDrafts] = createStore<Record<ComposerKey, string | undefined>>({});
 
 // The scratch file a composer's draft is being edited in, per composer. While
 // one is linked the editor is the only writer and the composer only sends.
-const [linkedScratches, setLinkedScratches] = createLiveSignal<Record<ComposerKey, string>>({});
+const [linkedScratches, setLinkedScratches] = createSignal<Record<ComposerKey, string>>({});
 
 export function linkedScratchFor(key: ComposerKey): string | null {
   return linkedScratches()[key] ?? null;
@@ -327,7 +329,7 @@ export function setLinkedScratch(key: ComposerKey, path: string | null) {
 }
 
 export type DraftOrigin = { display: string; url: string };
-const [origins, setOrigins] = createLiveSignal<Record<ComposerKey, DraftOrigin>>({});
+const [origins, setOrigins] = createSignal<Record<ComposerKey, DraftOrigin>>({});
 
 export function draftOriginFor(key: ComposerKey): DraftOrigin | null {
   return origins()[key] ?? null;
@@ -420,7 +422,7 @@ export function pushHistory(key: ComposerKey, text: string) {
 // moment `onSend` returns, so a draft's first send has to be held somewhere the
 // clear cannot reach. Holding it here is also what lets a first send that never
 // reached a session hand the text straight back.
-const [autoSend, setAutoSend] = createLiveSignal<Record<ComposerKey, string>>({});
+const [autoSend, setAutoSend] = createSignal<Record<ComposerKey, string>>({});
 
 /** Whether a composer holds anything worth sending. Asked *before* a session is
  *  opened for it, so an empty composer never costs a stray chat tab and the
@@ -486,21 +488,26 @@ export function hasAutoSend(key: ComposerKey): boolean {
 /** The message this composer was seeded to send, or null. Consuming: asking
  *  twice answers null the second time, so a remount cannot fire the turn again. */
 export function takeAutoSend(key: ComposerKey): string | null {
-  const held = autoSend()[key];
-  if (held === undefined) return null;
-  setAutoSend((prev) => dropKey(prev, key));
-  return held;
+  let held = undefined as string | undefined;
+  setAutoSend((prev) => {
+    held = prev[key];
+    return dropKey(prev, key);
+  });
+  return held ?? null;
 }
 
 // Attachment labels: `[Image 3]`, numbered per composer and per kind. Filed
 // under the tab like the chips, because a draft tab attaches before it has a
 // session. A number is never reused, so one the transcript already holds is
 // never put on the wire twice: a chip only ever moves *up*.
-const [counters, setCounters] = createLiveSignal<Record<ComposerKey, Partial<Record<AttachmentKind, number>>>>({});
+let counters: Record<ComposerKey, Partial<Record<AttachmentKind, number>>> = {};
+const setCounters = (next: (prev: typeof counters) => typeof counters) => {
+  counters = next(counters);
+};
 // Whether the composer's numbering has been raised above what its transcript
 // already used. A send waits for this, or a reopened chat's first attachment
 // could go out as `[Image 1]` under a conversation that has one.
-const [seeded, setSeeded] = createLiveSignal<Record<ComposerKey, true>>({});
+const [seeded, setSeeded] = createSignal<Record<ComposerKey, true>>({});
 
 /** How a kind is spelled in the sentence. `PDF` is an initialism and reads as
  *  one; the other two are ordinary words. */
@@ -521,8 +528,11 @@ export function parseLabel(label: string): { kind: AttachmentKind; n: number } |
 
 /** Mint the next label of `kind` for this composer. */
 export function nextLabel(key: ComposerKey, kind: AttachmentKind): string {
-  const n = (counters()[key]?.[kind] ?? 0) + 1;
-  setCounters((prev) => ({ ...prev, [key]: { ...prev[key], [kind]: n } }));
+  let n = 0;
+  setCounters((prev) => {
+    n = (prev[key]?.[kind] ?? 0) + 1;
+    return { ...prev, [key]: { ...prev[key], [kind]: n } };
+  });
   return attachmentLabel(kind, n);
 }
 
@@ -572,12 +582,9 @@ export function relabel(key: ComposerKey, from: string, to: string) {
       p.block.type === "fileRef" && p.block.label === from ? { ...p, block: { ...p.block, label: to } } : p,
     ),
   }));
-  const draft = drafts[key];
-  if (draft !== undefined) {
-    setDrafts((all) => {
-      all[key] = renameTokens(draft, renames);
-    });
-  }
+  setDrafts((all) => {
+    if (all[key] !== undefined) all[key] = renameTokens(all[key], renames);
+  });
   setAutoSend((prev) => (key in prev ? { ...prev, [key]: renameTokens(prev[key], renames) } : prev));
 }
 

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import { clearHeld, dropHeld, heldFor, holdComment } from "./heldComments";
 
@@ -14,6 +15,7 @@ describe("heldComments", () => {
   it("collects comments in the order they were held", () => {
     holdComment(A, comment("one"));
     holdComment(A, comment("two"));
+    flush();
     expect(heldFor(A).map((c) => c.text)).toEqual(["one", "two"]);
   });
 
@@ -21,12 +23,14 @@ describe("heldComments", () => {
     const first = holdComment(A, comment("one"));
     holdComment(A, comment("two"));
     dropHeld(A, [first.id]);
+    flush();
     expect(heldFor(A).map((c) => c.text)).toEqual(["two"]);
   });
 
   it("clears a list", () => {
     holdComment(A, comment("one"));
     clearHeld(A);
+    flush();
     expect(heldFor(A)).toEqual([]);
   });
 
@@ -34,6 +38,7 @@ describe("heldComments", () => {
     holdComment(A, comment("a"));
     holdComment(B, comment("b"));
     clearHeld(A);
+    flush();
     expect(heldFor(A)).toEqual([]);
     expect(heldFor(B).map((c) => c.text)).toEqual(["b"]);
   });

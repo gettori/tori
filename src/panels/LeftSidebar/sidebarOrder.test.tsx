@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { createEvent, fireEvent, render, screen, waitFor } from "../../test/harness";
 import type { PullRequest, StatusReport, UnitStatus } from "../../utils/forgeTypes";
 
@@ -188,6 +189,7 @@ describe("the hand-made branch order", () => {
 
     view.unmount();
     resetSidebarOrderForTests();
+    flush();
     mount();
     await waitFor(() => expect(branchRows()).toEqual(["main", "c", "a", "b"]));
   });

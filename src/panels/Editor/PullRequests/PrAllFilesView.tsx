@@ -18,7 +18,7 @@
 // It fetches nothing. `ensure` on mount and everything from `prReviewStore`, so
 // this tab open beside the panel and four diff tabs is still one read of each.
 
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
 import { Check, ChevronDown, ChevronRight, ExternalLink, MessageSquare } from "../../../components/Icon/icons";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { sideBySideOn as sideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../../utils/sideBySide";
@@ -135,6 +135,8 @@ export default function PrAllFilesView(props: { workspace: string; arg: string }
     if (!next) return;
     e.preventDefault();
     setFileExpanded(props.workspace, number(), next, true);
+    // The cards to focus only exist once the expansion has rendered.
+    flush();
     // Found by walking rather than by an attribute selector: a path is not a
     // CSS string and quoting one is a rule with an escape in it.
     const section = [...paneRef.querySelectorAll<HTMLElement>("[data-file-section]")].find(

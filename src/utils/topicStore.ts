@@ -1,16 +1,17 @@
 // Watched rather than always on, so a window with nothing Topic-shaped on
 // screen never asks for the list.
 
-import { createLiveSignal, withoutFlush } from "../lib/liveState";
+import { createSignal } from "solid-js";
+import { withoutFlush } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { noteTopics, type Topic } from "./topics";
 
 export type Promoted = { topic: Topic; from: string | null; to: string | null };
 
-const [records, setRecords] = createLiveSignal<Topic[]>([]);
-const [reloads, setReloads] = createLiveSignal(0);
-const [loadError, setLoadError] = createLiveSignal<string | null>(null);
+const [records, setRecords] = createSignal<Topic[]>([]);
+const [reloads, setReloads] = createSignal(0);
+const [loadError, setLoadError] = createSignal<string | null>(null);
 
 export const topics = records;
 export const topicsReloaded = reloads;
@@ -39,16 +40,21 @@ export async function reloadTopics(): Promise<void> {
 }
 
 export function applyTopic(topic: Topic): void {
-  const prev = records();
-  const i = prev.findIndex((t) => t.id === topic.id);
-  const next = prev.slice();
-  if (i < 0) next.push(topic);
-  else next[i] = topic;
-  put(next);
+  let next = [] as Topic[];
+  setRecords((prev) => {
+    const i = prev.findIndex((t) => t.id === topic.id);
+    next = prev.slice();
+    if (i < 0) next.push(topic);
+    else next[i] = topic;
+    return next;
+  });
+  noteTopics(next);
 }
 
 export function dropTopic(id: string): void {
-  put(records().filter((t) => t.id !== id));
+  let next = [] as Topic[];
+  setRecords((prev) => (next = prev.filter((t) => t.id !== id)));
+  noteTopics(next);
 }
 
 const promotedSubs = new Set<(p: Promoted) => void>();
