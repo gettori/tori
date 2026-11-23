@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vite-plus/test";
 import { fireEvent, render, screen, waitFor } from "../../test/harness";
-import { renderCost, renderDrift } from "../../test/perfCounters";
+import { renderCost, renderDrift, rerunBudget } from "../../test/perfCounters";
 
 vi.mock("solid-js", async (original) => {
   const { countingSolid } = await import("../../test/perfCounters");
@@ -105,9 +105,10 @@ it("holds the render budget for one tab switch", async () => {
   await open(`${REPO}/a.ts`);
   await open(`${REPO}/b.ts`);
 
-  const cost = await renderCost(container, () => open(`${REPO}/a.ts`));
+  const { cost, artifact } = await renderCost(container, () => open(`${REPO}/a.ts`));
 
   expect(cost.memos + cost.effects).toBeGreaterThan(0);
+  expect(artifact).toStayWithinRerunBudget(rerunBudget("editor.tab_switch"));
   expect(renderDrift("editor.tab_switch", cost), JSON.stringify(cost)).toEqual([]);
 });
 
@@ -116,11 +117,12 @@ it("holds the render budget for opening one collapsed gap", async () => {
   const { container } = render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);
   const gap = await screen.findByText(/6 unchanged lines/);
 
-  const cost = await renderCost(container, async () => {
+  const { cost, artifact } = await renderCost(container, async () => {
     fireEvent.click(gap);
     await screen.findByText(/^\s*four$/);
   });
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(artifact).toStayWithinRerunBudget(rerunBudget("editor.gap_open"));
   expect(renderDrift("editor.gap_open", cost), JSON.stringify(cost)).toEqual([]);
 });

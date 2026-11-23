@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
-import { createMemo, createStore } from "solid-js";
+import { createMemo, createSignal, createStore } from "solid-js";
 import { render } from "../../test/harness";
-import { renderCost, renderDrift } from "../../test/perfCounters";
+import { renderCost, renderDrift, rerunBudget } from "../../test/perfCounters";
 import type { ChatEvent } from "../../utils/chatTypes";
 import MessageList from "./MessageList";
 import { applyEvent, initialChat, pushUserTurn, visibleItems, type ChatState } from "./chatStore";
@@ -51,7 +51,7 @@ function finishTurn(state: ChatState, n: number) {
   );
 }
 
-it("holds the render budget for one tool frame into a long transcript", async () => {
+function seededChat() {
   const seeded = initialChat(SESSION);
   seeded.ready = true;
   for (let n = 1; n <= TURNS; n++) {
@@ -59,9 +59,12 @@ it("holds the render budget for one tool frame into a long transcript", async ()
     finishTurn(seeded, n);
   }
   startTurn(seeded, TURNS + 1);
-  const [state, setState] = createStore(seeded);
+  return createStore(seeded);
+}
 
-  const { container } = render(() => {
+function mountList(state: ChatState, readingFrom?: string) {
+  const [reading, setReading] = createSignal(readingFrom);
+  const mounted = render(() => {
     const items = createMemo(() => visibleItems(state.items, false, state.selectedLane));
     return (
       <MessageList
@@ -75,11 +78,18 @@ it("holds the render budget for one tool frame into a long transcript", async ()
         collapseWork={false}
         laneOpenedBy={() => null}
         onOpenLane={() => {}}
+        readingBlock={(id) => (id === reading() ? 0 : undefined)}
       />
     );
   });
+  return { ...mounted, setReading };
+}
 
-  const cost = await renderCost(container, () =>
+it("holds the render budget for one tool frame into a long transcript", async () => {
+  const [state, setState] = seededChat();
+  const { container } = mountList(state);
+
+  const { cost, artifact } = await renderCost(container, () =>
     setState((s) => {
       applyEvent(
         s,
@@ -98,5 +108,19 @@ it("holds the render budget for one tool frame into a long transcript", async ()
   );
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(artifact).toStayWithinRerunBudget(rerunBudget("chat.tool_frame"));
   expect(renderDrift("chat.tool_frame", cost), JSON.stringify(cost)).toEqual([]);
+});
+
+it("holds the render budget for moving the read aloud row", async () => {
+  const [state] = seededChat();
+  const replies = state.items.filter((item) => item.kind === "text");
+  const [from, to] = replies.slice(-2).map((item) => item.id);
+  const { container, setReading } = mountList(state, from);
+
+  const { cost, artifact } = await renderCost(container, () => setReading(to));
+
+  expect(cost.mutations).toBeGreaterThan(0);
+  expect(artifact).toStayWithinRerunBudget(rerunBudget("chat.selection"));
+  expect(renderDrift("chat.selection", cost), JSON.stringify(cost)).toEqual([]);
 });

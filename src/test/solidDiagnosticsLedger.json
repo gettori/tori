@@ -128,7 +128,8 @@
     "STRICT_READ_UNTRACKED": 86
   },
   "src/panels/Chat/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 126
+    "STRICT_READ_UNTRACKED": 247,
+    "WIDE_SCOPE_DEPS": 1
   },
   "src/panels/Chat/restoredAcpChat.test.tsx": {
     "STRICT_READ_UNTRACKED": 253
@@ -378,7 +379,7 @@
     "STRICT_READ_UNTRACKED": 18
   },
   "src/panels/LeftSidebar/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 14
+    "STRICT_READ_UNTRACKED": 26
   },
   "src/panels/LeftSidebar/restoreWorktree.test.tsx": {
     "STRICT_READ_UNTRACKED": 51
@@ -537,5 +538,10 @@
   },
   "src/utils/worktreeCleanup.test.tsx": {
     "STRICT_READ_UNTRACKED": 20
+  },
+  "src/panels/Editor/FileTree/renderBudget.test.tsx": {
+    "STRICT_READ_UNTRACKED": 1,
+    "EFFECT_RELAY_TEAR": 2,
+    "EFFECT_WRITES_OWN_SOURCE": 1
   }
 }
