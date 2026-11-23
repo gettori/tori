@@ -7,7 +7,7 @@ import { createMenu, CURSOR_GUTTER, CURSOR_SHIFT, MenuContent, MenuProvider } fr
 import { MenuGlide, MenuRows, type MenuItem } from "./rows";
 import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
-import { defined } from "../../lib/props";
+import { mergeDefined } from "../../lib/props";
 
 /** Where the menu sits relative to its anchor. */
 export type MenuPlacement =
@@ -113,14 +113,14 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
       return isButton() ? handlers.disabled : undefined;
     },
     get "aria-disabled"() {
-      return !isButton() && handlers.disabled ? true : undefined;
+      return !isButton() && handlers.disabled ? "true" : undefined;
     },
     get "data-disabled"() {
       return handlers.disabled ? "" : undefined;
     },
     "aria-haspopup": "true",
     get "aria-expanded"() {
-      return menu.isOpen();
+      return menu.isOpen() ? "true" : "false";
     },
     get "aria-controls"() {
       return menu.isOpen() ? menu.contentId : undefined;
@@ -154,10 +154,9 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(prop
   // the right ones. `group` rather than `presentation`, which forbids the
   // `aria-haspopup` and `aria-expanded` this element still carries.
   const notAControl = () => (props.wrapper ? { role: "group", tabindex: -1 } : {});
-  const triggerProps = merge(
-    behaviour,
-    notAControl,
-    defined(rest),
+  const triggerProps = mergeDefined(
+    merge(behaviour, notAControl),
+    rest,
   ) as unknown as JSX.ButtonHTMLAttributes<HTMLButtonElement>;
 
   const Control = dynamic(() => tag());

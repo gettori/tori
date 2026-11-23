@@ -9,7 +9,7 @@
 // `prReviewStore`, so nine files open at once are one `forge_pr_files` call and
 // a tab that opens after the read has landed shows its diff immediately.
 
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onSettled, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowDown, Columns2, ExternalLink, FileCode } from "../../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR } from "../../../utils/events";
@@ -66,14 +66,18 @@ export default function PrDiffView(props: { workspace: string; arg: string }) {
   /// dressed as an action.
   const localUnit = createMemo(() => (pr() ? projectUnitFor(props.workspace, pr()!.headRef) : null));
 
-  createEffect(on([() => props.workspace, () => target().number], ([root, number]) => ensure(root, number)));
+  createEffect(
+    () => [props.workspace, target().number] as const,
+    // The review store is live state, and flush is refused in an effect callback.
+    ([root, number]) => queueMicrotask(() => ensure(root, number)),
+  );
 
   let paneRef: HTMLDivElement | undefined;
-  onMount(() => {
+  onSettled(() => {
     if (!paneRef) return;
     const ro = new ResizeObserver(([e]) => setPaneWidth(e.contentRect.width));
     ro.observe(paneRef);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   /// `n` and `p` between this pull request's conversations.

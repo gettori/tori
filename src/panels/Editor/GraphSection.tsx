@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { GitCommitHorizontal } from "../../components/Icon/icons";
 
@@ -62,25 +62,31 @@ export default function GraphSection(props: {
   // re-read the log on each of those.
   const head = createMemo(() => gitStateFor(props.root).head);
   createEffect(
-    on([() => props.root, head, () => !!props.all], async ([root, , all]) => {
+    () => [props.root, head(), !!props.all] as const,
+    ([root, , all]) => {
       setOpen(new Set<string>());
       if (!root) {
         setEntries([]);
         return;
       }
-      try {
-        // A branch longer than one page would push the base off the bottom,
-        // and where you left the trunk is the one thing this section is for.
-        // So the page grows to reach it, rather than the reader paging for it.
-        const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
-        const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
-        setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all }));
-        setError("");
-      } catch (e) {
-        setEntries([]);
-        setError(String(e));
-      }
-    }),
+      void (async () => {
+        try {
+          // A branch longer than one page would push the base off the bottom,
+          // and where you left the trunk is the one thing this section is for.
+          // So the page grows to reach it, rather than the reader paging for it.
+          const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
+          const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
+          const rows = await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all });
+          // Thrown here: inside the Show below, a non-list would halt the reactive system.
+          if (!Array.isArray(rows)) throw new TypeError("git log did not return a list");
+          setEntries(rows);
+          setError("");
+        } catch (e) {
+          setEntries([]);
+          setError(String(e));
+        }
+      })();
+    },
   );
 
   return (

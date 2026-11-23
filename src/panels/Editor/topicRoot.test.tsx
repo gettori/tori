@@ -4,7 +4,7 @@
 // Files shows one member at a time, picked from its chip row, an unusable one
 // as its repair, and a branch unit stays exactly as headerless as it was.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { pointerClick } from "../../test/menus";
 import { render, screen, waitFor } from "../../test/harness";
 
@@ -116,7 +116,10 @@ const sectionRoots = () => Array.from(document.querySelectorAll("[data-root]")).
 
 const memberChips = () =>
   Array.from(document.querySelectorAll<HTMLElement>('[aria-label="Topic members"] [data-member]'));
-const pickMember = (repoPath: string) => pointerClick(memberChips().find((c) => c.dataset.member === repoPath)!);
+const pickMember = (repoPath: string) => {
+  pointerClick(memberChips().find((c) => c.dataset.member === repoPath)!);
+  flush();
+};
 
 const rootsOf = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args.projectPath ?? c.args.root);
 const watchSets = () => calls.filter((c) => c.cmd === "fs_watch_set").map((c) => c.args.roots);

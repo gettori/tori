@@ -61,9 +61,12 @@ vi.mock("@tauri-apps/api/window", () => ({
 const shown: string[] = [];
 vi.mock("./CodeEditor", () => ({
   default: (props: { activePath: string | null }) => {
-    createEffect(() => {
-      if (props.activePath) shown.push(props.activePath);
-    });
+    createEffect(
+      () => props.activePath,
+      (path) => {
+        if (path) shown.push(path);
+      },
+    );
     return null;
   },
 }));

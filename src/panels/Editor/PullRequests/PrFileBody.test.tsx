@@ -729,6 +729,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
       'Review comment on @src/edit.ts line 2 (PR #42). reviewer wrote: "this drops the error". ' +
         "Make the change here; the reply on GitHub is sent from Tori.",
     );
+    await waitFor(() => expect(document.querySelector("[data-send-note]")).toBeTruthy());
     const note = document.querySelector("[data-send-note]")!;
     expect(note.textContent).toBe("Sent to title of on-wave.");
     // Marked as news that went well. One colour for both outcomes is how "it

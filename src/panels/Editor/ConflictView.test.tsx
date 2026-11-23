@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { EditorView } from "@codemirror/view";
+import { flush } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 
 // The conflict tab. The alignment itself is `conflict.test.ts`'s job; what is
@@ -595,6 +596,8 @@ describe("the Result pane", () => {
 
     result().dispatch({ changes: { from: slotAt(), insert: "MINE" } });
 
+    flush();
+
     // Typing beside a slot is an edit, not an answer. Nothing else can tell
     // half-finished text from a decision, so the button has to be pressed.
     expect(markResolved().disabled).toBe(true);
@@ -622,6 +625,7 @@ describe("the Result pane", () => {
 
     fireEvent.click(byName("Take Yours (HEAD)"));
     result().dispatch({ changes: { from: doc().indexOf("O1") + 2, insert: "!" } });
+    flush();
 
     expect(byName("Write these lines yourself").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Written by hand")).toBeTruthy();
@@ -639,6 +643,7 @@ describe("the Result pane", () => {
 
     fireEvent.click(byName("Take Yours (HEAD)"));
     result().dispatch({ changes: { from: doc().indexOf("O1") + 2, insert: "!" } });
+    flush();
     const typed = doc();
 
     fireEvent.click(byName("Take Incoming"));
@@ -656,6 +661,7 @@ describe("the Result pane", () => {
     // An insertion above the first slot moves both slots down. A span kept
     // outside the document would still be pointing at "a".
     result().dispatch({ changes: { from: 0, insert: "header\n" } });
+    flush();
     fireEvent.click(byName("Take Yours (HEAD)"));
 
     expect(doc()).toBe(["header", "a", "O1", "c", "d", "e", "", "g", ""].join("\n"));
@@ -670,6 +676,7 @@ describe("the Result pane", () => {
     // editable: without it this merge can only be resolved wrong and fixed
     // afterwards.
     result().dispatch({ changes: { from: doc().length, insert: "mine\n" } });
+    flush();
 
     fireEvent.click(markResolved());
 
@@ -724,6 +731,8 @@ describe("lining the panes up", () => {
       [...viewNamed(name).contentDOM.querySelectorAll<HTMLElement>(".cm-align-spacer")].map((el) => el.style.height);
 
     result.dispatch({ changes: { from: result.state.doc.line(2).from, insert: "W\nX\nY\nZ\n" } });
+
+    flush();
 
     await waitFor(() => expect(space("Yours (HEAD)").length).toBeGreaterThan(0));
     expect(space("Incoming")).toEqual(space("Yours (HEAD)"));

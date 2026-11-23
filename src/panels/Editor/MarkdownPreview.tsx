@@ -1,4 +1,4 @@
-import { createEffect, createResource, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   bufferTextOf,
@@ -9,6 +9,7 @@ import {
   previewAnchorOf,
   boxAt,
 } from "../../utils/liveBuffer";
+import { createFetchState } from "../../lib/fetchState";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import MarkdownDocument from "./MarkdownDocument";
 import styles from "./MarkdownPreview.module.css";
@@ -29,14 +30,20 @@ function dirOf(path: string): string {
  *  tab with no buffer at all, which is every restored tab nobody has clicked. */
 export default function MarkdownPreview(props: { path: string }) {
   const live = () => bufferTextOf(props.path);
-  const [disk] = createResource(
-    // Null while a buffer holds this file, which is `createResource`'s own way
+  const [disk] = createFetchState(
+    // Null while a buffer holds this file, which is the source's own way
     // of saying there is nothing to fetch: the read is skipped rather than
     // raced with the answer we already have.
     () => (live() === undefined ? props.path : null),
     (path: string) => invoke<string>("fs_read_file", { path }),
   );
-  const text = () => live() ?? disk();
+  const text = () => {
+    const open = live();
+    if (open !== undefined) return open;
+    // A failed read reaches the pane's crashed card, as a rejected resource read did.
+    if (disk.error !== undefined) throw disk.error;
+    return disk();
+  };
 
   const [renderedFor, setRenderedFor] = createSignal<string | null>(null);
 
@@ -46,6 +53,8 @@ export default function MarkdownPreview(props: { path: string }) {
   // a plain flag, because the same component is reused when the active tab
   // moves from one previewed markdown file to another.
   let placedFor: string | null = null;
+  let noting: number | undefined;
+  onCleanup(() => noting !== undefined && cancelAnimationFrame(noting));
 
   function boxes(): Element[] {
     const out: Element[] = [];
@@ -64,36 +73,38 @@ export default function MarkdownPreview(props: { path: string }) {
     if (i >= 0) notePreviewAnchor(path, { box: i, offset: box.scrollTop - topOf(all[i]) });
   }
 
-  createEffect(() => {
-    if (renderedFor() !== props.path || placedFor === props.path) return;
-    const path = props.path;
-    placedFor = path;
-    const fraction = takeHandOff(path, "preview");
-    const anchor = fraction === undefined ? previewAnchorOf(path) : undefined;
-    if (fraction === undefined && anchor === undefined) return;
-    // After the last slice is in and laid out: until then, the box has no
-    // scrollable height for a fraction to point into.
-    requestAnimationFrame(() => {
-      const max = box.scrollHeight - box.clientHeight;
-      if (max <= 0) return;
-      if (fraction !== undefined) {
-        box.scrollTop = fraction * max;
-        // Handed straight back, so toggling to the source without scrolling
-        // returns to the same place rather than to the cursor.
-        handOff(path, "preview", fraction);
-        return;
-      }
-      const all = boxes();
-      if (!all.length || !anchor) return;
-      const target = all[Math.min(anchor.box, all.length - 1)];
-      const place = () =>
-        (box.scrollTop = Math.min(box.scrollHeight - box.clientHeight, topOf(target) + anchor.offset));
-      place();
-      // Once more a frame later: landing draws the blocks around the target,
-      // which were estimated heights until then, and moves it.
-      requestAnimationFrame(() => placedFor === path && props.path === path && place());
-    });
-  });
+  createEffect(
+    () => [renderedFor(), props.path] as const,
+    ([rendered, path]) => {
+      if (rendered !== path || placedFor === path) return;
+      placedFor = path;
+      const fraction = takeHandOff(path, "preview");
+      const anchor = fraction === undefined ? previewAnchorOf(path) : undefined;
+      if (fraction === undefined && anchor === undefined) return;
+      // After the last slice is in and laid out: until then, the box has no
+      // scrollable height for a fraction to point into.
+      requestAnimationFrame(() => {
+        const max = box.scrollHeight - box.clientHeight;
+        if (max <= 0) return;
+        if (fraction !== undefined) {
+          box.scrollTop = fraction * max;
+          // Handed straight back, so toggling to the source without scrolling
+          // returns to the same place rather than to the cursor.
+          handOff(path, "preview", fraction);
+          return;
+        }
+        const all = boxes();
+        if (!all.length || !anchor) return;
+        const target = all[Math.min(anchor.box, all.length - 1)];
+        const place = () =>
+          (box.scrollTop = Math.min(box.scrollHeight - box.clientHeight, topOf(target) + anchor.offset));
+        place();
+        // Once more a frame later: landing draws the blocks around the target,
+        // which were estimated heights until then, and moves it.
+        requestAnimationFrame(() => placedFor === path && props.path === path && place());
+      });
+    },
+  );
 
   return (
     <OverlayScroll
@@ -102,7 +113,6 @@ export default function MarkdownPreview(props: { path: string }) {
       // component's viewport, not its frame.
       viewportRef={(el) => {
         box = el;
-        let noting: number | undefined;
         el.addEventListener("scroll", () => {
           // Not until this path is placed: on a swap between two previews the
           // scroller clamps while still showing the last file, and that offset
@@ -117,7 +127,6 @@ export default function MarkdownPreview(props: { path: string }) {
             if (placedFor === path && props.path === path) noteAnchor(path);
           });
         });
-        onCleanup(() => noting !== undefined && cancelAnimationFrame(noting));
       }}
     >
       <Show when={text() === undefined && disk.loading}>

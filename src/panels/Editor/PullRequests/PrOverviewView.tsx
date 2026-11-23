@@ -9,7 +9,7 @@
 // **No merge control.** Landing a branch is the panel's, and only the panel's:
 // two buttons that merge is two places a stale verdict can offer it.
 
-import { createEffect, createMemo, on, Show } from "solid-js";
+import { createEffect, createMemo, Show } from "solid-js";
 import { prActivity } from "../../../utils/prMeta";
 import { parsePrArg } from "../../../utils/syntheticTabs";
 import { unitStatusForPr } from "../../../utils/forgeStatus";
@@ -36,11 +36,13 @@ export default function PrOverviewView(props: { workspace: string; arg: string }
   const activity = createMemo(() => prActivity(entry().summary?.updatedAt ?? null, counts()));
   const reviews = () => counts()?.reviews ?? null;
   createEffect(
-    on([() => props.workspace, number], ([root, n]) => {
+    () => [props.workspace, number()] as const,
+    ([root, n]) => {
       // Idempotent per pull request, so coming back to one already read costs
-      // nothing and shows it at once.
-      ensure(root, n);
-    }),
+      // nothing and shows it at once. Deferred because the review store is live
+      // state, and flush is refused in an effect callback.
+      queueMicrotask(() => ensure(root, n));
+    },
   );
 
   return (

@@ -5,9 +5,8 @@ import {
   createEffect,
   createMemo,
   Errored,
-  on,
   onCleanup,
-  onMount,
+  onSettled,
   lazy,
   untrack,
   Match,
@@ -597,19 +596,20 @@ export default function Editor(props: {
   const tabs = () => tabsByWs()[ws()] ?? [];
   // One report for every way a tab can go (close, force close, purge), taken
   // from the union across workspaces: a switch only hides tabs and reports none.
+  let prevTabsByWs: ReturnType<typeof tabsByWs> | undefined;
   createEffect(
-    on(
-      tabsByWs,
-      (now, prev) => {
-        if (!prev) return;
-        const paths = (byWs: typeof now) => new Set(Object.values(byWs).flatMap((ts) => ts.map((t) => t.path)));
-        const open = paths(now);
-        for (const path of paths(prev)) {
-          if (!open.has(path)) emitWith<EditorTabClosed>(EDITOR_TAB_CLOSED, { path });
-        }
-      },
-      { defer: true },
-    ),
+    tabsByWs,
+    (now) => {
+      const prev = prevTabsByWs;
+      prevTabsByWs = now;
+      if (!prev) return;
+      const paths = (byWs: typeof now) => new Set(Object.values(byWs).flatMap((ts) => ts.map((t) => t.path)));
+      const open = paths(now);
+      for (const path of paths(prev)) {
+        if (!open.has(path)) emitWith<EditorTabClosed>(EDITOR_TAB_CLOSED, { path });
+      }
+    },
+    { defer: true },
   );
   // ---- Panes (plan phase 9) ----------------------------------------------
   // A column per pane holding file tabs; with no pane tree (a panel mounted
@@ -691,27 +691,28 @@ export default function Editor(props: {
   const [colEls, setColEls] = createSignal<Record<string, HTMLElement>>({});
   const holdCol = (paneId: string, el: HTMLElement) => {
     setColEls((prev) => ({ ...prev, [paneId]: el }));
-    onCleanup(() =>
+    return () =>
       setColEls((prev) => {
         const next = { ...prev };
         if (next[paneId] === el) delete next[paneId];
         return next;
-      }),
-    );
+      });
   };
   const [paneW, setPaneW] = createSignal(0);
-  createEffect(() => {
-    const el = colEls()[focusedEditorPane()];
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      // display:none and detached both report 0. Zero is never a real width for
-      // a focused column, so keep the last honest measurement instead of
-      // collapsing the bound below to its floor.
-      if (entry.contentRect.width > 0) setPaneW(entry.contentRect.width + untrack(rightWidth));
-    });
-    ro.observe(el);
-    onCleanup(() => ro.disconnect());
-  });
+  createEffect(
+    () => colEls()[focusedEditorPane()],
+    (el) => {
+      if (!el) return;
+      const ro = new ResizeObserver(([entry]) => {
+        // display:none and detached both report 0. Zero is never a real width for
+        // a focused column, so keep the last honest measurement instead of
+        // collapsing the bound below to its floor.
+        if (entry.contentRect.width > 0) setPaneW(entry.contentRect.width + untrack(rightWidth));
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    },
+  );
   // Unbounded until the pane has been measured, so a drag can never be pinned to
   // the floor by a width nothing has reported yet.
   const rightMax = () => (paneW() <= 0 ? Infinity : Math.max(px(RIGHT_W_MIN), paneW() - px(CODE_MIN)));
@@ -837,7 +838,9 @@ export default function Editor(props: {
   // when they open rather than being handed it, so nothing has to be plumbed
   // through App to two components that mount and unmount on a keystroke.
   const [frecency, setFrecency] = createSignal<FrecencyStore>(loadFrecency(Date.now()));
-  createEffect(() => saveFrecency(frecency()));
+  createEffect(frecency, (store) => {
+    saveFrecency(store);
+  });
 
   /** Note working in a file. Synthetic views are skipped for `recordJump`'s
    *  reason: `tori://` is not a path any picker can offer. */
@@ -918,7 +921,10 @@ export default function Editor(props: {
   // while the tab, and the page the reader was on, are still there - so a
   // mount-scoped release would re-parse the file on every switch back. This one
   // effect covers every way a tab goes away (close, purge, workspace delete).
-  createEffect(on(allOpenPaths, (paths) => releasePdfsExcept(paths)));
+  createEffect(allOpenPaths, (paths) => {
+    // The release writes the module level view store, whose write cannot flush from an effect callback.
+    queueMicrotask(() => releasePdfsExcept(paths));
+  });
 
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
   // The active tab when it is a real file. The three suffix tests below ask
@@ -1450,19 +1456,24 @@ export default function Editor(props: {
   // Save-as). Until it arrives `isScratchPath` answers false for everything, so
   // both of those decline rather than guess.
   const [scratchDir, setScratchDir] = createSignal<string | null>(null);
-  onMount(async () => {
-    setScratchDir(await scratchDirPath());
+  onSettled(() => {
+    void (async () => {
+      setScratchDir(await scratchDirPath());
+    })();
   });
 
   // A selection without an available Session tab falls back to Files, so the
   // pane is never stuck on a mode the current selection can't show.
-  createEffect(() => {
-    if (chatId()) {
-      if (rightMode() !== "artifacts") setRightMode("artifacts");
-      return;
-    }
-    if (rightMode() === "artifacts") setRightMode(untrack(rightTabs)[0]?.mode ?? "files");
-  });
+  createEffect(
+    () => [chatId(), rightMode()] as const,
+    ([chat, mode]) => {
+      if (chat) {
+        if (mode !== "artifacts") setRightMode("artifacts");
+        return;
+      }
+      if (mode === "artifacts") setRightMode(untrack(rightTabs)[0]?.mode ?? "files");
+    },
+  );
 
   // A debug run holds a *debuggee*: a process the workspace's code is running,
   // with its own ports, open files and children. Leaving the workspace is
@@ -1483,39 +1494,52 @@ export default function Editor(props: {
   // when the value changes, and a Selection rebuilt with the same key would
   // then stop the run anyway.
   const wsKey = createMemo(ws);
-  createEffect(
-    on(wsKey, () => {
+  createEffect(wsKey, () => {
+    // Deferred: the debug stores are live state, and a flush from here is a no-op.
+    queueMicrotask(() => {
       void stopAllDap();
       // A build still running would start its run in the project just left.
       debugBuild()?.cancel();
       // And the transcript with them: what is on screen is another workspace's
       // program output, and the pane has no way to say whose it was.
       clearDebugConsole();
-    }),
-  );
+    });
+  });
 
   // A file a link in another worktree asked for, opened once this pane shows
   // that worktree and its own tabs are back, so the restore does not skip a
   // strip it sees as already open.
-  createEffect(() => {
-    const want = pendingFileOpen();
-    if (!want) return;
-    if (Date.now() - want.at > PENDING_OPEN_TTL_MS) return setPendingFileOpen(null);
-    const roots = treeRoots()?.map((r) => r.path) ?? (root() ? [root()!] : []);
-    if (!roots.some((r) => isUnderPath(want.path, r))) return;
-    setPendingFileOpen(null);
-    const w = ws();
-    void fileRestore(w).then(() => {
-      if (ws() === w) emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: want.path, line: want.line });
-    });
-  });
+  createEffect(
+    () => {
+      const want = pendingFileOpen();
+      if (!want) return null;
+      const roots = treeRoots()?.map((r) => r.path) ?? (root() ? [root()!] : []);
+      return { want, roots, w: ws() };
+    },
+    (seen) => {
+      if (!seen) return;
+      const { want, roots, w } = seen;
+      const expired = Date.now() - want.at > PENDING_OPEN_TTL_MS;
+      if (!expired && !roots.some((r) => isUnderPath(want.path, r))) return;
+      // Deferred: the pending open is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        if (pendingFileOpen() !== want) return;
+        setPendingFileOpen(null);
+        if (expired) return;
+        void fileRestore(w).then(() => {
+          if (ws() === w) emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: want.path, line: want.line });
+        });
+      });
+    },
+  );
 
   // Projects already swept by local_history_prune this run.
   const prunedHistory = new Set<string>();
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
   // review surface refresh on external changes.
-  createEffect(
-    on(root, (r) => {
+  createEffect(root, (r) => {
+    // Deferred: these stores are live state, and a flush from here is a no-op.
+    queueMicrotask(() => {
       // Which slot the one-repo surfaces read. Only the pointer: the slots
       // themselves follow the member set, below, so moving the active member
       // inside a Topic costs no read at all.
@@ -1554,8 +1578,8 @@ export default function Editor(props: {
           if (evicted.length) void import("./lspClient").then((m) => m.stopEvictedLspRoots(evicted));
         });
       }
-    }),
-  );
+    });
+  });
 
   // The watcher is the one thing that follows the whole Topic rather than the
   // member in front: a background member's edit still has to reach the tree
@@ -1576,22 +1600,24 @@ export default function Editor(props: {
   // The git store spans the same set, and for the same reason: a background
   // member's numbers have to be true for the section showing them, the palette
   // and the sidebar count, none of which is the member in front.
-  createEffect(
-    on(watchKey, (joined) => {
+  createEffect(watchKey, (joined) => {
+    // Deferred: the git store is live state, and a flush from here is a no-op.
+    queueMicrotask(() => {
       const roots = joined ? joined.split("\n") : [];
       enterRoots(roots, root());
       void Promise.all(roots.map((r) => refreshGit(r))).then(() => traceSettle("git", ws()));
-    }),
-  );
+    });
+  });
   createEffect(
-    on(watchKey, (joined) => {
+    () => [watchKey(), untrack(() => props.selected?.kind)] as const,
+    ([joined, kind]) => {
       const roots = joined ? joined.split("\n") : [];
       // An empty set still goes out for a Topic: it evicts, where skipping
       // would leave the last Topic's members watched and unmuted, emitting
       // bursts for a tree nobody is looking at.
-      if (props.selected?.kind === "topic") invoke("fs_watch_set", { roots }).catch(() => {});
+      if (kind === "topic") invoke("fs_watch_set", { roots }).catch(() => {});
       else if (roots.length) invoke("fs_watch_start", { projectPath: roots[0] }).catch(() => {});
-    }),
+    },
   );
 
   // A tab is bucketed by the workspace selected when it was opened, which is
@@ -1645,10 +1671,10 @@ export default function Editor(props: {
     };
     el.addEventListener("dragover", over, true);
     el.addEventListener("drop", drop, true);
-    onCleanup(() => {
+    return () => {
       el.removeEventListener("dragover", over, true);
       el.removeEventListener("drop", drop, true);
-    });
+    };
   }
 
   let slotBusy: Promise<void> = Promise.resolve();
@@ -1784,15 +1810,18 @@ export default function Editor(props: {
   // re-restore over tabs you have since closed.
   const restoredWs = new Map<string, Promise<void>>();
 
-  createEffect(() => {
-    const live = toStore(
-      Object.entries(tabsByWs()).flatMap(([workspace, ts]) => ts.map((t) => ({ path: t.path, workspace }))),
-      activeByWs(),
-      Date.now(),
-    );
-    for (const w of Object.keys(live)) touchedWs.add(w);
-    saveTabs(mergeStore(restorable, live, touchedWs));
-  });
+  createEffect(
+    () =>
+      toStore(
+        Object.entries(tabsByWs()).flatMap(([workspace, ts]) => ts.map((t) => ({ path: t.path, workspace }))),
+        activeByWs(),
+        Date.now(),
+      ),
+    (live) => {
+      for (const w of Object.keys(live)) touchedWs.add(w);
+      saveTabs(mergeStore(restorable, live, touchedWs));
+    },
+  );
 
   // Restore on first visit to a workspace, automatically. The terminal's
   // equivalent is an offer banner because a relaunch must never silently spawn
@@ -1860,8 +1889,7 @@ export default function Editor(props: {
   }
   onCleanup(registerFileRestore(fileRestore));
 
-  createEffect(() => {
-    const w = ws();
+  createEffect(ws, (w) => {
     if (w) void fileRestore(w);
   });
 
@@ -1995,16 +2023,18 @@ export default function Editor(props: {
   // Clear first, so switching sessions never leaves the previous session's
   // markers on screen while the new fetch is in flight.
   createEffect(
-    on(
-      () => [props.selected?.sessionPath, props.selected?.agent],
-      () => {
+    () => [props.selected?.sessionPath, props.selected?.agent] as const,
+    () => {
+      // Deferred: the touched and editing stores are live state, which a flush
+      // from here cannot reach, and the fetches read the selection.
+      queueMicrotask(() => {
         setTouchedPaths(new Set());
         void refreshTouched();
         clearEditing();
         actors = null;
         void refreshActors();
-      },
-    ),
+      });
+    },
   );
 
   // --- Live "editing now" ---------------------------------------------------
@@ -2092,11 +2122,10 @@ export default function Editor(props: {
 
   // Turn end clears the label immediately rather than waiting out the quiet
   // timer: "Executing" dropping is a definite end-of-turn signal.
-  createEffect(
-    on(selectedExecuting, (executing) => {
-      if (!executing) clearEditing();
-    }),
-  );
+  createEffect(selectedExecuting, (executing) => {
+    // Deferred: the editing indication is live state, and a flush from here is a no-op.
+    if (!executing) queueMicrotask(clearEditing);
+  });
 
   // A tree revert just rewrote/removed files on disk. The fs watcher would
   // deliver these too, but a revert is a deliberate, destructive action whose
@@ -2271,26 +2300,21 @@ export default function Editor(props: {
     });
   }
 
-  createEffect(() => publishDirtyPaths(Object.keys(dirty()).filter((p) => dirty()[p])));
-  onCleanup(() => publishDirtyPaths([]));
-
-  // Published for the command palette, which is this pane's sibling and can
-  // reach none of the above. One effect over everything the snapshot names, so
-  // its parts can never describe two different moments.
-  createEffect(() => {
-    const active = activeId();
-    // A synthetic view reports no active *file*, so the palette's save, preview,
-    // go-to-line and stage commands correctly refuse on it. `tabCount` still
-    // counts it, which is what keeps "Close editor tab" available.
-    const file = active && !isSyntheticId(active) ? active : null;
-    publishEditorState({
-      activePath: file,
-      dirty: file ? !!dirty()[file] : false,
-      tabCount: tabs().length,
-      projectRoot: gitRoot(),
-      recentJumps: recentTargets(jumps()),
-    });
+  let unmounted = false;
+  createEffect(
+    () => Object.keys(dirty()).filter((p) => dirty()[p]),
+    (paths) => {
+      // Deferred: the published set is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        if (!unmounted) publishDirtyPaths(paths);
+      });
+    },
+  );
+  onCleanup(() => {
+    unmounted = true;
+    publishDirtyPaths([]);
   });
+
   onCleanup(clearEditorState);
 
   // --- Command registry -----------------------------------------------------
@@ -2387,6 +2411,32 @@ export default function Editor(props: {
   // front, since that is the one whose changes you are looking at; the member in
   // front otherwise, which is the only answer a branch unit has.
   const gitRoot = () => rootOf(activeId(), watchRoots()) ?? root();
+
+  // Published for the command palette, which is this pane's sibling and can
+  // reach none of the above. One effect over everything the snapshot names, so
+  // its parts can never describe two different moments.
+  createEffect(
+    () => {
+      const active = activeId();
+      // A synthetic view reports no active *file*, so the palette's save, preview,
+      // go-to-line and stage commands correctly refuse on it. `tabCount` still
+      // counts it, which is what keeps "Close editor tab" available.
+      const file = active && !isSyntheticId(active) ? active : null;
+      return {
+        activePath: file,
+        dirty: file ? !!dirty()[file] : false,
+        tabCount: tabs().length,
+        projectRoot: gitRoot(),
+        recentJumps: recentTargets(jumps()),
+      };
+    },
+    (state) => {
+      // Deferred: the editor state is live state, and a flush from here is a no-op.
+      queueMicrotask(() => {
+        if (!unmounted) publishEditorState(state);
+      });
+    },
+  );
 
   // The root a palette command that writes git may act in. A reference member's
   // checkout is the user's own, so it answers null with the reason said, the
@@ -2605,292 +2655,294 @@ export default function Editor(props: {
   let offGitWatch: (() => void) | undefined;
   let offCommands: (() => void)[] = [];
 
-  onMount(async () => {
-    // Registered before the first await: these are synchronous window listeners,
-    // and there is no reason to leave a window in which a command silently does
-    // nothing.
-    offCommands = [
-      onEvent(EDITOR_CLOSE_TAB, () => {
-        const id = activeId();
-        if (id) void closeTab(id);
-      }),
-      onWith<EditorClosePath>(EDITOR_CLOSE_PATH, ({ path, discard }) => {
-        if (discard) return forceCloseFile(path);
-        const tab = tabs().find((t) => t.path === path);
-        if (tab) void closeTab(tabId(tab));
-      }),
-      // Pane-scoped tab keys (plan phase 6): the same events the terminal
-      // panel handles for its own tabs, gated on which pane holds focus, so
-      // one keystroke acts on exactly one pane. Close goes through closeTab,
-      // which already asks before discarding a dirty buffer.
-      onEvent(CLOSE_TAB, () => {
-        if (!kindPaneFocused(ws(), "file")) return;
-        const id = activeId();
-        if (id) void closeTab(id);
-      }),
-      onWith<TabJump>(TAB_JUMP, ({ index }) => {
-        if (!kindPaneFocused(ws(), "file")) return;
-        const t = tabs()[index];
-        if (t) setActiveId(tabId(t));
-      }),
-      onEvent(TAB_CYCLE, () => {
-        if (!kindPaneFocused(ws(), "file")) return;
-        const list = tabs();
-        if (!list.length) return;
-        const idx = list.findIndex((t) => tabId(t) === activeId());
-        setActiveId(tabId(list[(idx + 1) % list.length]));
-      }),
-      onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
-      onEvent(EDITOR_TOGGLE_SOFT_WRAP, toggleSoftWrap),
-      onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
-      onEvent(EDITOR_NEW_SCRATCH, () => void newScratch()),
-      onEvent(EDITOR_SAVE_AS, () => void saveAsFromPrompt()),
-      onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
-      onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
-      onEvent(DEBUG_START, () => void startDebugging()),
-      onEvent(DEBUG_STOP, stopDebugging),
-      onEvent(DEBUG_TOGGLE_BREAKPOINT, () => {
-        const at = caretHere();
-        const path = activeFileTab()?.path;
-        if (at && path) toggleBreak(path, at.line);
-      }),
-      onEvent(DEBUG_RESTART, () => void restartDebugging()),
-      onWith<DebugPick>(DEBUG_PICK, (d) => {
-        if (d?.kind) void pickDebugKind(d.kind);
-      }),
-      onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
-      onEvent(FOCUS_PR_REVIEW, focusPrReview),
-      onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
-      onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
-      onEvent(GIT_COMMIT, () => void commitFromPrompt()),
-      onEvent(GIT_PUSH, pushCurrentBranch),
-      onEvent(GIT_FETCH, () => {
-        const r = gitRoot();
-        if (r) void fetchIn(r);
-      }),
-      onEvent(GIT_PULL, () => {
-        const r = gitRoot();
-        if (r) void pullIn(r, guardAsk, false, !!referenceAt(r));
-      }),
-      onEvent(GIT_PULL_REBASE, () => {
-        const r = gitWriteRoot();
-        if (r) void pullIn(r, guardAsk, true);
-      }),
-      onEvent(GIT_SYNC, () => void syncCurrentBranch()),
-      onEvent(GIT_SYNC_REBASE, () => void rebaseSyncCurrentBranch()),
-      onEvent(GIT_RESET_UPSTREAM, () => {
-        const r = gitWriteRoot();
-        if (r) void resetToUpstream(r, guardAsk);
-      }),
-      onEvent(GIT_MERGE_BASE, mergeBaseHere),
-      onEvent(GIT_STAGE_ALL, () => {
-        const r = gitWriteRoot();
-        if (r) void stageAll(r);
-      }),
-      onEvent(GIT_UNSTAGE_ALL, () => {
-        const r = gitWriteRoot();
-        if (r) void unstageAll(r);
-      }),
-      onEvent(GIT_DISCARD_ALL, () => void discardAllHere()),
-      onEvent(GIT_COMMIT_SIGNOFF, () => void commitFromPromptSignedOff()),
-      onEvent(GIT_UNDO_COMMIT, () => void undoLastCommitHere()),
-      onEvent(GIT_STASH_STAGED, () => {
-        const r = gitWriteRoot();
-        if (r) void stashStaged(r);
-      }),
-      onEvent(GIT_MERGE_BRANCH, () => {
-        void pickBranch("Merge which branch?", { exceptCurrent: true }).then(async (c) => {
-          if (c) reportIntegrate(await merge(c.root, c.branch), "Merge");
-        });
-      }),
-      onEvent(GIT_REBASE_BRANCH, () => {
-        void pickBranch("Rebase onto which branch?", { exceptCurrent: true }).then(async (c) => {
-          if (c) reportIntegrate(await rebase(c.root, c.branch), "Rebase");
-        });
-      }),
-      onEvent(GIT_ABORT, () => {
-        const r = gitWriteRoot();
-        if (r) void abortIntegrate(r);
-      }),
-      onEvent(GIT_CONTINUE, () => void rewriteHere("Continue", continueIntegrate, true)),
-      onEvent(GIT_SKIP, () => void rewriteHere("Skip", skipCommit, true)),
-      onEvent(GIT_AUTOSQUASH, () => void rewriteHere("Autosquash", rebaseAutosquash)),
-      onEvent(GIT_BRANCH_CREATE, () => void createBranchHere()),
-      onEvent(GIT_BRANCH_RENAME, () => void renameBranchHere()),
-      onEvent(GIT_BRANCH_DELETE, () => void deleteBranchHere()),
-    ];
-    // `.git` is watcher-filtered, so a fetch moving the upstream emits no
-    // fs://changed. Subscribed here because this component outlives the panel
-    // that used to hold these listeners.
-    offGitWatch = await startGitWatch();
-    // Turn end for every adapter: the transcript watcher's debounced signal.
-    offTouched = await listen("sessions://changed", () => {
-      void refreshTouched();
-      void refreshActors().then(refreshEditing);
-    });
-    offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
-      if (!d?.path) return;
-      if (d.preview) void openPreview(d.path);
-      else {
-        openFile(d.path);
-        // A plain open asks for a tab of its own, so a preview already showing
-        // this file is kept rather than left for the next click to replace.
-        pinTab(d.path);
-      }
-      if (d.rendered && !previewingOf(d.path)) togglePreviewOf(d.path);
-      if (d.side) emitWith<SplitPane>(SPLIT_PANE, { dir: "row", tabId: d.path, kind: "file" });
-      if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
-      // The one place arrivals are recorded. Go-to-definition, a search hit and
-      // a quick-open pick all reach the editor through this event, so recording
-      // it here is what keeps each of them worth exactly one entry - a second
-      // recording site per feature is how a jump list ends up with two entries
-      // for one destination.
-      recordJump({ path: d.path, line: d.line });
-      noteTouch(d.path, "open");
-    });
-    offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
-    offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace, roots }) => {
-      purgeWorkspaceKey(workspace);
-      for (const r of roots ?? []) dropMemberDebugState(r);
-    });
-    offWorkspaceMoved = onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => moveWorkspaceState(moves));
-    // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
-    // refocuses its input even when the mode is already active.
-    offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
-      setRightMode("search");
-      setSearchFocusNonce((n) => n + 1);
-    });
-    offSetRightMode = onWith<SetRightMode>(SET_RIGHT_MODE, (d) => {
-      if (d?.mode) setRightMode(d.mode);
-      if (d?.section) revealTab(d.section);
-    });
-    offSearchInFolder = onWith<SearchInFolder>(SEARCH_IN_FOLDER, (d) => {
-      setSearchScope({ ...d, nonce: ++searchScopeNonce });
-      setRightMode("search");
-    });
-    offFileRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
-      if (d?.from && d.to) followRename(d.from, d.to);
-    });
-    offTabsJoined = onWith<TabsJoined>(TABS_JOINED, async ({ from, to }) => {
-      await Promise.all([fileRestore(from), fileRestore(to)]);
-      const { [from]: moving = [], ...tabs } = tabsByWs();
-      if (!moving.length) return;
-      const have = tabs[to] ?? [];
-      // One replaceable tab per strip: a second one coming in is kept instead.
-      const transient = have.some((t) => t.transient);
-      const add = moving
-        .filter((m) => !have.some((h) => h.path === m.path))
-        .map((m) => (transient && m.transient ? { path: m.path, name: m.name } : m));
-      setTabsByWs({ ...tabs, [to]: [...have, ...add] });
-      const { [from]: was = null, ...active } = activeByWs();
-      setActiveByWs(was && !active[to] ? { ...active, [to]: was } : active);
-      touchedWs.add(from);
-      touchedWs.add(to);
-    });
-    offRootMoved = onWith<RootMoved>(ROOT_MOVED, ({ workspace, from, to }) => {
-      const next = retargetCleanTabs(
-        { tabs: tabsByWs(), active: activeByWs() },
-        workspace,
-        from,
-        to,
-        (p) => !!dirty()[p],
-      );
-      setTabsByWs(next.tabs);
-      setActiveByWs(next.active);
-    });
-    // Follow mode: auto-open the most-recently-changed project file. The watcher
-    // already filters .git/node_modules/dist/target, and self-writes are skipped,
-    // so follow never jumps to git internals, build output, or our own saves.
-    offFollow = await listen<FsChanged>("fs://changed", (e) => {
-      // Another root's burst is not this workspace's news, even though the
-      // backend mutes background roots: a burst can land mid-switch.
-      if (e.payload.root && e.payload.root !== props.selected?.folderPath) return;
-      const external = e.payload.paths.filter((p) => !isSelfWrite(p));
-      // The fs fallback for the live indicator: only consulted when the
-      // session's own parser named nothing, so an adapter Tori can read is
-      // never second-guessed by a weaker signal. Tori's own saves are already
-      // out (isSelfWrite), so the editor can never make a session look busy.
-      const sel = props.selected;
-      if (sel && !lastParserPath && selectedExecuting() && external.length) {
-        const inFolder = external.filter((p) => isUnderPath(p, sel.folderPath));
-        if (inFolder.length) {
-          publishEditing(
-            editingIndication({
-              executing: true,
-              parserPath: null,
-              fsPath: inFolder[inFolder.length - 1],
-              soleLiveActor: isSoleLiveActor(actors, sel.sessionId, sel.folderPath),
-            }),
-          );
-        }
-      }
-      if (!followEdits()) return;
-      if (external.length) openFile(external[external.length - 1]);
-    });
-    // The red button only hides the window: sessions live in the daemon and the
-    // tray stays, so closing is not leaving. Hot exit writes on the way out of
-    // sight, because a hidden window can sit for days and then die unasked.
-    offClose = await getCurrentWindow().onCloseRequested(async (event) => {
-      event.preventDefault();
-      flushDeferredWrites();
-      await getCurrentWindow().hide();
-      if (!editorDefaults().hotExit) return;
-      const anyDirty = Object.values(dirty()).some(Boolean);
-      const kept = anyDirty ? await requestStash() : await saveStash(stashToWrite({}));
-      if (!kept) console.error("the hot-exit stash was not written on hide");
-    });
-    // window.confirm can't run here, so the window is destroyed by hand once
-    // the user confirms.
-    offQuit = await listen("app://quit", async () => {
-      void invoke("quit_heard");
-      // Before any branch: every exit below is `destroy()`, which skips
-      // `beforeunload`, and the layout stores write on a debounce now.
-      flushDeferredWrites();
-      // The app's own quit question comes before the editor's: a refused quit
-      // must not have stashed buffers or asked about them on the way out. The
-      // guards are registered elsewhere (App.tsx); this is the only quit
-      // listener in the app, see utils/closeGuard.
-      if (!(await closeAllowed())) return;
-      const anyDirty = Object.values(dirty()).some(Boolean);
-      // Hot exit rewrites the stash on *every* quit, not only when something is
-      // unsaved. The file is the whole of this feature's memory, and a quit
-      // that wrote nothing left the previous run's entries sitting in it: the
-      // next launch loaded them, marked those tabs dirty, and handed the old
-      // text back over files that had since been saved. Worse than useless,
-      // because `savedText` still matched disk, so it did not even raise the
-      // conflict banner - it just quietly reintroduced edits the user had
-      // already dealt with.
-      //
-      // With nothing dirty the write costs one small file and resolves in
-      // milliseconds; `stashToWrite` then yields whatever is still genuinely
-      // pending (a stashed tab nobody clicked keeps its entry, a claimed or
-      // saved one does not).
-      // With nothing dirty the pane has nothing to add, and asking it would wait
-      // out the timeout when no file is open, since then it is not mounted.
-      if (!anyDirty) {
-        if (editorDefaults().hotExit && !(await saveStash(stashToWrite({})))) {
-          console.error("the hot-exit stash was not rewritten on quit");
-        }
-        await getCurrentWindow().destroy();
-        return;
-      }
-      // Hot exit replaces the prompt rather than sitting beside it: there is
-      // nothing to warn about once the work is kept. But only once it *is*
-      // kept - the key being on is not evidence that anything reached the
-      // disk, so a refused or unanswered stash falls back to the same confirm
-      // that has always been here, and no buffer goes quietly.
-      if (editorDefaults().hotExit && (await requestStash())) {
-        await getCurrentWindow().destroy();
-        return;
-      }
-      const ok = await askConfirm({
-        title: "You have unsaved changes.",
-        message: "Close anyway? Unsaved edits will be lost.",
-        confirmLabel: "Close without saving",
-        danger: true,
+  onSettled(() => {
+    void (async () => {
+      // Registered before the first await: these are synchronous window listeners,
+      // and there is no reason to leave a window in which a command silently does
+      // nothing.
+      offCommands = [
+        onEvent(EDITOR_CLOSE_TAB, () => {
+          const id = activeId();
+          if (id) void closeTab(id);
+        }),
+        onWith<EditorClosePath>(EDITOR_CLOSE_PATH, ({ path, discard }) => {
+          if (discard) return forceCloseFile(path);
+          const tab = tabs().find((t) => t.path === path);
+          if (tab) void closeTab(tabId(tab));
+        }),
+        // Pane-scoped tab keys (plan phase 6): the same events the terminal
+        // panel handles for its own tabs, gated on which pane holds focus, so
+        // one keystroke acts on exactly one pane. Close goes through closeTab,
+        // which already asks before discarding a dirty buffer.
+        onEvent(CLOSE_TAB, () => {
+          if (!kindPaneFocused(ws(), "file")) return;
+          const id = activeId();
+          if (id) void closeTab(id);
+        }),
+        onWith<TabJump>(TAB_JUMP, ({ index }) => {
+          if (!kindPaneFocused(ws(), "file")) return;
+          const t = tabs()[index];
+          if (t) setActiveId(tabId(t));
+        }),
+        onEvent(TAB_CYCLE, () => {
+          if (!kindPaneFocused(ws(), "file")) return;
+          const list = tabs();
+          if (!list.length) return;
+          const idx = list.findIndex((t) => tabId(t) === activeId());
+          setActiveId(tabId(list[(idx + 1) % list.length]));
+        }),
+        onEvent(EDITOR_TOGGLE_PREVIEW, togglePreview),
+        onEvent(EDITOR_TOGGLE_SOFT_WRAP, toggleSoftWrap),
+        onEvent(EDITOR_GOTO_LINE, () => void gotoLineFromPrompt()),
+        onEvent(EDITOR_NEW_SCRATCH, () => void newScratch()),
+        onEvent(EDITOR_SAVE_AS, () => void saveAsFromPrompt()),
+        onEvent(EDITOR_NAV_BACK, () => goJump(-1)),
+        onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
+        onEvent(DEBUG_START, () => void startDebugging()),
+        onEvent(DEBUG_STOP, stopDebugging),
+        onEvent(DEBUG_TOGGLE_BREAKPOINT, () => {
+          const at = caretHere();
+          const path = activeFileTab()?.path;
+          if (at && path) toggleBreak(path, at.line);
+        }),
+        onEvent(DEBUG_RESTART, () => void restartDebugging()),
+        onWith<DebugPick>(DEBUG_PICK, (d) => {
+          if (d?.kind) void pickDebugKind(d.kind);
+        }),
+        onEvent(EDITOR_REOPEN_CLOSED, reopenClosedTab),
+        onEvent(FOCUS_PR_REVIEW, focusPrReview),
+        onEvent(GIT_STAGE_ACTIVE, () => stageActive(true)),
+        onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
+        onEvent(GIT_COMMIT, () => void commitFromPrompt()),
+        onEvent(GIT_PUSH, pushCurrentBranch),
+        onEvent(GIT_FETCH, () => {
+          const r = gitRoot();
+          if (r) void fetchIn(r);
+        }),
+        onEvent(GIT_PULL, () => {
+          const r = gitRoot();
+          if (r) void pullIn(r, guardAsk, false, !!referenceAt(r));
+        }),
+        onEvent(GIT_PULL_REBASE, () => {
+          const r = gitWriteRoot();
+          if (r) void pullIn(r, guardAsk, true);
+        }),
+        onEvent(GIT_SYNC, () => void syncCurrentBranch()),
+        onEvent(GIT_SYNC_REBASE, () => void rebaseSyncCurrentBranch()),
+        onEvent(GIT_RESET_UPSTREAM, () => {
+          const r = gitWriteRoot();
+          if (r) void resetToUpstream(r, guardAsk);
+        }),
+        onEvent(GIT_MERGE_BASE, mergeBaseHere),
+        onEvent(GIT_STAGE_ALL, () => {
+          const r = gitWriteRoot();
+          if (r) void stageAll(r);
+        }),
+        onEvent(GIT_UNSTAGE_ALL, () => {
+          const r = gitWriteRoot();
+          if (r) void unstageAll(r);
+        }),
+        onEvent(GIT_DISCARD_ALL, () => void discardAllHere()),
+        onEvent(GIT_COMMIT_SIGNOFF, () => void commitFromPromptSignedOff()),
+        onEvent(GIT_UNDO_COMMIT, () => void undoLastCommitHere()),
+        onEvent(GIT_STASH_STAGED, () => {
+          const r = gitWriteRoot();
+          if (r) void stashStaged(r);
+        }),
+        onEvent(GIT_MERGE_BRANCH, () => {
+          void pickBranch("Merge which branch?", { exceptCurrent: true }).then(async (c) => {
+            if (c) reportIntegrate(await merge(c.root, c.branch), "Merge");
+          });
+        }),
+        onEvent(GIT_REBASE_BRANCH, () => {
+          void pickBranch("Rebase onto which branch?", { exceptCurrent: true }).then(async (c) => {
+            if (c) reportIntegrate(await rebase(c.root, c.branch), "Rebase");
+          });
+        }),
+        onEvent(GIT_ABORT, () => {
+          const r = gitWriteRoot();
+          if (r) void abortIntegrate(r);
+        }),
+        onEvent(GIT_CONTINUE, () => void rewriteHere("Continue", continueIntegrate, true)),
+        onEvent(GIT_SKIP, () => void rewriteHere("Skip", skipCommit, true)),
+        onEvent(GIT_AUTOSQUASH, () => void rewriteHere("Autosquash", rebaseAutosquash)),
+        onEvent(GIT_BRANCH_CREATE, () => void createBranchHere()),
+        onEvent(GIT_BRANCH_RENAME, () => void renameBranchHere()),
+        onEvent(GIT_BRANCH_DELETE, () => void deleteBranchHere()),
+      ];
+      // `.git` is watcher-filtered, so a fetch moving the upstream emits no
+      // fs://changed. Subscribed here because this component outlives the panel
+      // that used to hold these listeners.
+      offGitWatch = await startGitWatch();
+      // Turn end for every adapter: the transcript watcher's debounced signal.
+      offTouched = await listen("sessions://changed", () => {
+        void refreshTouched();
+        void refreshActors().then(refreshEditing);
       });
-      if (ok) await getCurrentWindow().destroy();
-    });
+      offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
+        if (!d?.path) return;
+        if (d.preview) void openPreview(d.path);
+        else {
+          openFile(d.path);
+          // A plain open asks for a tab of its own, so a preview already showing
+          // this file is kept rather than left for the next click to replace.
+          pinTab(d.path);
+        }
+        if (d.rendered && !previewingOf(d.path)) togglePreviewOf(d.path);
+        if (d.side) emitWith<SplitPane>(SPLIT_PANE, { dir: "row", tabId: d.path, kind: "file" });
+        if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
+        // The one place arrivals are recorded. Go-to-definition, a search hit and
+        // a quick-open pick all reach the editor through this event, so recording
+        // it here is what keeps each of them worth exactly one entry - a second
+        // recording site per feature is how a jump list ends up with two entries
+        // for one destination.
+        recordJump({ path: d.path, line: d.line });
+        noteTouch(d.path, "open");
+      });
+      offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
+      offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace, roots }) => {
+        purgeWorkspaceKey(workspace);
+        for (const r of roots ?? []) dropMemberDebugState(r);
+      });
+      offWorkspaceMoved = onWith<WorkspaceMoved>(WORKSPACE_MOVED, ({ moves }) => moveWorkspaceState(moves));
+      // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
+      // refocuses its input even when the mode is already active.
+      offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
+        setRightMode("search");
+        setSearchFocusNonce((n) => n + 1);
+      });
+      offSetRightMode = onWith<SetRightMode>(SET_RIGHT_MODE, (d) => {
+        if (d?.mode) setRightMode(d.mode);
+        if (d?.section) revealTab(d.section);
+      });
+      offSearchInFolder = onWith<SearchInFolder>(SEARCH_IN_FOLDER, (d) => {
+        setSearchScope({ ...d, nonce: ++searchScopeNonce });
+        setRightMode("search");
+      });
+      offFileRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
+        if (d?.from && d.to) followRename(d.from, d.to);
+      });
+      offTabsJoined = onWith<TabsJoined>(TABS_JOINED, async ({ from, to }) => {
+        await Promise.all([fileRestore(from), fileRestore(to)]);
+        const { [from]: moving = [], ...tabs } = tabsByWs();
+        if (!moving.length) return;
+        const have = tabs[to] ?? [];
+        // One replaceable tab per strip: a second one coming in is kept instead.
+        const transient = have.some((t) => t.transient);
+        const add = moving
+          .filter((m) => !have.some((h) => h.path === m.path))
+          .map((m) => (transient && m.transient ? { path: m.path, name: m.name } : m));
+        setTabsByWs({ ...tabs, [to]: [...have, ...add] });
+        const { [from]: was = null, ...active } = activeByWs();
+        setActiveByWs(was && !active[to] ? { ...active, [to]: was } : active);
+        touchedWs.add(from);
+        touchedWs.add(to);
+      });
+      offRootMoved = onWith<RootMoved>(ROOT_MOVED, ({ workspace, from, to }) => {
+        const next = retargetCleanTabs(
+          { tabs: tabsByWs(), active: activeByWs() },
+          workspace,
+          from,
+          to,
+          (p) => !!dirty()[p],
+        );
+        setTabsByWs(next.tabs);
+        setActiveByWs(next.active);
+      });
+      // Follow mode: auto-open the most-recently-changed project file. The watcher
+      // already filters .git/node_modules/dist/target, and self-writes are skipped,
+      // so follow never jumps to git internals, build output, or our own saves.
+      offFollow = await listen<FsChanged>("fs://changed", (e) => {
+        // Another root's burst is not this workspace's news, even though the
+        // backend mutes background roots: a burst can land mid-switch.
+        if (e.payload.root && e.payload.root !== props.selected?.folderPath) return;
+        const external = e.payload.paths.filter((p) => !isSelfWrite(p));
+        // The fs fallback for the live indicator: only consulted when the
+        // session's own parser named nothing, so an adapter Tori can read is
+        // never second-guessed by a weaker signal. Tori's own saves are already
+        // out (isSelfWrite), so the editor can never make a session look busy.
+        const sel = props.selected;
+        if (sel && !lastParserPath && selectedExecuting() && external.length) {
+          const inFolder = external.filter((p) => isUnderPath(p, sel.folderPath));
+          if (inFolder.length) {
+            publishEditing(
+              editingIndication({
+                executing: true,
+                parserPath: null,
+                fsPath: inFolder[inFolder.length - 1],
+                soleLiveActor: isSoleLiveActor(actors, sel.sessionId, sel.folderPath),
+              }),
+            );
+          }
+        }
+        if (!followEdits()) return;
+        if (external.length) openFile(external[external.length - 1]);
+      });
+      // The red button only hides the window: sessions live in the daemon and the
+      // tray stays, so closing is not leaving. Hot exit writes on the way out of
+      // sight, because a hidden window can sit for days and then die unasked.
+      offClose = await getCurrentWindow().onCloseRequested(async (event) => {
+        event.preventDefault();
+        flushDeferredWrites();
+        await getCurrentWindow().hide();
+        if (!editorDefaults().hotExit) return;
+        const anyDirty = Object.values(dirty()).some(Boolean);
+        const kept = anyDirty ? await requestStash() : await saveStash(stashToWrite({}));
+        if (!kept) console.error("the hot-exit stash was not written on hide");
+      });
+      // window.confirm can't run here, so the window is destroyed by hand once
+      // the user confirms.
+      offQuit = await listen("app://quit", async () => {
+        void invoke("quit_heard");
+        // Before any branch: every exit below is `destroy()`, which skips
+        // `beforeunload`, and the layout stores write on a debounce now.
+        flushDeferredWrites();
+        // The app's own quit question comes before the editor's: a refused quit
+        // must not have stashed buffers or asked about them on the way out. The
+        // guards are registered elsewhere (App.tsx); this is the only quit
+        // listener in the app, see utils/closeGuard.
+        if (!(await closeAllowed())) return;
+        const anyDirty = Object.values(dirty()).some(Boolean);
+        // Hot exit rewrites the stash on *every* quit, not only when something is
+        // unsaved. The file is the whole of this feature's memory, and a quit
+        // that wrote nothing left the previous run's entries sitting in it: the
+        // next launch loaded them, marked those tabs dirty, and handed the old
+        // text back over files that had since been saved. Worse than useless,
+        // because `savedText` still matched disk, so it did not even raise the
+        // conflict banner - it just quietly reintroduced edits the user had
+        // already dealt with.
+        //
+        // With nothing dirty the write costs one small file and resolves in
+        // milliseconds; `stashToWrite` then yields whatever is still genuinely
+        // pending (a stashed tab nobody clicked keeps its entry, a claimed or
+        // saved one does not).
+        // With nothing dirty the pane has nothing to add, and asking it would wait
+        // out the timeout when no file is open, since then it is not mounted.
+        if (!anyDirty) {
+          if (editorDefaults().hotExit && !(await saveStash(stashToWrite({})))) {
+            console.error("the hot-exit stash was not rewritten on quit");
+          }
+          await getCurrentWindow().destroy();
+          return;
+        }
+        // Hot exit replaces the prompt rather than sitting beside it: there is
+        // nothing to warn about once the work is kept. But only once it *is*
+        // kept - the key being on is not evidence that anything reached the
+        // disk, so a refused or unanswered stash falls back to the same confirm
+        // that has always been here, and no buffer goes quietly.
+        if (editorDefaults().hotExit && (await requestStash())) {
+          await getCurrentWindow().destroy();
+          return;
+        }
+        const ok = await askConfirm({
+          title: "You have unsaved changes.",
+          message: "Close anyway? Unsaved edits will be lost.",
+          confirmLabel: "Close without saving",
+          danger: true,
+        });
+        if (ok) await getCurrentWindow().destroy();
+      });
+    })();
   });
   onCleanup(() => {
     clearTimeout(quietTimer);
@@ -3048,19 +3100,31 @@ export default function Editor(props: {
   const [slots, setSlots] = createSignal<Record<string, HTMLElement>>({});
   const holdSlot = (paneId: string, el: HTMLElement) => {
     setSlots((prev) => ({ ...prev, [paneId]: el }));
-    onCleanup(() =>
+    return () =>
       setSlots((prev) => {
         const next = { ...prev };
         if (next[paneId] === el) delete next[paneId];
         return next;
-      }),
-    );
+      });
   };
 
   /** One pane's editor column: what its tab is, said above the file, and what
    *  the tab actually is (a buffer, a rendered preview, an image, a view). The
    *  editor view itself is portalled into `.codeSlot` by CodeEditor. */
   function EditorColumn(p: { paneId: string }) {
+    let colEl: HTMLElement | undefined;
+    let slotEl: HTMLElement | undefined;
+    // The elements are recorded by the refs and registered once settled: a ref
+    // runs while the column is being created, where a signal write is refused.
+    onSettled(() => {
+      const paneId = p.paneId;
+      const stops = [
+        colEl && holdCol(paneId, colEl),
+        colEl && acceptPathDrops(colEl, paneId),
+        slotEl && holdSlot(paneId, slotEl),
+      ];
+      return () => stops.forEach((stop) => stop?.());
+    });
     const fileId = () => paneFileId(p.paneId);
     const focused = () => focusedEditorPane() === p.paneId;
     // A pane showing a terminal tab keeps its editor column mounted (buffers and
@@ -3092,10 +3156,7 @@ export default function Editor(props: {
         // Registered by pane id; the width observer effect above picks the
         // focused one, so the right panel's bound tracks focus and remounts
         // rather than whichever column happened to be focused at mount.
-        ref={(el) => {
-          holdCol(p.paneId, el);
-          acceptPathDrops(el, p.paneId);
-        }}
+        ref={(el) => (colEl = el)}
       >
         {/* Where the open file sits and where the caret sits in it. Below the
             tabs and above everything else in the column: a tab says which file,
@@ -3176,10 +3237,7 @@ export default function Editor(props: {
             </Button>
           </div>
         </Show>
-        <div
-          class={[styles.codeSlot, { [styles.hidden]: !editablePathOf(fileId()) }]}
-          ref={(el) => holdSlot(p.paneId, el)}
-        />
+        <div class={[styles.codeSlot, { [styles.hidden]: !editablePathOf(fileId()) }]} ref={(el) => (slotEl = el)} />
         <Show
           when={fileId()}
           fallback={
@@ -3319,108 +3377,112 @@ export default function Editor(props: {
   const stripTabs = (): FileUnifiedTab[] =>
     unifiedTabs().filter((u): u is FileUnifiedTab => u.kind === "file" && u.workspace === ws());
 
-  registerKind("file", {
-    // The chip composes *before* the file glyph rather than replacing it: `icon`
-    // is one slot, and the seti glyph is the other half of what a tab says.
-    icon: (u) => {
-      const t = asFile(u);
-      const m = tabMember(t.path);
-      return (
-        <>
-          {m && <TabMemberChip member={m} />}
-          {tabIcon(t)}
-        </>
-      );
-    },
-    // The repo reaches the accessible name through a hidden span, never
-    // `aria-label`: a name on a tab replaces its visible text rather than adding
-    // to it, and 34 `getByRole("tab", { name })` queries read that text.
-    title: (u) => {
-      const t = asFile(u);
-      const m = tabMember(t.path);
-      return (
-        <>
-          {m && <span class={patterns.srOnly}>{m.label} / </span>}
-          {tabLabel(t)}
-        </>
-      );
-    },
-    tooltip: (u) => {
-      const t = asFile(u);
-      const m = tabMember(t.path);
-      const base = tabTitle(t);
-      // A tab outlives its member's worktree, so the hover text is where the
-      // dimmed chip gets a name for what happened to it.
-      return m && !m.state.usable ? `${base}\n${m.label}: ${m.state.label}` : base;
-    },
-    dots: fileDots,
-    // The tab moves between panes either way (the registry says so); what a
-    // synthetic view cannot do is hand anyone a path, since dropping its id on
-    // a terminal would paste `tori://…`, which names nothing on disk.
-    onDragStart: (u, e) => {
-      const t = asFile(u);
-      if (isSyntheticId(t.path)) return;
-      e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
-      e.dataTransfer?.setData("text/plain", t.path);
-    },
-    // The menu wraps the tab instead of being the tab: `Tab` composes
-    // `Tooltip`, which already renders *as* the button, and two wrappers
-    // cannot own one element. The registry skips this wrap for the measuring
-    // ghost row, which is measured, never reached.
-    wrapTab: (u, tab) => (
-      <MaybeTabMenu when tab={asFile(u)}>
-        {tab}
-      </MaybeTabMenu>
-    ),
-    renderMenuItem: (u) => {
-      const t = asFile(u);
-      const m = tabMember(t.path);
-      // The overflow row is the one place two members' same-named files sit
-      // next to each other, so it spends the width on the whole `<repo> / <rel>`
-      // rather than on the basename the strip already showed.
-      const rel = m && repoRelative(t.path, m.key);
-      return (
-        <>
-          {m && <TabMemberChip member={m} />}
-          {tabIcon(t)}
-          <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : tabName(t)}</span>
-          {fileDots(u)}
-          <button
-            class="tab-close"
-            aria-label="Close"
-            onClick={(e) => {
-              e.stopPropagation();
-              closeTab(tabId(t));
-            }}
-          >
-            <Icon icon={X} />
-          </button>
-        </>
-      );
-    },
-    // No ranked cluster of its own any more: every control this panel had in
-    // the strip was about one file, and both went to the pane that holds it.
-    trailingEdge: editorFiletreeReveal,
-    activate: (u) => setActiveId(u.id),
-    close: (u) => void closeTab(u.id),
-    transient: (u) => !!asFile(u).transient,
-    onDoubleClick: (u) => pinTab(u.id),
-    // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
-    // strip and adopts the one shared editor stage; every workspace's tabs
-    // render into it, so the pane never needs a host per file.
-    stripItems: stripTabs,
-    // The workspace's own pick, not the focused pane's: a pane's strip resolves
-    // its own active tab from this (see activeIdInPane), and answering with the
-    // pane-derived one would ask this question in a circle.
-    stripActiveId: () => activeByWs()[ws()] ?? null,
-    stripReorder: (next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file)),
-    stripClass: styles.editorTabs,
-    // One host per pane (phase 9), so two panes can each hold a view; a pane-less
-    // panel keeps the single host it has always rendered into.
-    hostIds: (paneId, tabs) =>
-      paneId === null || tabs.length || isKindHome(ws(), "file", paneId)
-        ? [editorStageId(paneId ?? "editor-stage")]
-        : [],
+  // Registered once settled: the registry's generation signal is written by it,
+  // and a component body may not write.
+  onSettled(() => {
+    registerKind("file", {
+      // The chip composes *before* the file glyph rather than replacing it: `icon`
+      // is one slot, and the seti glyph is the other half of what a tab says.
+      icon: (u) => {
+        const t = asFile(u);
+        const m = tabMember(t.path);
+        return (
+          <>
+            {m && <TabMemberChip member={m} />}
+            {tabIcon(t)}
+          </>
+        );
+      },
+      // The repo reaches the accessible name through a hidden span, never
+      // `aria-label`: a name on a tab replaces its visible text rather than adding
+      // to it, and 34 `getByRole("tab", { name })` queries read that text.
+      title: (u) => {
+        const t = asFile(u);
+        const m = tabMember(t.path);
+        return (
+          <>
+            {m && <span class={patterns.srOnly}>{m.label} / </span>}
+            {tabLabel(t)}
+          </>
+        );
+      },
+      tooltip: (u) => {
+        const t = asFile(u);
+        const m = tabMember(t.path);
+        const base = tabTitle(t);
+        // A tab outlives its member's worktree, so the hover text is where the
+        // dimmed chip gets a name for what happened to it.
+        return m && !m.state.usable ? `${base}\n${m.label}: ${m.state.label}` : base;
+      },
+      dots: fileDots,
+      // The tab moves between panes either way (the registry says so); what a
+      // synthetic view cannot do is hand anyone a path, since dropping its id on
+      // a terminal would paste `tori://…`, which names nothing on disk.
+      onDragStart: (u, e) => {
+        const t = asFile(u);
+        if (isSyntheticId(t.path)) return;
+        e.dataTransfer?.setData(DRAG_PATH_MIME, t.path);
+        e.dataTransfer?.setData("text/plain", t.path);
+      },
+      // The menu wraps the tab instead of being the tab: `Tab` composes
+      // `Tooltip`, which already renders *as* the button, and two wrappers
+      // cannot own one element. The registry skips this wrap for the measuring
+      // ghost row, which is measured, never reached.
+      wrapTab: (u, tab) => (
+        <MaybeTabMenu when tab={asFile(u)}>
+          {tab}
+        </MaybeTabMenu>
+      ),
+      renderMenuItem: (u) => {
+        const t = asFile(u);
+        const m = tabMember(t.path);
+        // The overflow row is the one place two members' same-named files sit
+        // next to each other, so it spends the width on the whole `<repo> / <rel>`
+        // rather than on the basename the strip already showed.
+        const rel = m && repoRelative(t.path, m.key);
+        return (
+          <>
+            {m && <TabMemberChip member={m} />}
+            {tabIcon(t)}
+            <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : tabName(t)}</span>
+            {fileDots(u)}
+            <button
+              class="tab-close"
+              aria-label="Close"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeTab(tabId(t));
+              }}
+            >
+              <Icon icon={X} />
+            </button>
+          </>
+        );
+      },
+      // No ranked cluster of its own any more: every control this panel had in
+      // the strip was about one file, and both went to the pane that holds it.
+      trailingEdge: editorFiletreeReveal,
+      activate: (u) => setActiveId(u.id),
+      close: (u) => void closeTab(u.id),
+      transient: (u) => !!asFile(u).transient,
+      onDoubleClick: (u) => pinTab(u.id),
+      // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
+      // strip and adopts the one shared editor stage; every workspace's tabs
+      // render into it, so the pane never needs a host per file.
+      stripItems: stripTabs,
+      // The workspace's own pick, not the focused pane's: a pane's strip resolves
+      // its own active tab from this (see activeIdInPane), and answering with the
+      // pane-derived one would ask this question in a circle.
+      stripActiveId: () => activeByWs()[ws()] ?? null,
+      stripReorder: (next) => setTabs(next.filter((u): u is FileUnifiedTab => u.kind === "file").map((u) => u.file)),
+      stripClass: styles.editorTabs,
+      // One host per pane (phase 9), so two panes can each hold a view; a pane-less
+      // panel keeps the single host it has always rendered into.
+      hostIds: (paneId, tabs) =>
+        paneId === null || tabs.length || isKindHome(ws(), "file", paneId)
+          ? [editorStageId(paneId ?? "editor-stage")]
+          : [],
+    });
   });
 
   // A service host since phase 7: no visible output. The code side and the

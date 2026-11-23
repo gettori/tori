@@ -1,4 +1,4 @@
-import { onMount } from "solid-js";
+import { onSettled } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import SearchPanel from "./SearchPanel";
@@ -103,9 +103,9 @@ export const RestrictedToOneMember: Story = {
   args: { roots: MEMBERS },
   render: (args) => {
     let host: HTMLDivElement | undefined;
-    onMount(() =>
-      requestAnimationFrame(() => (host?.querySelector('[aria-label="Web App"]') as HTMLButtonElement | null)?.click()),
-    );
+    onSettled(() => {
+      requestAnimationFrame(() => (host?.querySelector('[aria-label="Web App"]') as HTMLButtonElement | null)?.click());
+    });
     return (
       <div ref={host} style={{ display: "flex", flex: 1, "min-width": 0 }}>
         <SearchPanel {...args} />

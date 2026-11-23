@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight, GitBranch, RefreshCw } from "../../components/Icon/icons";
 
@@ -71,16 +71,16 @@ export default function GraphView(props: { workspace: string }) {
    *  to hand it down. */
   const [base, setBase] = createSignal<string | null>(null);
   createEffect(
-    on(
-      () => props.workspace,
-      async (root) => {
+    () => props.workspace,
+    (root) => {
+      void (async () => {
         try {
           setBase(await invoke<string | null>("git_default_base_branch", { projectPath: root }));
         } catch {
           setBase(null);
         }
-      },
-    ),
+      })();
+    },
   );
 
   const isHead = (row: GraphRow) => row.entry.refs.some((r) => refPill(r).kind === "head");
@@ -122,12 +122,13 @@ export default function GraphView(props: { workspace: string }) {
   // every store write, should reload the history.
   const head = createMemo(() => gitStateFor(props.workspace).head);
   createEffect(
-    on([() => props.workspace, head], () => {
+    () => [props.workspace, head()] as const,
+    () => {
       setOpen(new Set<string>());
       setFiles({});
       setDone(false);
       void load(0);
-    }),
+    },
   );
 
   /** Expand a row, fetching its file list once. */

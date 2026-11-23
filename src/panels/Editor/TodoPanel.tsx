@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onSettled, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type FsChanged, type ToastEvent } from "../../utils/events";
@@ -171,26 +171,29 @@ export default function TodoPanel(props: {
   // reads the resolved value, so a workspace override re-scans exactly as a
   // user-level edit does.
   createEffect(
-    on([rootsKey, () => editorDefaults().todoPatterns], () => {
+    () => [rootsKey(), editorDefaults().todoPatterns] as const,
+    () => {
       // A tag that is no longer configured must not go on filtering the list
       // from a chip that is no longer on screen.
       setSelectedTags(new Set<string>());
       void scan();
-    }),
+    },
   );
 
   let unlistenFs: UnlistenFn | undefined;
-  onMount(async () => {
-    unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      const named = e.payload.root;
-      const roots = searchRoots().map((r) => r.path);
-      // An untagged burst is about all of them; a tagged one about exactly one,
-      // and one this panel may not be scanning at all.
-      const hit = named ? roots.filter((r) => r === named) : roots;
-      if (!hit.length) return;
-      for (const r of hit) dirtyRoots.add(r);
-      flushDirty();
-    });
+  onSettled(() => {
+    void (async () => {
+      unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
+        const named = e.payload.root;
+        const roots = searchRoots().map((r) => r.path);
+        // An untagged burst is about all of them; a tagged one about exactly one,
+        // and one this panel may not be scanning at all.
+        const hit = named ? roots.filter((r) => r === named) : roots;
+        if (!hit.length) return;
+        for (const r of hit) dirtyRoots.add(r);
+        flushDirty();
+      });
+    })();
   });
   onCleanup(() => {
     flushDirty.cancel();

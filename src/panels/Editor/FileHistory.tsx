@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitStateFor, type LogEntry } from "../../utils/gitActions";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
@@ -82,7 +82,10 @@ export default function FileHistory(props: { workspace: string; file: string }) 
   // Reloaded whenever the store re-reads this workspace's branch metadata, which
   // is exactly the set of things that move HEAD: a commit, a push, a fetch, a
   // checkout. A file save re-reads the *status* only, and leaves this alone.
-  createEffect(on([() => props.workspace, () => props.file, branch, aheadBehind], () => void load(false)));
+  createEffect(
+    () => [props.workspace, props.file, branch(), aheadBehind()] as const,
+    () => void load(false),
+  );
 
   function openCommit(sha: string) {
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("commit", props.workspace, sha) });

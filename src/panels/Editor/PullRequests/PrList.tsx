@@ -19,7 +19,7 @@
 // The price is that a branch the poller has not reached shows no checks, which
 // is the same honest blank the chip shows, for the same reason.
 
-import { createEffect, createMemo, on, onCleanup, For, Show } from "solid-js";
+import { createEffect, createMemo, onCleanup, For, Show } from "solid-js";
 import { onWith, PR_OPENED, type PrOpened } from "../../../utils/events";
 import { forgeBadges } from "../../../utils/forgeChip";
 import { projectPathFor } from "../../../utils/sessionActivity";
@@ -67,21 +67,27 @@ export default function PrList(props: {
   const paused = () => forgePause(props.root);
 
   // Accounts changing clears every resolution in the store, so ask again.
-  createEffect(() => {
-    const root = props.root;
-    if (root && !forgeRepo(root)) void resolveForgeRepo(root);
-  });
+  createEffect(
+    () => {
+      const root = props.root;
+      return root && !forgeRepo(root) ? root : null;
+    },
+    (root) => {
+      if (root) void resolveForgeRepo(root);
+    },
+  );
 
   // `ensure` on a project already read costs nothing, which is what makes
   // coming back from an opened pull request free. Signing in still fills the
   // list, because the pause dropped what was held and there is nothing left for
   // `ensure` to consider already read.
   createEffect(
-    on([() => props.root, paused], ([root, why]) => {
+    () => [props.root, paused()] as const,
+    ([root, why]) => {
       if (!root) return;
-      if (why !== null) forgetPrList(root);
-      else ensurePrList(root);
-    }),
+      // The list store is live state, and flush is refused in an effect callback.
+      queueMicrotask(() => (why !== null ? forgetPrList(root) : ensurePrList(root)));
+    },
   );
 
   /// A refresh is both halves: the list, and the checks behind it.

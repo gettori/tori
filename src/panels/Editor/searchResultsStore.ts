@@ -14,7 +14,7 @@
 // panel, which is on the eager path, and a value import would drag the library
 // into the main chunk (see the lazy edge in `Editor.tsx`).
 import type { EditorState } from "@codemirror/state";
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../lib/liveState";
 import { syntheticId } from "../../utils/syntheticTabs";
 import {
   emitWith,
@@ -71,7 +71,7 @@ const KEEP_CLOSED = 4;
 const buffers = new Map<string, SearchBuffer>();
 let seq = 0;
 
-const [titles, setTitles] = createSignal<Record<string, string>>({});
+const [titles, setTitles] = createLiveSignal<Record<string, string>>({});
 
 export function searchBuffer(id: string): SearchBuffer | null {
   return buffers.get(id) ?? null;
