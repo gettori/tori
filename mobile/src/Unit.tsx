@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Show, createDeferred, createSignal, onCleanup, refresh, untrack } from "solid-js";
 import { dynamic } from "@solidjs/web";
 import { Ellipsis, Plus } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
@@ -93,24 +93,30 @@ export function unitSessions(
     units().some((unit) => atUnit(row, unit)) || (!!topic && row.home?.topic === topic.id);
   const folders = () => [...units().map((unit) => unit.folder), ...(topic?.home ? [topic.home] : [])];
   const here = () => live().filter(owned);
-  const [earlier, { refetch }] = createResource<SessionRow[], number>(
-    () => client.generation() || undefined,
-    (_, info) =>
-      Promise.all(folders().map((cwd) => client.request<SessionRow[]>("sessions.list", { cwd, limit: EARLIER_LIMIT })))
-        .then((lists) => {
-          const rows = new Map(
-            lists
-              .flat()
-              .filter((row) => !row.live && owned(row))
-              .map((row) => [row.id, row]),
-          );
-          return [...rows.values()].sort((a, b) => b.last_active - a.last_active);
-        })
-        .catch(() => info.value ?? []),
+  const earlier = createDeferred<SessionRow[] | undefined>(
+    (was) => {
+      if (!client.generation()) return was;
+      return untrack(() =>
+        Promise.all(
+          folders().map((cwd) => client.request<SessionRow[]>("sessions.list", { cwd, limit: EARLIER_LIMIT })),
+        )
+          .then((lists) => {
+            const rows = new Map(
+              lists
+                .flat()
+                .filter((row) => !row.live && owned(row))
+                .map((row) => [row.id, row]),
+            );
+            return [...rows.values()].sort((a, b) => b.last_active - a.last_active);
+          })
+          .catch(() => was ?? []),
+      );
+    },
+    { loadingValue: undefined },
   );
   onCleanup(
     client.subscribe("sessions", (data) => {
-      if ((data as { kind?: string } | null)?.kind === "session.ended") void refetch();
+      if ((data as { kind?: string } | null)?.kind === "session.ended") void refresh(earlier);
     }),
   );
   return { here, earlier };

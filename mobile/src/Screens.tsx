@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createResource, createSignal, onCleanup } from "solid-js";
+import { For, Match, Show, Switch, createDeferred, createSignal, onCleanup, refresh, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { ChevronLeft, Ellipsis, Folder, Tag } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
@@ -51,12 +51,17 @@ const SYNC_EVERY_MS = 30_000;
 const PR_EVERY_MS = 120_000;
 
 export function watchGit(client: RemoteClient, folders: () => string[]) {
-  const [git] = createResource<Record<string, UnitGit>, string[]>(
-    () => (client.generation() ? folders() : undefined),
-    (list, info) =>
-      client
-        .request<Record<string, UnitGit>>("units.git", { folders: list.slice(0, GIT_FOLDERS_MAX) }, GIT_REPLY_MS)
-        .catch(() => info.value ?? {}),
+  const git = createDeferred<Record<string, UnitGit> | undefined>(
+    (was) => {
+      const list = client.generation() ? folders() : undefined;
+      if (list == null) return was;
+      return untrack(() =>
+        client
+          .request<Record<string, UnitGit>>("units.git", { folders: list.slice(0, GIT_FOLDERS_MAX) }, GIT_REPLY_MS)
+          .catch(() => was ?? {}),
+      );
+    },
+    { loadingValue: undefined },
   );
   return git;
 }
@@ -69,40 +74,50 @@ function every(ms: number, refetch: () => void) {
 }
 
 export function watchSync(client: RemoteClient, units: () => Unit[]) {
-  const [sync, { refetch }] = createResource<Record<string, BranchSync>, Unit[]>(
-    () => (client.generation() ? units() : undefined),
-    (list, info) =>
-      client
-        .request<Record<string, BranchSync>>(
-          "units.sync",
-          {
-            units: list
-              .filter((u) => u.branch)
-              .slice(0, GIT_FOLDERS_MAX)
-              .map((u) => ({ path: u.folder, branch: u.branch })),
-          },
-          GIT_REPLY_MS,
-        )
-        .catch(() => info.value ?? {}),
+  const sync = createDeferred<Record<string, BranchSync> | undefined>(
+    (was) => {
+      const list = client.generation() ? units() : undefined;
+      if (list == null) return was;
+      return untrack(() =>
+        client
+          .request<Record<string, BranchSync>>(
+            "units.sync",
+            {
+              units: list
+                .filter((u) => u.branch)
+                .slice(0, GIT_FOLDERS_MAX)
+                .map((u) => ({ path: u.folder, branch: u.branch })),
+            },
+            GIT_REPLY_MS,
+          )
+          .catch(() => was ?? {}),
+      );
+    },
+    { loadingValue: undefined },
   );
-  every(SYNC_EVERY_MS, () => void refetch());
+  every(SYNC_EVERY_MS, () => void refresh(sync));
   return (unit: Unit) => sync()?.[syncKey(unit)];
 }
 
 export function watchPr(client: RemoteClient, project: () => Project) {
-  const [report, { refetch }] = createResource<UnitStatus[], Project>(
-    () => (client.generation() ? project() : undefined),
-    (p, info) =>
-      client
-        .request<{ statuses: UnitStatus[] }>(
-          "units.pr",
-          { project: p.path, branches: p.units.flatMap((u) => (u.branch ? [u.branch] : [])) },
-          GIT_REPLY_MS,
-        )
-        .then((r) => r.statuses)
-        .catch(() => info.value ?? []),
+  const report = createDeferred<UnitStatus[] | undefined>(
+    (was) => {
+      const p = client.generation() ? project() : undefined;
+      if (p == null) return was;
+      return untrack(() =>
+        client
+          .request<{ statuses: UnitStatus[] }>(
+            "units.pr",
+            { project: p.path, branches: p.units.flatMap((u) => (u.branch ? [u.branch] : [])) },
+            GIT_REPLY_MS,
+          )
+          .then((r) => r.statuses)
+          .catch(() => was ?? []),
+      );
+    },
+    { loadingValue: undefined },
   );
-  every(PR_EVERY_MS, () => void refetch());
+  every(PR_EVERY_MS, () => void refresh(report));
   return (unit: Unit) => report()?.find((s) => s.headRef === unit.branch && s.pullRequest);
 }
 

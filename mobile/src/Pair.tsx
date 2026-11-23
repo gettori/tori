@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, on } from "solid-js";
+import { Show, createEffect, createSignal } from "solid-js";
 import { ChevronRight, Keyboard, Link, QrCode } from "../../src/components/Icon/icons";
 import logo from "../../src-tauri/icons/128x128@2x.png";
 import Icon from "../../src/components/Icon/Icon";
@@ -47,17 +47,15 @@ export default function Pair(props: {
   };
 
   createEffect(
-    on(
-      () => props.link,
-      (link) => {
-        if (!link) return;
-        // A link is only an address and a code: a page or a QR code the user
-        // did not mean to scan must not start a pairing on its own.
-        setUrl(link.url);
-        setCode(link.code);
-        setLinked(true);
-      },
-    ),
+    () => props.link,
+    (link) => {
+      if (!link) return;
+      // A link is only an address and a code: a page or a QR code the user
+      // did not mean to scan must not start a pairing on its own.
+      setUrl(link.url);
+      setCode(link.code);
+      setLinked(true);
+    },
   );
 
   return (

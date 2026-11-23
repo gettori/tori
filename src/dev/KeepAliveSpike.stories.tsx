@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { onCleanup, onMount } from "solid-js";
+import { onSettled } from "solid-js";
 import { Portal } from "@solidjs/web";
 import { stageHost } from "../tabs/stageHost";
 import PaneTree, { type PaneRoles } from "../layout/PaneTree";
@@ -190,9 +190,8 @@ export const TabDragCycle: Story = {
     };
     const el = (sel: string) => document.querySelector(sel)!;
 
-    onMount(() => {
+    onSettled(() => {
       const off = onEvent(REFIT_PANES, () => live?.fit.fit());
-      onCleanup(off);
       // The shell's half of a drop: the pane emits, this runs the edit.
       const offMove = onEventWith<MoveTabToPane>(MOVE_TAB_TO_PANE, (p) => {
         const tab = tabs().find((t) => t.id === p.tabId);
@@ -207,11 +206,6 @@ export const TabDragCycle: Story = {
         const tab = tabs().find((t) => t.id === p.tabId);
         if (tab) moveTabToPane({ ws: P10_WS, tab, targetPaneId: id, root: root(), tabsInWs: tabs() });
       });
-      onCleanup(() => {
-        offMove();
-        offSplit();
-      });
-
       window.__spikePrep = async () => {
         await frame();
         await writeAll(live!.term, seqLines(300));
@@ -256,6 +250,11 @@ export const TabDragCycle: Story = {
           errors: errs.count(),
           errorMessages: errs.messages(),
         };
+      };
+      return () => {
+        off();
+        offMove();
+        offSplit();
       };
     });
 

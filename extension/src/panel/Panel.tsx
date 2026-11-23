@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onSettled, Show } from "solid-js";
 import type { PanelWindow } from "../devtools";
 import { PANEL_PORT } from "../pick";
 import type { Chat, CommentOn, LogEntry, LogKind, PanelIn, PanelOut, PanelRequest, PanelState, Sent } from "../pick";
@@ -182,7 +182,7 @@ export default function Panel() {
   let unlisten = () => {};
   onCleanup(() => unlisten());
 
-  onMount(() => {
+  onSettled(() => {
     (window as PanelWindow).attach = (found) => {
       if (network() === found) return;
       unlisten();

@@ -1,4 +1,14 @@
-import { For, Show, createEffect, createMemo, createResource, createSignal, on, onCleanup } from "solid-js";
+import {
+  For,
+  Show,
+  createDeferred,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  refresh,
+  untrack,
+} from "solid-js";
 import { ArrowUp, ChevronLeft } from "../../src/components/Icon/icons";
 import Icon from "../../src/components/Icon/Icon";
 import Horizon, { pickScene } from "../../src/components/Autopilot/Horizon";
@@ -59,7 +69,9 @@ export function watchRunner(client: RemoteClient) {
       .request<State>("autopilot.state")
       .then(setState)
       .catch(() => {});
-  createEffect(on(client.generation, (n) => n > 0 && void load()));
+  createEffect(client.generation, (n) => {
+    if (n > 0) void load();
+  });
   onCleanup(
     client.subscribe("autopilot", (data) => {
       const ev = data as { kind?: string; runner?: Runner; hold?: unknown; item?: unknown } | null;
@@ -68,23 +80,28 @@ export function watchRunner(client: RemoteClient) {
         setState((s) => s && { ...s, runner });
       }
       if (ev?.kind === "autopilot.changed" && (ev.hold !== undefined || ev.item !== undefined)) void load();
-      if (ev?.kind === "autopilot.changed" && ev.hold !== undefined) void refetchCalls();
+      if (ev?.kind === "autopilot.changed" && ev.hold !== undefined) refetchCalls();
     }),
   );
   const runner = () => state()?.runner ?? null;
   const holds = () => (state()?.holds ?? []).filter((hold) => hold.answer === null);
   const items = () => state()?.items ?? [];
   const session = () => runner()?.session ?? null;
-  const [pending, { refetch: refetchCalls }] = createResource<AskRow[], string>(
-    () => (client.generation() ? (session() ?? "") : undefined),
-    (id) => (id ? client.request<AskRow[]>("session.pending", { id }).catch(() => []) : Promise.resolve([])),
+  const pending = createDeferred<AskRow[] | undefined>(
+    (was) => {
+      const lookup = client.generation() ? (session() ?? "") : undefined;
+      if (lookup == null) return was;
+      return untrack(() =>
+        lookup ? client.request<AskRow[]>("session.pending", { id: lookup }).catch(() => []) : Promise.resolve([]),
+      );
+    },
+    { loadingValue: undefined },
   );
-  createEffect(
-    on(session, (id) => {
-      if (!id) return;
-      onCleanup(client.subscribe(`session:${id}`, () => void refetchCalls()));
-    }),
-  );
+  const refetchCalls = () => void refresh(pending);
+  createEffect(session, (id) => {
+    if (!id) return;
+    return client.subscribe(`session:${id}`, () => refetchCalls());
+  });
   const calls = (): SocketAsk[] => {
     const held = holds().map(askOf);
     const asks = (pending() ?? [])
@@ -209,15 +226,13 @@ export default function AutopilotScreen(props: {
   const calls = () => props.watch.calls();
 
   const [log, setLog] = createSignal<AutopilotEvent[]>([]);
-  createEffect(
-    on(props.client.generation, (n) => {
-      if (n === 0) return;
-      props.client
-        .request<AutopilotEvent[]>("autopilot.log", { limit: LOG_LIMIT })
-        .then((events) => setLog([...events].reverse()))
-        .catch(() => {});
-    }),
-  );
+  createEffect(props.client.generation, (n) => {
+    if (n === 0) return;
+    props.client
+      .request<AutopilotEvent[]>("autopilot.log", { limit: LOG_LIMIT })
+      .then((events) => setLog([...events].reverse()))
+      .catch(() => {});
+  });
   onCleanup(
     props.client.subscribe("autopilot", (data) => {
       const ev = data as (AutopilotEvent & { kind?: string }) | null;
@@ -436,7 +451,12 @@ export default function AutopilotScreen(props: {
 }
 
 export function AutopilotChat(props: { client: RemoteClient; runner: () => Runner | null; onBack: () => void }) {
-  createEffect(() => props.runner()?.session || props.onBack());
+  createEffect(
+    () => props.runner()?.session,
+    (session) => {
+      if (!session) props.onBack();
+    },
+  );
   return (
     <Show when={props.runner()?.session} keyed>
       {(session) => (

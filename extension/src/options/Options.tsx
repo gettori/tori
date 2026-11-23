@@ -1,10 +1,10 @@
-import { createSignal, onMount } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 import { GROUPS_KEY, LOG_KEY, SHOTS_KEY } from "../tab";
 import { ConnectionRow, Icon, Row, ShortcutRow } from "./rows";
 
 function Switch(props: { key: string; labelledBy: string }) {
   const [on, setOn] = createSignal(true);
-  onMount(() => {
+  onSettled(() => {
     void chrome.storage.local.get(props.key).then((stored) => setOn(stored[props.key] !== false));
   });
   const toggle = () => {

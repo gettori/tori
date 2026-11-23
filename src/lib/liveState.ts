@@ -1,10 +1,24 @@
-import { createSignal, createStore, flush } from "solid-js";
+import { createSignal, createStore, flush, getOwner } from "solid-js";
+
+let holding = false;
+
+// For an effect callback, where flush is refused but the write cannot wait for a
+// microtask, since a caller may write the same state again before one runs.
+export function withoutFlush(write: () => void) {
+  holding = true;
+  try {
+    write();
+  } finally {
+    holding = false;
+  }
+}
 
 const flushed =
   <A extends unknown[], R>(write: (...args: A) => R) =>
   (...args: A) => {
     const out = write(...args);
-    flush();
+    // Inside a render or settle callback, flush throws or runs other effects early.
+    if (!holding && !getOwner()) flush();
     return out;
   };
 

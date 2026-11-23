@@ -8,7 +8,7 @@
 // sequence, so a merged-in tab appends after what was there and a strip drag
 // still wins over both. `locks` is the user saying a pane takes one kind and
 // nothing else (phase 11), which outranks both of the first two.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { deferredWrite } from "../utils/deferredWrite";
 import { leaves, resolvePinPane, type PaneNode } from "./paneLayout";
 import { pinSideOf } from "./pinRules";
@@ -83,7 +83,7 @@ function load(): Record<string, WsPlacement> {
   return out;
 }
 
-const [placements, setPlacements] = createSignal<Record<string, WsPlacement>>(load());
+const [placements, setPlacements] = createLiveSignal<Record<string, WsPlacement>>(load());
 
 const placementWrite = deferredWrite(() => {
   try {

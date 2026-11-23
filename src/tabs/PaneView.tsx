@@ -10,7 +10,7 @@
 // the pane sees those drops; the center is left to whatever is on the stage and
 // only becomes "put it in this pane" when nothing there took it, which is what
 // keeps a file tab dropped on a terminal inserting its path.
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
@@ -75,8 +75,7 @@ export default function PaneView(props: {
   // Adoption: append only hosts the slot is missing. Moving an already-adopted
   // host would detach a live surface for nothing; order inside the slot is
   // meaningless (surfaces self-hide, overlays are absolute).
-  createEffect(() => {
-    const ids = hostIds();
+  createEffect(hostIds, (ids) => {
     let adopted = false;
     for (const id of ids) {
       const el = stageHost(id);
@@ -205,7 +204,7 @@ export default function PaneView(props: {
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
   }
 
-  onMount(() => {
+  onSettled(() => {
     const over = (e: DragEvent) => {
       if (isFileDrag(e)) {
         const on = overStrip(e);
@@ -260,18 +259,18 @@ export default function PaneView(props: {
     root.addEventListener("drop", dropClaimed, true);
     root.addEventListener("drop", dropLeftover);
     root.addEventListener("dragleave", leave, true);
-    onCleanup(() => {
+    return () => {
       root.removeEventListener("dragover", over, true);
       root.removeEventListener("drop", dropClaimed, true);
       root.removeEventListener("drop", dropLeftover);
       root.removeEventListener("dragleave", leave, true);
-    });
+    };
   });
 
   // Escape, a window blur or a dragend end the drag wherever it was; the zones
   // it lit are this pane's own transient state and go with it.
-  createEffect(() => {
-    if (!draggingTab()) setZone(null);
+  createEffect(draggingTab, (d) => {
+    if (!d) setZone(null);
   });
 
   // ---- Files dragged in from outside the app (utils/externalDrop) -----------
