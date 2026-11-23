@@ -59,6 +59,7 @@
     "solid-js": "2.0.3"
   },
   "devDependencies": {
+    "@solidjs/diagnostics": "2.0.3",
     "@solidjs/vite-plugin": "3.0.1",
     "@storybook/addon-a11y": "^10.5.7",
     "@tauri-apps/cli": "^2",

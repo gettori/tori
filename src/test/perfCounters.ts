@@ -1,3 +1,5 @@
+import { captureArtifact, type DiagnosticsArtifact } from "@solidjs/diagnostics";
+import "@solidjs/diagnostics/vitest";
 import { drift, rows } from "./perfBudgets";
 
 export interface MutationCount {
@@ -16,6 +18,7 @@ export interface RenderCost {
   mutations: number;
   memos: number;
   effects: number;
+  reruns: number;
 }
 
 // Mount work deferred by a timer lands inside a shorter window and moves the
@@ -23,16 +26,29 @@ export interface RenderCost {
 const SETTLE_MS = 500;
 export const settled = () => new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
 
-export async function renderCost(root: Node, act: () => unknown): Promise<RenderCost> {
+export async function renderCost(
+  root: Node,
+  act: () => unknown,
+): Promise<{ cost: RenderCost; artifact: DiagnosticsArtifact }> {
   await settled();
   const counter = countMutations(root);
   takeRuns();
-  await act();
-  await settled();
+  const { artifact } = await captureArtifact(async () => {
+    await act();
+    await settled();
+  });
   const { added, removed, attributes, text } = counter.take();
   const { memo, effect } = takeRuns();
   counter.stop();
-  return { mutations: added + removed + attributes + text, memos: memo, effects: effect };
+  const reruns = artifact.attribution?.reruns.length ?? 0;
+  return { cost: { mutations: added + removed + attributes + text, memos: memo, effects: effect, reruns }, artifact };
+}
+
+export function rerunBudget(scenario: string): number {
+  const name = `renders.${scenario}.reruns`;
+  const row = rows("webview").find((r) => r.name === name);
+  if (!row) throw new Error(`no budget row named ${name}`);
+  return row.budget;
 }
 
 export function renderDrift(scenario: string, cost: RenderCost): string[] {
