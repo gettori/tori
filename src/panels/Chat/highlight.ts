@@ -2,7 +2,6 @@
 // block reads its colours through `createHighlight`, which answers null until
 // the first reply lands and repaints in place on each one after.
 import { createSignal, onCleanup } from "solid-js";
-import { createLiveSignal } from "../../lib/liveState";
 import { createQueue, type Answer, type Form, type Reply, type Request } from "./highlightQueue";
 import { escapeHtml } from "./escapeHtml";
 import { startWorker } from "../../utils/startWorker";
@@ -20,7 +19,7 @@ type Mode = "off" | "worker" | "main";
 // `current` is what `read` branches on, written at once from inside the memo that
 // calls it; `mode` only wakes readers when the worker later gives up.
 let current: Mode = "off";
-const [mode, setMode] = createLiveSignal<Mode>("off");
+const [mode, setMode] = createSignal<Mode>("off");
 let worker: Worker | null = null;
 const queue = createQueue((req) => worker?.postMessage(req));
 
@@ -185,7 +184,7 @@ export function langOfPath(path: string): string {
 
 // The main-thread engine: the fallback when the worker cannot start, and the
 // only path where there is no Worker (tests).
-const [version, setVersion] = createLiveSignal(0);
+const [version, setVersion] = createSignal(0);
 let engine: Engine | null = null;
 let engineRequested = false;
 const requestedLangs = new Set<string>();

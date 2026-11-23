@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { FIRE_GRACE_MS, arm, armedFor, cancel, register, resetResumeAtResetForTests, type Arm } from "./resumeAtReset";
 
@@ -23,6 +24,7 @@ describe("arming", () => {
   it("arms one reset once", () => {
     expect(arm(at())).toBe(true);
     expect(arm(at())).toBe(false);
+    flush();
     expect(armedFor("s1")).toMatchObject({ turnId: "t1", resetsAt: RESET });
   });
 
