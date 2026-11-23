@@ -64,7 +64,7 @@ export default function RadioGroup(props: {
     <div
       ref={root}
       role="radiogroup"
-      class={[styles.root, props.class].filter(Boolean).join(" ")}
+      class={[styles.root, props.class]}
       aria-label={props["aria-label"]}
       aria-labelledby={props.label !== undefined ? groupLabelId : undefined}
       aria-describedby={props["aria-describedby"]}
@@ -94,7 +94,7 @@ export default function RadioGroup(props: {
             };
             let input!: HTMLInputElement;
             return (
-              <div role="group" class={[styles.item, props.itemClass].filter(Boolean).join(" ")} {...state}>
+              <div role="group" class={[styles.item, props.itemClass]} {...state}>
                 <input
                   ref={input}
                   id={inputId}

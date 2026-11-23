@@ -1,4 +1,4 @@
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, untrack } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Checkbox from "../Checkbox/Checkbox";
@@ -24,7 +24,7 @@ export default function RenameAccountDialog(props: {
   onSubmit: (answer: { label: string; renameCommand: boolean }) => void;
   onCancel: () => void;
 }) {
-  const [label, setLabel] = createSignal(props.label);
+  const [label, setLabel] = createSignal(untrack(() => props.label));
   const [follow, setFollow] = createSignal(true);
   const next = () => commandSlug(props.program, label().trim(), props.profileId);
   const offered = () => props.command !== null && label().trim() !== "" && next() !== props.command;

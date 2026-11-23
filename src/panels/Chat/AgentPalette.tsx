@@ -13,7 +13,7 @@
 // Anchored rather than centred, since a model is a property of the composer bar
 // and a modal over the transcript claimed more of the screen, and more of the
 // user's attention, than picking one is worth.
-import { For, Show, createMemo, createSignal, createUniqueId } from "solid-js";
+import { For, Show, createMemo, createSignal, createUniqueId, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   ArrowDown,
@@ -73,7 +73,7 @@ export default function AgentPalette(props: {
   // rather than a seed here, because a seed is a snapshot: a palette whose
   // provider list arrives after mount would have snapshotted nothing.
   const [hiProvider, setHiProvider] = createSignal<string | null>(null);
-  const [hiModel, setHiModel] = createSignal<string | null>(props.value);
+  const [hiModel, setHiModel] = createSignal<string | null>(untrack(() => props.value));
   // Whether the reader has driven this list yet. Not derivable from `hiModel`,
   // which opens already naming the model in force.
   const [roved, setRoved] = createSignal(false);
@@ -496,7 +496,7 @@ function HealthDot(props: { health: PaletteProvider["health"] }): JSX.Element {
     if (props.health.kind === "count") return styles.dotOk;
     return props.health.kind === "probing" ? styles.dotWait : styles.dotOff;
   };
-  return <span class={`${styles.dot} ${tone()}`} aria-hidden="true" />;
+  return <span class={[styles.dot, tone()]} aria-hidden="true" />;
 }
 
 /** The right-hand end of an agent row: what Tori knows, or the one thing the

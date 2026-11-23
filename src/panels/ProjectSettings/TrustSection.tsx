@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onCleanup, refresh, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, refresh, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import { TriangleAlert } from "../../components/Icon/icons";
@@ -67,7 +67,7 @@ export default function TrustSection(props: { projectPath: string }) {
                   <Button
                     variant="primary"
                     disabled={busy()}
-                    onClick={() => void run("trust", () => trustProject(props.projectPath))}
+                    onClick={() => void run("trust", () => trustProject(untrack(() => props.projectPath)))}
                   >
                     Trust
                   </Button>

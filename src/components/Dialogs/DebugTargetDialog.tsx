@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
@@ -77,7 +77,7 @@ export default function DebugTargetDialog(props: {
   onConfirm: (target: DebugTarget) => void;
   onCancel: () => void;
 }) {
-  const [adapterId, setAdapterId] = createSignal(props.adapters[0]?.id ?? "");
+  const [adapterId, setAdapterId] = createSignal(untrack(() => props.adapters[0]?.id ?? ""));
   const adapterLabel = () => props.adapters.find((a) => a.id === adapterId())?.label ?? adapterId();
   const runner = () => (adapterId() === JS_ADAPTER ? "node" : adapterLabel());
   const runnableFile = () => (props.fileAdapter === adapterId() ? props.filePath : null);
@@ -88,12 +88,14 @@ export default function DebugTargetDialog(props: {
     return props.filePath ? `${props.filePath} is not a file ${adapterLabel()} runs.` : "No file is open.";
   };
   const [kind, setKind] = createSignal<TargetKind | null>(
-    props.kind && kindsFor(adapterId()).includes(props.kind) ? props.kind : defaultKind(adapterId(), has()),
+    untrack(() =>
+      props.kind && kindsFor(adapterId()).includes(props.kind) ? props.kind : defaultKind(adapterId(), has()),
+    ),
   );
-  const [script, setScript] = createSignal(props.scripts[0] ?? "");
-  const [port, setPort] = createSignal(String(props.port || DEFAULT_ATTACH_PORT));
+  const [script, setScript] = createSignal(untrack(() => props.scripts[0] ?? ""));
+  const [port, setPort] = createSignal(untrack(() => String(props.port || DEFAULT_ATTACH_PORT)));
   const [module, setModule] = createSignal("");
-  const [bin, setBin] = createSignal(props.lldb.bins[0] ?? "");
+  const [bin, setBin] = createSignal(untrack(() => props.lldb.bins[0] ?? ""));
   const [program, setProgram] = createSignal("");
   let first: HTMLElement | undefined;
 

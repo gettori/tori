@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { render, screen, fireEvent, waitFor } from "../test/harness";
 import OverflowTabBar from "./OverflowTabBar";
@@ -12,8 +12,11 @@ import ContextMenu from "./Menu/ContextMenu";
 /** The editor's tab wrapper, in miniature: `display: contents` around the tab,
  *  skipped for the ghost row. */
 function MaybeMenu(p: { when: boolean; children: JSX.Element }) {
-  if (!p.when) return p.children;
-  return <ContextMenu items={[{ label: "Close", onClick: () => {} }]}>{p.children}</ContextMenu>;
+  return (
+    <Show when={p.when} fallback={p.children}>
+      <ContextMenu items={[{ label: "Close", onClick: () => {} }]}>{p.children}</ContextMenu>
+    </Show>
+  );
 }
 
 // The `+N` button, which issue 102 turned from a raw button carrying a native
@@ -220,7 +223,7 @@ describe("what fits", () => {
 
     await waitFor(() => expect(screen.queryAllByRole("tab", { name: "tab 0" })).toHaveLength(0));
     expect(picked).toEqual([]);
-    expect(active()).toBe("t11");
+    expect(untrack(active)).toBe("t11");
   });
 
   it("keeps arrow order matching visual order across a +N pick", async () => {
@@ -254,7 +257,7 @@ describe("what fits", () => {
       expect(screen.getAllByRole("tab").map((el) => el.textContent)).toEqual(["tab 0", "tab 1", "tab 7"]),
     );
     const picked = screen.getByRole("tab", { name: "tab 7" });
-    expect(active()).toBe("t7");
+    expect(untrack(active)).toBe("t7");
     // Third on screen and third in the canonical list, which is what makes the
     // arrows and the announcement say the same thing.
     expect(picked.getAttribute("aria-posinset")).toBe("3");
@@ -265,7 +268,7 @@ describe("what fits", () => {
     picked.focus();
     fireEvent.keyDown(picked, { key: "ArrowLeft" });
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("tab", { name: "tab 1" })));
-    expect(active()).toBe("t1");
+    expect(untrack(active)).toBe("t1");
   });
 
   it("still forwards a click when the strip has nothing active", async () => {

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Button from "../../components/Button/Button";
 import type { AgentHealth } from "../../utils/agentHealth";
@@ -159,7 +159,7 @@ function AgentsStory(props: { health: AgentHealth[] | null }) {
         terminalLogins={LOGINS}
         onInstall={() => {}}
         onSignIn={() => {}}
-        onCopy={async () => true}
+        onCopy={() => Promise.resolve(true)}
         onCheckAgain={() => {}}
       />
     </Shell>
@@ -272,8 +272,8 @@ export const BaseFolderRefused: Story = {
 const spaceHint = "Required. This is the last step before Tori can open.";
 
 function SpaceStory(props: { spaces: FirstRunSpace[]; mode: SpaceMode }) {
-  const [mode, setMode] = createSignal<SpaceMode>(props.mode);
-  const [selected, setSelected] = createSignal<string | null>(props.spaces[0]?.name ?? null);
+  const [mode, setMode] = createSignal<SpaceMode>(untrack(() => props.mode));
+  const [selected, setSelected] = createSignal<string | null>(untrack(() => props.spaces[0]?.name ?? null));
   const [name, setName] = createSignal("");
   const creating = () => mode() === "create" || props.spaces.length === 0;
   return (

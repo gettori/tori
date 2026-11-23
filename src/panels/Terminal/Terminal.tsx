@@ -2587,9 +2587,9 @@ export default function Terminal(props: {
       .map((s) => ({ id: s.id, agent: s.agent ?? "claude", cwd: s.cwd, status: sessionStatus(s.id) as string | null }));
     return [...tabbed, ...detached];
   });
-  watchSecrets(liveSessions);
+  untrack(() => watchSecrets(liveSessions));
   watchRadar();
-  watchVerification(liveSessions);
+  untrack(() => watchVerification(liveSessions));
 
   /** On which tier. A chat's own event stream states its status outright; a PTY
    *  agent tab's is composed from a pgrep probe, PTY quiet and a transcript
@@ -2706,7 +2706,7 @@ export default function Terminal(props: {
     const term = asTerm(u) as PtyTab;
     const active = createMemo(() => onScreen(term));
     const woken = createMemo<boolean>((was) => !!was || (tabState(term) !== "inert" && (!isHeld(term.id) || active())));
-    wakeOnScreen(term, active);
+    untrack(() => wakeOnScreen(term, active));
     // No fallback: an inert tab is a strip entry and nothing else, so there is
     // no PTY to spawn and nothing to draw. A terminal kind has no readable
     // middle state - a shell with no process has nothing to show.
@@ -2738,7 +2738,7 @@ export default function Terminal(props: {
     const t = asTerm(u);
     const active = createMemo(() => onScreen(t));
     const woken = wokenMemo(t);
-    wakeOnScreen(t, active);
+    untrack(() => wakeOnScreen(t, active));
     return <Show when={woken()}>{chatSurface(t, active)}</Show>;
   };
   const chatSurface = (t: OpenTerm, active: () => boolean) => {
@@ -3017,10 +3017,9 @@ export default function Terminal(props: {
         <Icon icon={KIND_GLYPHS[t.kind]} />
       );
       const m = tabMember(t.cwd);
-      if (!m) return mark;
       return (
         <>
-          <TabMemberChip member={m} />
+          {m ? <TabMemberChip member={m} /> : null}
           {mark}
         </>
       );
@@ -3029,13 +3028,11 @@ export default function Terminal(props: {
     title: (u) => {
       const t = asTerm(u);
       const m = tabMember(t.cwd);
-      return m ? (
+      return (
         <>
-          <span class={patterns.srOnly}>{m.label} / </span>
+          {m ? <span class={patterns.srOnly}>{m.label} / </span> : null}
           {tabTitle(t)}
         </>
-      ) : (
-        tabTitle(t)
       );
     },
     tooltip: (u) => {

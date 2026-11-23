@@ -103,20 +103,21 @@ function routeChatCallsOverLink(client: RemoteClient) {
 }
 
 function Paired(props: { client: RemoteClient; notice: string | null; onDisconnect: () => void }) {
-  routeChatCallsOverLink(props.client);
-  const [live, relist, listed] = liveRows(props.client);
-  const [tree, reloadTree] = watchTree(props.client);
+  const client = untrack(() => props.client);
+  routeChatCallsOverLink(client);
+  const [live, relist, listed] = liveRows(client);
+  const [tree, reloadTree] = watchTree(client);
   const [organize, setOrganize] = createSignal<"spaces" | "topic" | null>(null);
   const fresh = (project: Project) =>
     projectGroups(tree())
       .flatMap((s) => s.projects)
       .find((p) => p.path === project.path) ?? project;
-  const autopilot = watchRunner(props.client);
+  const autopilot = watchRunner(client);
   const { runner, decisions, crew } = autopilot;
-  const inbox = watchInbox(props.client);
-  const needsYou = watchNeedsYou(props.client);
-  const permissions = watchPermissions(props.client);
-  const digest = watchDigest(props.client);
+  const inbox = watchInbox(client);
+  const needsYou = watchNeedsYou(client);
+  const permissions = watchPermissions(client);
+  const digest = watchDigest(client);
   const [tab, setTab] = createSignal<RootTab>("projects");
   const [stack, setStack] = createSignal<View[]>([]);
   const space = () => projectGroups(tree()).find((s) => s.name === spaceName()) ?? tree()?.spaces[0];
@@ -131,8 +132,10 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
   const back = () => history.back();
   const toRoot = () => stack().length > 0 && history.go(-stack().length);
   const popped = (e: PopStateEvent) => setStack(stack().slice(0, (e.state as { depth?: number } | null)?.depth ?? 0));
-  window.addEventListener("popstate", popped);
-  onCleanup(() => window.removeEventListener("popstate", popped));
+  onSettled(() => {
+    window.addEventListener("popstate", popped);
+    return () => window.removeEventListener("popstate", popped);
+  });
 
   const sheet = () => stack()[stack().length - 1]?.screen === "settings";
   const top = () => {
@@ -176,8 +179,10 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
     pickUp();
   });
   const shown = () => document.visibilityState === "visible" && pickUp();
-  document.addEventListener("visibilitychange", shown);
-  onCleanup(() => document.removeEventListener("visibilitychange", shown));
+  onSettled(() => {
+    document.addEventListener("visibilitychange", shown);
+    return () => document.removeEventListener("visibilitychange", shown);
+  });
   createEffect(
     () => ({ t: tapped(), ready: listed() }),
     ({ t, ready }) => {
@@ -427,11 +432,13 @@ export default function App() {
     if (shown) client()?.wake();
   };
   const online = () => client()?.wake();
-  document.addEventListener("visibilitychange", wake);
-  window.addEventListener("online", online);
-  onCleanup(() => {
-    document.removeEventListener("visibilitychange", wake);
-    window.removeEventListener("online", online);
+  onSettled(() => {
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", online);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", online);
+    };
   });
 
   const disconnect = () => {

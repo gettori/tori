@@ -1,4 +1,4 @@
-import { createMemo, createSignal, Show } from "solid-js";
+import { createMemo, createSignal, Show, untrack } from "solid-js";
 import { render } from "@solidjs/web";
 import { createLiveSignal } from "../../lib/liveState";
 import { EditorSelection, type EditorState, type Extension, type SelectionRange } from "@codemirror/state";
@@ -92,7 +92,12 @@ function createFindPanel(view: EditorView): Panel {
   let findInput!: HTMLInputElement;
 
   const [query, setQuery] = createSignal(getSearchQuery(view.state));
-  const [matches, setMatches] = createSignal(collectMatches(query(), view.state));
+  const [matches, setMatches] = createSignal(
+    collectMatches(
+      untrack(() => query()),
+      view.state,
+    ),
+  );
   const [selected, setSelected] = createSignal(view.state.selection.main);
   const [readOnly, setReadOnly] = createSignal(view.state.readOnly);
 

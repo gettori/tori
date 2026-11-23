@@ -1,4 +1,4 @@
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, untrack } from "solid-js";
 import styles from "./shell.module.css";
 
 export type Ask = {
@@ -12,7 +12,7 @@ export type Ask = {
 };
 
 export default function AskSheet(props: { ask: Ask; onDone: () => void }) {
-  const [value, setValue] = createSignal(props.ask.input?.value ?? "");
+  const [value, setValue] = createSignal(untrack(() => props.ask.input?.value ?? ""));
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const done = () => {
@@ -68,7 +68,7 @@ export default function AskSheet(props: { ask: Ask; onDone: () => void }) {
           <ul class={styles.group}>
             <li>
               <button
-                class={`${styles.item} ${styles.setting} ${props.ask.danger ? styles.disconnect : ""}`}
+                class={[styles.item, styles.setting, props.ask.danger && styles.disconnect]}
                 disabled={busy()}
                 onClick={() => void go()}
               >

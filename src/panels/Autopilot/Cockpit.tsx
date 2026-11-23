@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, onCleanup, onSettled } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import AutopilotPopup from "../../components/Autopilot/AutopilotPopup";
 import AutopilotSwitch from "../../components/Autopilot/AutopilotSwitch";
@@ -123,8 +123,10 @@ export function CockpitView() {
   // detach names the same tab and would cut off the new one's listener.
   const live = createMemo(() => attachable(runner()) || (error() && runner().session !== null));
   const [now, setNow] = createSignal(Date.now());
-  const tick = setInterval(() => setNow(Date.now()), 30_000);
-  onCleanup(() => clearInterval(tick));
+  onSettled(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  });
   const crew = () => workerCards(items()).length;
   const limit = () => settings.chatDefaults.maxConcurrentChats;
   const hero = () =>
@@ -188,14 +190,16 @@ export function CockpitPopup() {
     const body = anchor.offsetParent?.getBoundingClientRect();
     if (at && body) anchor.style.setProperty("--anchor-right", `${body.right - at.right}px`);
   };
-  onSettled(place);
-  window.addEventListener("resize", place);
-  window.addEventListener("keydown", onKey);
-  window.addEventListener("pointerdown", onPointer);
-  onCleanup(() => {
-    window.removeEventListener("resize", place);
-    window.removeEventListener("keydown", onKey);
-    window.removeEventListener("pointerdown", onPointer);
+  onSettled(() => {
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer);
+    };
   });
   return (
     <div class={styles.popupAnchor} ref={anchor}>

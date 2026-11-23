@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, onTestFinished } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { render, screen, fireEvent } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
@@ -194,7 +194,7 @@ describe("Dropdown", () => {
     // and a level that mounts with its parent would read every folder in the
     // list the moment the menu opened.
     function Level(props: { mounted: () => void }) {
-      props.mounted();
+      untrack(() => props.mounted());
       return <MenuRow onClick={() => {}}>main.tsx</MenuRow>;
     }
 

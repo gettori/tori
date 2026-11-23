@@ -10,7 +10,7 @@
 // the pane sees those drops; the center is left to whatever is on the stage and
 // only becomes "put it in this pane" when nothing there took it, which is what
 // keeps a file tab dropped on a terminal inserting its path.
-import { createEffect, createSignal, onSettled, Show } from "solid-js";
+import { createEffect, createSignal, onSettled, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
@@ -323,10 +323,12 @@ export default function PaneView(props: {
         place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
         onActivate={(t) => props.paneId && setPaneActive(props.ws ?? "", props.paneId, t.id)}
         onReorder={(next) =>
-          preserveScrollAndFocus(root, () => {
-            if (props.paneId) reorderPane(props.ws ?? "", next);
-            else entry()?.stripReorder?.(next);
-          })
+          preserveScrollAndFocus(root, () =>
+            untrack(() => {
+              if (props.paneId) reorderPane(props.ws ?? "", next);
+              else entry()?.stripReorder?.(next);
+            }),
+          )
         }
       />
       <div class={styles.stage} ref={slot}>

@@ -268,7 +268,7 @@ export default function Select(props: {
         }}
         id={triggerId}
         type="button"
-        class={[styles.trigger, styles[props.size ?? "md"], props.class].filter(Boolean).join(" ")}
+        class={[styles.trigger, styles[props.size ?? "md"], props.class]}
         disabled={props.disabled}
         aria-haspopup="listbox"
         aria-expanded={open() ? "true" : "false"}
@@ -303,7 +303,7 @@ export default function Select(props: {
         <Portal mount={dialogSurface()}>
           <ListSurface
             trigger={trigger()}
-            class={[styles.content, props.tabs && styles.tabbed].filter(Boolean).join(" ")}
+            class={[styles.content, props.tabs && styles.tabbed]}
             listClass={styles.listbox}
             tabsClass={styles.tabs}
             listId={listId}
@@ -350,7 +350,7 @@ export default function Select(props: {
 // throws on a node that is not in the document.
 function ListSurface(props: {
   trigger: HTMLElement | undefined;
-  class: string;
+  class: JSX.HTMLAttributes<HTMLElement>["class"];
   listClass: string;
   tabsClass: string;
   listId: string;

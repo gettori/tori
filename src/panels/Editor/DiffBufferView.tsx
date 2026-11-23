@@ -121,13 +121,13 @@ export default function DiffBufferView(props: {
             ...searchKeymap,
             ...defaultKeymap,
           ]),
-          caretListener((line, column) => props.onCaret?.(line, column)),
+          caretListener((line, column) => untrack(() => props.onCaret)?.(line, column)),
           EditorView.updateListener.of((update) => {
             if (
               update.selectionSet ||
               update.startState.field(diffBufferField) !== update.state.field(diffBufferField)
             ) {
-              props.onSelect(selectedRows(update.state));
+              untrack(() => props.onSelect)(selectedRows(update.state));
             }
           }),
         ],

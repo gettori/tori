@@ -6,6 +6,7 @@ import {
   createMemo,
   createSignal,
   onCleanup,
+  onSettled,
   refresh,
   untrack,
 } from "solid-js";
@@ -226,17 +227,20 @@ export default function AutopilotScreen(props: {
   const calls = () => props.watch.calls();
 
   const [log, setLog] = createSignal<AutopilotEvent[]>([]);
-  createEffect(props.client.generation, (n) => {
-    if (n === 0) return;
-    props.client
-      .request<AutopilotEvent[]>("autopilot.log", { limit: LOG_LIMIT })
-      .then((events) => setLog([...events].reverse()))
-      .catch(() => {});
-  });
-  onCleanup(
+  createEffect(
+    () => props.client.generation(),
+    (n) => {
+      if (n === 0) return;
+      props.client
+        .request<AutopilotEvent[]>("autopilot.log", { limit: LOG_LIMIT })
+        .then((events) => setLog([...events].reverse()))
+        .catch(() => {});
+    },
+  );
+  onSettled(() =>
     props.client.subscribe("autopilot", (data) => {
       const ev = data as (AutopilotEvent & { kind?: string }) | null;
-      if (ev?.kind === "autopilot.changed") setLog([ev, ...log()].slice(0, LOG_LIMIT));
+      if (ev?.kind === "autopilot.changed") setLog((l) => [ev, ...l].slice(0, LOG_LIMIT));
     }),
   );
   const activity = () => log().flatMap((e) => activityOf(e, props.watch.items()) ?? []);
@@ -253,8 +257,10 @@ export default function AutopilotScreen(props: {
   const queued = () => queuedItems(props.watch.items()).filter((q) => !q.proposed).length;
   const hero = () => heroFor(state(), calls().length, workers().length, queued(), props.watch.limit());
   const [now, setNow] = createSignal(new Date());
-  const tick = setInterval(() => setNow(new Date()), 60_000);
-  onCleanup(() => clearInterval(tick));
+  onSettled(() => {
+    const tick = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(tick);
+  });
   const scene = () => {
     if (state() === "error" || overLimit(workers().length, props.watch.limit())) return "storm";
     return off() ? "night" : pickScene(now().getHours());

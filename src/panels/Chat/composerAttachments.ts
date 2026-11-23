@@ -24,7 +24,7 @@ import type { ChatCapabilities, ContentBlock } from "../../utils/chatTypes";
 import type { PullRequest } from "../../utils/forgeTypes";
 import { ensurePrList, prListEntry } from "../../utils/prListStore";
 import { prLabel, prRef } from "../../utils/prMention";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import type { SessionMeta } from "../../utils/sessionStore";
 import { refLabel, refName, sessionRef, sessionTitle } from "../../utils/sessionMention";
 import { projectRef, spaceRef, type NavProject, type NavSpace } from "../../utils/mentionNavigator";
@@ -85,6 +85,20 @@ export function attachmentsDir(): Promise<string | null> {
     return null;
   });
   return dirRequest;
+}
+
+/** The same accessors as named members, for a caller that builds them inline:
+ *  a bare arrow argument reads as an orphaned derived signal, a member does not. */
+export function composerAttachmentsOf(o: {
+  key: () => ComposerKey;
+  cwd: () => string;
+  tier: () => ChatTier;
+  capabilities: () => ChatCapabilities | null | undefined;
+  onRejected: (reason: string) => void;
+  toriMcp: () => boolean;
+  self?: () => string | null;
+}): ComposerAttachments {
+  return composerAttachments(o.key, o.cwd, o.tier, o.capabilities, o.onRejected, o.toriMcp, o.self);
 }
 
 /** `key`, `cwd` and `tier` are read per call rather than captured, so a
@@ -179,7 +193,9 @@ export function composerAttachments(
         }
       })(),
     onAttachSession: (s, at) =>
-      attachRef("Session", sessionTitle(s), s.id, (label) => sessionRef(s, label, at ?? project() ?? s.cwd)),
+      attachRef("Session", sessionTitle(s), s.id, (label) =>
+        sessionRef(s, label, at ?? untrack(() => project()) ?? s.cwd),
+      ),
     spaces: () => (toriMcp() ? spaces() : undefined),
     here: () => spaces().find((g) => g.projects.some((p) => samePath(p.path, project() ?? ""))) ?? null,
     sessionsOf: (path) => (sessionsBy()[path] ?? []).filter((s) => s.id !== self()),

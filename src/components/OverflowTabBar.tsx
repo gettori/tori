@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, children, For, Show, onCleanup, onSettled } from "solid-js";
+import { createSignal, createEffect, createMemo, children, For, Show, onCleanup, onSettled, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { computeVisibleCount, moveIntoView, type Reserves } from "../utils/tabOverflow";
 import { tabGesture } from "../utils/tabGesture";
@@ -43,7 +43,7 @@ export default function OverflowTabBar<T>(props: {
   end?: JSX.Element;
   /** The bar's own element, for a consumer that hit-tests against its box. */
   ref?: (el: HTMLElement) => void;
-  class?: string;
+  class?: JSX.HTMLAttributes<HTMLElement>["class"];
 }) {
   let bar!: HTMLDivElement;
   let ghost!: HTMLDivElement;
@@ -52,7 +52,7 @@ export default function OverflowTabBar<T>(props: {
   let endEl: HTMLDivElement | undefined;
   const end = children(() => props.end);
 
-  const [visibleCount, setVisibleCount] = createSignal(props.items.length);
+  const [visibleCount, setVisibleCount] = createSignal(untrack(() => props.items.length));
   const [menuOpen, setMenuOpen] = createSignal(false);
 
   // Display order: pull the active tab into the last visible slot for rendering
@@ -114,9 +114,10 @@ export default function OverflowTabBar<T>(props: {
     if (gesture.live()) e.stopPropagation();
   }
 
-  const resized = new ResizeObserver(() => measure());
+  let resized: ResizeObserver | undefined;
+  const observer = () => (resized ??= new ResizeObserver(() => measure()));
   onCleanup(() => {
-    resized.disconnect();
+    resized?.disconnect();
     bar?.removeEventListener("pointerdown", onPress, true);
     bar?.removeEventListener("click", gesture.mark, true);
     bar?.removeEventListener("keydown", gesture.mark, true);
@@ -188,7 +189,7 @@ export default function OverflowTabBar<T>(props: {
         el.addEventListener("pointerdown", onPress, true);
         el.addEventListener("click", gesture.mark, true);
         el.addEventListener("keydown", gesture.mark, true);
-        resized.observe(el);
+        observer().observe(el);
         props.ref?.(el);
       }}
       style={{ position: "relative" }}
@@ -201,11 +202,11 @@ export default function OverflowTabBar<T>(props: {
           and the strip's key order, where every key would register twice. */}
       <TabRow inert>
         <div
-          class={`${props.class ?? ""} otab-ghost`}
+          class={[props.class, "otab-ghost"]}
           ref={(el) => {
             ghost = el;
             // Content width changes (tab added, dirty dot) re-measure.
-            resized.observe(el);
+            observer().observe(el);
           }}
           aria-hidden="true"
         >

@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
 import { render, waitFor, cleanup } from "../../test/harness";
 
 // Breakpoints from the pane's side.
@@ -83,15 +82,15 @@ function workspace() {
 }
 
 async function mountAt(repo: string) {
-  const [selected] = createSignal<unknown>({
+  const selected: unknown = {
     spaceName: "space",
     projectName: "proj",
     projectPath: "/space/proj",
     folderPath: repo,
     branch: "main",
     projectKind: "plain",
-  });
-  render(() => <Editor selected={selected() as never} />);
+  };
+  render(() => <Editor selected={selected as never} />);
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 

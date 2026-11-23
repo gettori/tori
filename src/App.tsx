@@ -287,18 +287,15 @@ function loadSelection(): Selection | null {
   return null;
 }
 
-function App() {
-  // Dev-only QA surface, gated by an env flag + a #styleguide hash (NOT a route).
-  // Rendered standalone so the app's settings/theme init never fights its
-  // scale/theme controls.
-  if (import.meta.env.DEV && window.location.hash === "#styleguide") {
-    return (
-      <Loading>
-        <Styleguide />
-      </Loading>
-    );
-  }
+function StyleguideRoot() {
+  return (
+    <Loading>
+      <Styleguide />
+    </Loading>
+  );
+}
 
+function AppShell() {
   const initial = loadLayout();
   // Live: `persistLayout` reads these back right after each write.
   const [sidebar, setSidebar] = createLiveSignal(initial.sidebar);
@@ -1328,5 +1325,9 @@ function App() {
     </div>
   );
 }
+
+// Rendered standalone so the app's settings/theme init never fights its
+// scale/theme controls.
+const App = import.meta.env.DEV && window.location.hash === "#styleguide" ? StyleguideRoot : AppShell;
 
 export default App;

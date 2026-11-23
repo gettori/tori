@@ -53,7 +53,13 @@ it("holds the render budget for one fs change in an expanded directory", async (
   bridge.dirs[ROOT] = [entry(ROOT, "src", true), entry(ROOT, "README.md")];
   bridge.dirs[`${ROOT}/src`] = [entry(`${ROOT}/src`, "a.ts"), entry(`${ROOT}/src`, "b.ts")];
   const { container } = render(() => (
-    <FileTree root={ROOT} editable noun="project folder" askText={async () => null} askConfirm={async () => false} />
+    <FileTree
+      root={ROOT}
+      editable
+      noun="project folder"
+      askText={() => Promise.resolve(null)}
+      askConfirm={() => Promise.resolve(false)}
+    />
   ));
   fireEvent.click(await screen.findByText("src"));
   await screen.findByText("a.ts");

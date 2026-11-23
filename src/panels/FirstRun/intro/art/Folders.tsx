@@ -41,7 +41,7 @@ const COLUMNS: { level: string; entries: Entry[] }[] = [
 ];
 
 function Level(props: { n: number; class?: string }) {
-  return <span class={`${styles.badge} ${props.class ?? ""}`}>{props.n}</span>;
+  return <span class={[styles.badge, props.class]}>{props.n}</span>;
 }
 
 function Lights() {

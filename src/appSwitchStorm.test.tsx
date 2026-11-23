@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { cleanup, render } from "./test/harness";
 import { installAnimationFrame } from "./test/frames";
+import { untrack } from "solid-js";
 
 const WS_A = "/space/proj/main";
 const WS_B = "/space/proj/feature";
@@ -23,7 +24,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 const bridge = vi.hoisted(() => ({ select: (_s: unknown) => {} }));
 vi.mock("./panels/LeftSidebar/LeftSidebar", () => ({
   default: (props: { onSelect: (s: unknown) => void }) => {
-    bridge.select = props.onSelect;
+    bridge.select = untrack(() => props.onSelect);
     return <div />;
   },
 }));

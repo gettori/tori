@@ -1,4 +1,4 @@
-import { Show, createSignal, type Accessor } from "solid-js";
+import { Show, createSignal, untrack, type Accessor } from "solid-js";
 import Icon from "../../src/components/Icon/Icon";
 import { fallbackIcon, resolveIcon } from "../../src/components/Icon/iconRegistry";
 import type { RemoteClient } from "./remote";
@@ -45,7 +45,10 @@ function projectImage(client: RemoteClient, path: string, version: string): Acce
   const known = images.get(key);
   if (known) return known;
   const [url, setUrl] = createSignal<string>();
-  images.set(key, url);
+  images.set(
+    key,
+    untrack(() => url),
+  );
   void (async () => {
     const kept = await read(path).catch(() => undefined);
     if (kept?.version === version) return setUrl(kept.url);

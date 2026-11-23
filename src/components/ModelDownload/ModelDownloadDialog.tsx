@@ -1,4 +1,4 @@
-import { Show, createSignal } from "solid-js";
+import { Show, createSignal, untrack } from "solid-js";
 import styles from "../Dialogs/Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -28,7 +28,7 @@ const firstNotInstalled = <Id extends string>(sizes: SizeChoice<Id>[], installed
 
 function Ask<Id extends string>(props: { store: DownloadStore<Id, DownloadStatus<Id>>; copy: Copy }) {
   const [size, setSize] = createSignal<Id>(
-    firstNotInstalled(props.store.sizes, props.store.status().model) as Exclude<Id, Function>,
+    untrack(() => firstNotInstalled(props.store.sizes, props.store.status().model)) as Exclude<Id, Function>,
   );
   const running = () => props.store.status().downloading;
   return (

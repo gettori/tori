@@ -170,7 +170,7 @@ export default function OmniRow(props: { view: RowView }) {
           <Show when={props.view.pr}>
             {(pr) => (
               <>
-                <span class={`${styles.chip} ${lineStyles[`pr_${pr().tone}`] ?? ""}`} aria-hidden="true">
+                <span class={[styles.chip, lineStyles[`pr_${pr().tone}`]]} aria-hidden="true">
                   <Marked text={pr().label} marks={pr().marks} />
                 </span>
                 <span class={styles.srOnly}>{pr().spoken}</span>

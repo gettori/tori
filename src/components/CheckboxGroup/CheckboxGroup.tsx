@@ -66,7 +66,7 @@ export default function CheckboxGroup(props: {
   return (
     <div
       role="group"
-      class={[styles.root, props.class].filter(Boolean).join(" ")}
+      class={[styles.root, props.class]}
       aria-label={props["aria-label"]}
       aria-labelledby={props.label !== undefined ? labelId : undefined}
       aria-describedby={props["aria-describedby"]}

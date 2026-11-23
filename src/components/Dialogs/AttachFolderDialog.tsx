@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, Show, Switch, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Ban, Folder, FolderInput, GitBranch, GitFork, type IconGlyph } from "../Icon/icons";
@@ -143,7 +143,7 @@ export default function AttachFolderDialog(props: {
   onDone: (path: string, warning?: string) => void;
   onCancel: () => void;
 }) {
-  const [path, setPath] = createSignal(props.path);
+  const [path, setPath] = createSignal(untrack(() => props.path));
   const [found, setFound] = createSignal<Inspection | null>(null);
   const [reading, setReading] = createSignal(false);
   const [name, setName] = createSignal("");

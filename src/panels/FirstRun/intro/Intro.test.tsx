@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent } from "../../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import Intro, { SLIDES } from "./Intro";
 import { installResizeObserver } from "../../Editor/__fixtures__/editorAgent";
 
@@ -18,10 +18,10 @@ describe("Intro", () => {
       expect(screen.getByText(`${String(i + 1).padStart(2, "0")} / 08`)).toBeTruthy();
       fireEvent.keyDown(panel, { key: "ArrowRight" });
     }
-    expect(slide()).toBe(7);
+    expect(untrack(() => slide())).toBe(7);
     expect(onDone).toHaveBeenCalledTimes(1);
 
     for (let i = 0; i < SLIDES.length; i++) fireEvent.keyDown(panel, { key: "ArrowLeft" });
-    expect(slide()).toBe(0);
+    expect(untrack(() => slide())).toBe(0);
   });
 });

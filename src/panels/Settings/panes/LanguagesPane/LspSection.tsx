@@ -117,7 +117,7 @@ export function LspCard(props: { server: LspHealth; onChange: () => Promise<LspH
   return (
     <div class={[styles.toolCard, { [styles.toolCardWide]: actions.job() !== null }]}>
       <div class={styles.toolHead}>
-        <span class={`${styles.dot} ${off() ? styles.dotOff : TONE[s().status]}`} />
+        <span class={[styles.dot, off() ? styles.dotOff : TONE[s().status]]} />
         <span class={[styles.toolName, { [styles.toolNameOff]: off() }]}>{s().label}</span>
         <span class={styles.kindTag}>{kindOf(s())}</span>
         <ProvenanceTag provenance={s().provenance} contributor={s().contributor} />

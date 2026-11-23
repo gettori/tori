@@ -102,7 +102,7 @@ import {
   unstashComposer,
   type ComposerStash,
 } from "../../utils/chatCompose";
-import { attachmentsDir, composerAttachments } from "./composerAttachments";
+import { attachmentsDir, composerAttachmentsOf } from "./composerAttachments";
 import { discardEntry, loadStash, restoreEntry, stashDraft, stashEntries } from "./promptStash";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
@@ -1164,7 +1164,9 @@ export default function ChatView(props: {
       const refused = opts.reconnect ? null : agentRefusal(props.cwd, props.agentId, props.profile);
       if (refused) {
         const message = `${refused}.`;
-        edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message, fatal: true }));
+        edit((s) =>
+          applyEvent(s, { type: "sessionError", sessionId: untrack(() => props.sessionId), message, fatal: true }),
+        );
         failFirstSend(message);
         return;
       }
@@ -1263,10 +1265,10 @@ export default function ChatView(props: {
       // that is already under way. A failed spawn drops it straight back to
       // disconnected through the catch above.
       edit((s) => beginReconnect(s));
-      connect({ reconnect: true });
+      untrack(() => connect({ reconnect: true }));
     };
 
-    connectFirst = () => connect({ reconnect: false });
+    connectFirst = () => untrack(() => connect({ reconnect: false }));
     setWired(true);
     return () => {
       gone = true;
@@ -1576,20 +1578,20 @@ export default function ChatView(props: {
     () => raw().items,
   );
   const mentionOffer = createMemo(() => linkOffer(props.sessionId, props.workspace));
+  const issueLinkFor = (offer: NonNullable<ReturnType<typeof linkOffer>>) => ({
+    label: offer.label,
+    to: offer.to,
+    onLink: () =>
+      void offer
+        .link()
+        .catch((e) =>
+          emitWith<ToastEvent>(TOAST, { message: `${offer.label} was not linked: ${errorText(e)}`, kind: "error" }),
+        ),
+    onDismiss: () => dismissMention(props.sessionId, offer.mention),
+  });
   const issueLink = () => {
     const offer = mentionOffer();
-    if (!offer) return null;
-    return {
-      label: offer.label,
-      to: offer.to,
-      onLink: () =>
-        void offer
-          .link()
-          .catch((e) =>
-            emitWith<ToastEvent>(TOAST, { message: `${offer.label} was not linked: ${errorText(e)}`, kind: "error" }),
-          ),
-      onDismiss: () => dismissMention(props.sessionId, offer.mention),
-    };
+    return offer ? issueLinkFor(offer) : null;
   };
   const firstPrompt = createDeferred<{ sender: string; text: string } | null | undefined>(
     (was) => {
@@ -1634,7 +1636,12 @@ export default function ChatView(props: {
     } catch (e) {
       edit((s) => {
         clearAwaitingTurn(s);
-        applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: false });
+        applyEvent(s, {
+          type: "sessionError",
+          sessionId: untrack(() => props.sessionId),
+          message: String(e),
+          fatal: false,
+        });
       });
       return false;
     }
@@ -1643,33 +1650,37 @@ export default function ChatView(props: {
   // The ceiling is checked here because `sendBlocks` does not: `onSend` and
   // `pendingFlush` are where it lives, and this send goes through neither.
   onCleanup(
-    registerResume(props.sessionId, async (arm) => {
-      settleLive();
-      if (state.ended) return;
-      if (running()) {
-        edit((s) => pushNotice(s, RESUME_BUSY, "attention"));
-        return;
-      }
-      if (stopped()) {
-        edit((s) => pushNotice(s, RESUME_STOPPED, "error"));
-        return;
-      }
-      edit((s) => {
-        s.continuing = true;
-      });
-      const sent = await sendBlocks([{ type: "text", text: toriText("limit-reset", RESUME_TEXT) }]);
-      if (sent) {
-        void invoke("digest_limit_resumed", {
-          sessionId: props.sessionId,
-          folder: props.cwd,
-          resetsAt: arm.resetsAt,
-        }).catch(() => {});
-      } else {
-        edit((s) => {
-          s.continuing = false;
-        });
-      }
-    }),
+    registerResume(
+      untrack(() => props.sessionId),
+      (arm) =>
+        untrack(async () => {
+          settleLive();
+          if (state.ended) return;
+          if (running()) {
+            edit((s) => pushNotice(s, RESUME_BUSY, "attention"));
+            return;
+          }
+          if (stopped()) {
+            edit((s) => pushNotice(s, RESUME_STOPPED, "error"));
+            return;
+          }
+          edit((s) => {
+            s.continuing = true;
+          });
+          const sent = await sendBlocks([{ type: "text", text: toriText("limit-reset", RESUME_TEXT) }]);
+          if (sent) {
+            void invoke("digest_limit_resumed", {
+              sessionId: props.sessionId,
+              folder: props.cwd,
+              resetsAt: arm.resetsAt,
+            }).catch(() => {});
+          } else {
+            edit((s) => {
+              s.continuing = false;
+            });
+          }
+        }),
+    ),
   );
   createEffect(
     () => state.ended,
@@ -2421,15 +2432,15 @@ export default function ChatView(props: {
 
   // Shared with the draft surface, so what an `@` mention resolves to cannot
   // differ between a chat and the draft it grew out of.
-  const attachments = composerAttachments(
-    composerKey,
-    () => props.cwd,
+  const attachments = composerAttachmentsOf({
+    key: composerKey,
+    cwd: () => props.cwd,
     tier,
-    () => state.capabilities,
-    (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
-    () => !!findAdapter(props.agentId).chat?.tori_mcp,
-    () => props.sessionId,
-  );
+    capabilities: () => state.capabilities,
+    onRejected: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+    toriMcp: () => !!findAdapter(props.agentId).chat?.tori_mcp,
+    self: () => props.sessionId,
+  });
 
   // Move what is in the composer to a brand-new chat and let it open with that
   // turn. A send the user asked for, at a session that does not exist yet.
@@ -2633,10 +2644,7 @@ export default function ChatView(props: {
   }
 
   return (
-    <div
-      class={`${styles.chat} ${props.active ? styles.active : ""}`}
-      data-cockpit={props.cockpit ? "true" : undefined}
-    >
+    <div class={[styles.chat, { [styles.active]: props.active }]} data-cockpit={props.cockpit ? "true" : undefined}>
       <Show when={overCap()}>
         <div class={styles.banner}>
           <span class={styles.bannerText}>{capSaid()}</span>

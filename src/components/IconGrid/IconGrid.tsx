@@ -157,7 +157,7 @@ export default function IconGrid(props: IconGridProps) {
         onPress={onPress}
         onKeyDown={onKeyDown}
         aria-label={props["aria-label"]}
-        class={[props.class, styles.group, styles[props.variant ?? "grid"]].filter(Boolean).join(" ")}
+        class={[props.class, styles.group, styles[props.variant ?? "grid"]]}
         style={props.variant === "swatch" ? undefined : { "grid-template-columns": `repeat(${COLUMNS}, 1fr)` }}
       >
         <Show when={props.leading}>{(spec) => tile(LEADING, spec)}</Show>

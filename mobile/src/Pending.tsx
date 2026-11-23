@@ -1,4 +1,4 @@
-import { For, Match, Show, Switch, createSignal } from "solid-js";
+import { For, Match, Show, Switch, createSignal, untrack } from "solid-js";
 import ApprovalDraft from "../../src/panels/Chat/ApprovalDraft";
 import type { AskApproval } from "../../src/utils/socketAsks";
 import type { ChatQuestion } from "../../src/utils/chatTypes";
@@ -11,7 +11,7 @@ export type PendingRow =
   | { kind: "ask"; id: string; session: string; text: string; options: string[]; approval?: AskApproval };
 
 function QuestionCard(props: { row: Extract<PendingRow, { kind: "question" }>; send: (answer: string[]) => void }) {
-  const [answers, setAnswers] = createSignal<string[]>(props.row.questions.map(() => ""));
+  const [answers, setAnswers] = createSignal<string[]>(untrack(() => props.row.questions.map(() => "")));
   const set = (at: number, value: string) => setAnswers(answers().map((a, i) => (i === at ? value : a)));
   return (
     <div class={styles.card}>

@@ -45,7 +45,7 @@ function Root(props: ToggleGroupRootProps) {
   };
 
   return (
-    <GroupContext value={{ order, roving, pressed: props.pressed, press: (v) => props.onPress(v) }}>
+    <GroupContext value={{ order, roving, pressed: (v) => props.pressed(v), press: (v) => props.onPress(v) }}>
       <div
         ref={props.ref}
         role="group"

@@ -181,9 +181,7 @@ export default function LocalHistory(props: { workspace: string; file: string })
                           fallback={<div class={styles.same}>Identical to the file as it is now.</div>}
                         >
                           <For each={diff()!.split("\n")}>
-                            {(line) => (
-                              <div class={`${styles.diffLine} ${styles[diffLineClass(line)] ?? ""}`}>{line || " "}</div>
-                            )}
+                            {(line) => <div class={[styles.diffLine, styles[diffLineClass(line)]]}>{line || " "}</div>}
                           </For>
                         </Show>
                       </Show>

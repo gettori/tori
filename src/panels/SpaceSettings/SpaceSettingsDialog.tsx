@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   Copy,
@@ -27,7 +27,7 @@ import { forgeAccountName } from "../../utils/forgeTypes";
 import { emitWith, onWith, OPEN_SETTINGS, TOAST, type ToastEvent } from "../../utils/events";
 import { spaceInitials } from "../../utils/names";
 import type { PrChildState } from "../../utils/prChildState";
-import { childrenOf, LANE_LABEL, PARENTS } from "../../utils/prLanes";
+import { childrenOf, LANE_LABEL, PARENTS, sameLanes } from "../../utils/prLanes";
 import { spaceHueRgb } from "../../utils/spaceTint";
 import { ProjectSearch, Row, Section } from "../ProjectSettings/Section";
 import own from "../ProjectSettings/ProjectSettingsDialog.module.css";
@@ -36,7 +36,7 @@ import s from "../Settings/Settings.module.css";
 import {
   branchLineFor,
   cardColoursFor,
-  laneConfigFor,
+  lanesFor,
   resetSpace,
   setLanes,
   setSpaceAccount,
@@ -158,7 +158,7 @@ export default function SpaceSettingsDialog(props: {
     );
   };
 
-  const lanes = laneConfigFor(() => props.space);
+  const lanes = createMemo(() => lanesFor(props.space), { equals: sameLanes });
   const line = () => branchLineFor(props.space);
   const full = () => line().mode === "full";
   const flip = (child: PrChildState) =>

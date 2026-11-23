@@ -7,6 +7,7 @@ import { toolDigest, toolPaths, type ToolRenderer } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
 import { traceWork } from "../../utils/perfTrace";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import TrustedHtml from "../../components/TrustedHtml/TrustedHtml";
 import styles from "./Chat.module.css";
 
 // The expanded halves of a tool card, one per renderer.
@@ -29,7 +30,7 @@ function Highlighted(props: { code: string; lang: string }) {
   const html = createMemo(() => hl.html(props.code, props.lang));
   return (
     <Show when={html()} fallback={<code>{props.code}</code>}>
-      {(h) => <code innerHTML={h()} />}
+      {(h) => <TrustedHtml as="code" html={h()} />}
     </Show>
   );
 }
@@ -39,7 +40,7 @@ function Highlighted(props: { code: string; lang: string }) {
 function Line(props: { html: string | null; text: string }) {
   return (
     <Show when={props.html} fallback={<span class={styles.toolLineText}>{props.text}</span>}>
-      {(h) => <span class={styles.toolLineText} innerHTML={h()} />}
+      {(h) => <TrustedHtml as="span" class={styles.toolLineText} html={h()} />}
     </Show>
   );
 }
@@ -55,7 +56,7 @@ function Rows<T>(props: { rows: T[]; class?: string; children: (row: T, index: (
   const shown = () => (all() ? rows() : rows().slice(0, BODY_ROWS));
   return (
     <>
-      <OverlayScroll class={`${styles.toolPre} ${styles.toolRows} ${props.class ?? ""}`}>
+      <OverlayScroll class={[styles.toolPre, styles.toolRows, props.class]}>
         <For each={shown()}>{props.children}</For>
       </OverlayScroll>
       {/* "rows", not "output": the other control on this card offers the rest

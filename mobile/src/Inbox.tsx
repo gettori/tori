@@ -179,7 +179,7 @@ function SinceList(props: { watch: ReturnType<typeof watchDigest>; onOpen: (e: N
   onSettled(() => {
     props.watch.show();
   });
-  onCleanup(props.watch.hide);
+  onCleanup(() => props.watch.hide());
   const d = () => props.watch.digest();
   const where = (project: string, folder: string) => project || folderName(folder);
   const happened = (limits: boolean) =>
@@ -282,13 +282,15 @@ function CommandCard(props: {
   };
   const allowing = () => busy().has("allow");
   const allow = () =>
-    run("allow", async () => {
-      const ids = props.rows.map((r) => ({ session: r.session, id: r.id }));
-      const { failed } = await props.client.request<{ failed: string[] }>("permissions.allow_group", { ids });
-      if (failed.length) throw new Error(`${failed.length} of ${ids.length} did not reach the agent: ${failed[0]}`);
-    });
+    run("allow", () =>
+      untrack(async () => {
+        const ids = props.rows.map((r) => ({ session: r.session, id: r.id }));
+        const { failed } = await props.client.request<{ failed: string[] }>("permissions.allow_group", { ids });
+        if (failed.length) throw new Error(`${failed.length} of ${ids.length} did not reach the agent: ${failed[0]}`);
+      }),
+    );
   const deny = (row: PermissionRow) =>
-    run(row.id, () => props.client.request("permissions.deny", { session: row.session, id: row.id }));
+    run(row.id, () => untrack(() => props.client.request("permissions.deny", { session: row.session, id: row.id })));
   return (
     <li class={styles.card}>
       <span class={styles.text}>
@@ -450,11 +452,13 @@ export default function InboxScreen(props: {
     props.inbox.refetch();
   });
   const [tab, setTab] = createSignal<Tab>(
-    props.digest.count() > 0
-      ? "since"
-      : props.needsYou.count() > 0 || !props.inbox.items().length
-        ? "needsYou"
-        : "review",
+    untrack(() =>
+      props.digest.count() > 0
+        ? "since"
+        : props.needsYou.count() > 0 || !props.inbox.items().length
+          ? "needsYou"
+          : "review",
+    ),
   );
   return (
     <div class={styles.glow}>

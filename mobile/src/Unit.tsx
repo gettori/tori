@@ -186,9 +186,15 @@ export default function UnitScreen(props: {
   topics: Topic[];
   onChanged: () => void;
 }) {
-  const { here, earlier } = unitSessions(props.client, () => [props.unit], props.live);
-  const git = watchGit(props.client, () => [props.unit.folder]);
-  const sync = watchSync(props.client, () => [props.unit]);
+  const { here, earlier } = untrack(() => unitSessions(props.client, () => [props.unit], props.live));
+  const git = watchGit(
+    untrack(() => props.client),
+    () => [props.unit.folder],
+  );
+  const sync = watchSync(
+    untrack(() => props.client),
+    () => [props.unit],
+  );
 
   const [sheet, setSheet] = createSignal(false);
   const [menu, setMenu] = createSignal(false);

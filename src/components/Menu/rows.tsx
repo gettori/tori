@@ -86,9 +86,7 @@ export function MenuRow(props: {
         props.warn && styles.warn,
         props.refusing && styles.refusing,
         props.selected && styles.selected,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      ]}
       disabled={props.disabled}
       aria-disabled={props.refusing || props.disabled ? "true" : undefined}
       aria-describedby={props.describedBy}
@@ -332,9 +330,7 @@ export type MenuSwatch = { value: string; label: string; hex: string };
 function SwatchRow(props: { swatches: MenuSwatch[]; value: string | null; onPick: (value: string | null) => void }) {
   const swatch = (value: string | null, label: string, hex: string | null) => (
     <Item
-      class={[styles.swatch, hex === null && styles.swatchNone, props.value === value && styles.swatchOn]
-        .filter(Boolean)
-        .join(" ")}
+      class={[styles.swatch, hex === null && styles.swatchNone, props.value === value && styles.swatchOn]}
       style={hex ? { "--swatch": hex } : undefined}
       aria-label={props.value === value ? `${label}, chosen` : label}
       onSelect={() => props.onPick(value)}

@@ -1,6 +1,7 @@
 import { Match, Switch, createDeferred, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { on as onEvent, THEME_APPLIED } from "../../utils/events";
 import { traceAsyncWork } from "../../utils/perfTrace";
+import TrustedHtml from "../TrustedHtml/TrustedHtml";
 import styles from "./Diagram.module.css";
 
 type Engine = typeof import("../../utils/mermaidEngine");
@@ -101,7 +102,7 @@ export default function Diagram(props: { code: string }) {
 
   return (
     <Switch>
-      <Match when={drawn()}>{(html) => <div ref={setEl} class={styles.diagram} innerHTML={html()} />}</Match>
+      <Match when={drawn()}>{(html) => <TrustedHtml ref={setEl} class={styles.diagram} html={html()} />}</Match>
       <Match when={!drawn()}>
         {/* Unclassed on purpose: it should wear whatever frame the surrounding
             markdown gives every other fence, in the chat and in the preview.

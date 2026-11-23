@@ -70,11 +70,13 @@ export default function MoveTopicDialog(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  const reason = (space: string) =>
-    refusedReason(props.topic, space, (m) => {
-      const home = spaceOfMember(m, props.homes)?.name;
+  const reason = (space: string) => {
+    const homes = props.homes;
+    return refusedReason(props.topic, space, (m) => {
+      const home = spaceOfMember(m, homes)?.name;
       return home ? spaceLabel(home) : null;
     });
+  };
   const canMove = () => !busy() && target() !== current() && (!target() || !reason(target()));
 
   const values = () => ["", ...props.spaces.map((g) => g.name)];

@@ -1,4 +1,4 @@
-import { createSignal, onSettled, For, Show } from "solid-js";
+import { createSignal, onSettled, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { House, Search } from "../Icon/icons";
 import styles from "./Dialogs.module.css";
@@ -60,7 +60,7 @@ export default function MoveToTopicDialog(props: {
   const offered = () => [...own(), ...global()];
 
   const [tab, setTab] = createSignal<Tab>(offered().length > 0 ? "existing" : "new");
-  const [where, setWhere] = createSignal<Where>(props.space ? "space" : "global");
+  const [where, setWhere] = createSignal<Where>(untrack(() => (props.space ? "space" : "global")));
   const [refusal, setRefusal] = createSignal<string | null>(null);
   const [checked, setChecked] = createSignal(false);
   const [topicId, setTopicId] = createSignal("");

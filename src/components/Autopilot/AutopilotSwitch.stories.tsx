@@ -49,12 +49,12 @@ export const Playground: Story = {};
 export const Interactive: Story = {
   render: () => {
     const [view, setView] = createSignal<AutopilotView>("workspace");
-    const [state] = createSignal<AutopilotState>("needs");
+    const state: AutopilotState = "needs";
     const [open, setOpen] = createSignal(false);
     return (
       <AutopilotSwitch
         view={view()}
-        state={state()}
+        state={state}
         count={2}
         popupOpen={view() === "workspace" && open()}
         onSelectView={(v) => {

@@ -210,7 +210,7 @@ function SelectionSection() {
           display: "grid",
           gap: "var(--tori-space-4)",
           "font-size": "var(--tori-text-lg)",
-          "line-height": 1.6,
+          "line-height": "1.6",
           color: "var(--fg-default)",
         }}
       >

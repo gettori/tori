@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
-import { createSignal, flush } from "solid-js";
+import { createSignal, flush, untrack } from "solid-js";
 import { render, fireEvent, screen } from "../../test/harness";
 import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -44,11 +44,11 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
       queue={[]}
       attachments={[]}
       commands={[]}
-      loadFiles={async () => []}
+      loadFiles={() => Promise.resolve([])}
       prs={[]}
       loadPrs={() => {}}
       onAttachPr={() => null}
-      resolvePr={async () => null}
+      resolvePr={() => Promise.resolve(null)}
       onAttachFile={onAttachFile}
       uploads={OPENS_EVERYTHING}
       onAttachUploads={onAttachUploads}
@@ -1274,7 +1274,7 @@ describe("draft and history", () => {
         queue={[]}
         attachments={[]}
         commands={[]}
-        loadFiles={async () => []}
+        loadFiles={() => Promise.resolve([])}
         draft={draft()}
         onDraftChange={setDraft}
         history={[]}
@@ -1286,7 +1286,7 @@ describe("draft and history", () => {
         onDropAttachment={() => {}}
         onAttachFile={() => null}
         uploads={OPENS_EVERYTHING}
-        onAttachUploads={async () => []}
+        onAttachUploads={() => Promise.resolve([])}
         onAttachRejected={() => {}}
         onAttachPaths={() => []}
         onSendQueued={() => {}}
@@ -1296,7 +1296,7 @@ describe("draft and history", () => {
     const area = composerInput(container);
     expect(area.value).toBe("half a thought");
     fireEvent.input(area, { target: { value: "half a thought, continued" } });
-    expect(draft()).toBe("half a thought, continued");
+    expect(untrack(() => draft())).toBe("half a thought, continued");
     unmount();
 
     // Mounted again, as a tab switch would: the draft is still there verbatim.
@@ -1308,7 +1308,7 @@ describe("draft and history", () => {
         queue={[]}
         attachments={[]}
         commands={[]}
-        loadFiles={async () => []}
+        loadFiles={() => Promise.resolve([])}
         draft={draft()}
         onDraftChange={setDraft}
         history={[]}
@@ -1320,7 +1320,7 @@ describe("draft and history", () => {
         onDropAttachment={() => {}}
         onAttachFile={() => null}
         uploads={OPENS_EVERYTHING}
-        onAttachUploads={async () => []}
+        onAttachUploads={() => Promise.resolve([])}
         onAttachRejected={() => {}}
         onAttachPaths={() => []}
         onSendQueued={() => {}}

@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin, lazyPlugins } from "vite-plus";
 import solid from "@solidjs/vite-plugin";
+import solidLint from "eslint-plugin-solid/configs/v2-strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { bundledInputs } from "./scripts/bundled-inputs";
@@ -124,7 +125,31 @@ export default defineConfig(async ({ command }) => ({
   },
 
   lint: {
+    jsPlugins: ["eslint-plugin-solid"],
+    settings: solidLint.settings,
     rules: {
+      ...solidLint.rules,
+      // Module scope state is a settled choice for this client only app.
+      "solid/no-module-scope-reactive-primitive": "off",
+      // These run their callback later or take an accessor, so a read inside is live.
+      "solid/reactivity": [
+        "warn",
+        {
+          customReactiveFunctions: [
+            "afterPaint",
+            "debounce",
+            "listen",
+            "omit",
+            "onEvent",
+            "onPacksChanged",
+            "onTrustChange",
+            "onWith",
+            "watchGit",
+            "watchPr",
+            "watchSync",
+          ],
+        },
+      ],
       // Every hit is a Solid `let el!: T` handed to `ref={el}`, which the Solid
       // compiler assigns; the linter only sees a variable nothing writes.
       "no-unassigned-vars": "off",

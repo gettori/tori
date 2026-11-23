@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, onSettled, untrack } from "solid-js";
 import LeftSidebar, { type Selection } from "../LeftSidebar";
 import { noteDots } from "../../../utils/sessionActivity";
 import type { HostHandler } from "../../../dev/stubHost";
@@ -194,12 +194,17 @@ const LIVE_TABS = BUSY.map((i) => ({
 }));
 
 export function SidebarPane(props: { space: string; height?: string }) {
-  localStorage.setItem("tori.active-space.v1", props.space);
-  const [sel, setSel] = createSignal<Selection | null>(null);
-  setTimeout(
-    () => noteDots(BUSY.map((i) => ({ id: `chat-.home-${i}`, dot: "working", certainty: "inferred", home: null }))),
-    800,
+  localStorage.setItem(
+    "tori.active-space.v1",
+    untrack(() => props.space),
   );
+  const [sel, setSel] = createSignal<Selection | null>(null);
+  onSettled(() => {
+    setTimeout(
+      () => noteDots(BUSY.map((i) => ({ id: `chat-.home-${i}`, dot: "working", certainty: "inferred", home: null }))),
+      800,
+    );
+  });
   return (
     <div style={{ display: "flex", width: "300px", height: props.height ?? "900px" }}>
       <LeftSidebar selected={sel()} onSelect={setSel} liveTabs={LIVE_TABS as never} />

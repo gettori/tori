@@ -105,14 +105,14 @@ export default function CallsPanel(props: { path: string | null }) {
       <div class={styles.toolbar}>
         <button
           type="button"
-          class={`${styles.toggle} ${direction() === "incoming" ? styles.toggleOn : ""}`}
+          class={[styles.toggle, { [styles.toggleOn]: direction() === "incoming" }]}
           onClick={() => choose("incoming")}
         >
           Incoming
         </button>
         <button
           type="button"
-          class={`${styles.toggle} ${direction() === "outgoing" ? styles.toggleOn : ""}`}
+          class={[styles.toggle, { [styles.toggleOn]: direction() === "outgoing" }]}
           onClick={() => choose("outgoing")}
         >
           Outgoing

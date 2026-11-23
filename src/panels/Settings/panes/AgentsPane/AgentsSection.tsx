@@ -196,7 +196,7 @@ function AgentRow(props: {
             before the sweep answers - an unlit one would read as a verdict. */}
           <span class={styles.hcardGlyph}>
             <AgentGlyph id={a().id} label={a().label} size={20} />
-            <Show when={h()}>{(row) => <span class={`${styles.dot} ${rowTone(row())}`} />}</Show>
+            <Show when={h()}>{(row) => <span class={[styles.dot, rowTone(row())]} />}</Show>
           </span>
           <span class={styles.agentName}>{a().label}</span>
           {/* Standing facts, not status: who ships it and how Tori drives it.
