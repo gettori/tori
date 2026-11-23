@@ -44,12 +44,14 @@ describe("the placement memo", () => {
       const root = layoutRoot(WS)!;
       const [left, right] = leaves(root).map((l) => l.id);
       setOpen(Array.from({ length: 12 }, (_, i) => shell(i)));
+      flush();
       const tabsInWs = open().map((t) => ({ id: t.id, kind: t.kind }));
       for (const n of [8, 9, 10, 11]) {
         expect(
           moveTabToPane({ ws: WS, tab: { id: `sh:${n}`, kind: "shell" }, targetPaneId: right, root, tabsInWs }),
         ).toBeNull();
       }
+      flush();
 
       // Warm the memo, then read repeatedly: cached, no recompute, same array.
       paneTabs(WS, left);

@@ -1,7 +1,7 @@
 // The terminal pane's tab model, module-level so the unified tab store (plan
 // phase 4) can compose it without mounting the panel; sessionStore is the
 // precedent. Terminal.tsx resets it at setup: the lifetime still tracks the panel.
-import { createLiveSignal } from "../../lib/liveState";
+import { createSignal } from "solid-js";
 import { noteTabFocus } from "../../layout/layoutStore";
 import { isShellsKey, SHELLS_KEY } from "../../utils/topics";
 
@@ -147,7 +147,7 @@ const defaultState = (t: OpenTerm): TabState => (isChatDraft(t) ? "open" : "live
 // reason `tabTitles` below is: the strip keys tabs by identity (gotcha #64) and
 // never re-renders a still-mounted tab, so a plain-property read would not
 // repaint when a tab wakes up. A signal read does.
-const [tabStates, setTabStates] = createLiveSignal<Record<string, TabState>>({}, { ownedWrite: true });
+const [tabStates, setTabStates] = createSignal<Record<string, TabState>>({}, { ownedWrite: true });
 
 export const tabState = (t: OpenTerm): TabState => tabStates()[t.id] ?? defaultState(t);
 
@@ -160,10 +160,14 @@ export const tabState = (t: OpenTerm): TabState => tabStates()[t.id] ?? defaultS
  */
 export function advanceTabState(t: OpenTerm, next: TabState): boolean {
   if (!statesFor(t.kind).includes(next)) return false;
-  if (RANK[next] <= RANK[tabState(t)]) return false;
   // An updater: tabs waking in one flush would otherwise overwrite each other.
-  setTabStates((states) => ({ ...states, [t.id]: next }));
-  return true;
+  let moved = false;
+  setTabStates((states) => {
+    if (RANK[next] <= RANK[states[t.id] ?? defaultState(t)]) return states;
+    moved = true;
+    return { ...states, [t.id]: next };
+  });
+  return moved;
 }
 
 /**
@@ -176,8 +180,7 @@ export function advanceTabState(t: OpenTerm, next: TabState): boolean {
  * prevent.
  */
 export function seedInert(id: string): void {
-  if (id in tabStates()) return;
-  setTabStates({ ...tabStates(), [id]: "inert" });
+  setTabStates((states) => (id in states ? states : { ...states, [id]: "inert" }));
 }
 
 /**
@@ -192,10 +195,10 @@ export const stateOnActivate = (t: OpenTerm): TabState =>
 
 // Restored terminals the daemon still runs. Mounting them all at once would
 // replay every ring at launch.
-const [held, setHeld] = createLiveSignal<Set<string>>(new Set(), { ownedWrite: true });
+const [held, setHeld] = createSignal<Set<string>>(new Set(), { ownedWrite: true });
 
 export function markHeld(id: string): void {
-  setHeld(new Set(held()).add(id));
+  setHeld((was) => new Set(was).add(id));
 }
 
 export const isHeld = (id: string) => held().has(id);
@@ -203,32 +206,35 @@ export const isHeld = (id: string) => held().has(id);
 /** A closed tab leaves no state behind, or a future tab reusing the id would
  *  inherit it (restore reuses stored ids since Phase 1). */
 export function dropTabState(id: string): void {
-  if (held().has(id)) {
-    const next = new Set(held());
+  setHeld((was) => {
+    if (!was.has(id)) return was;
+    const next = new Set(was);
     next.delete(id);
-    setHeld(next);
-  }
-  if (!(id in tabStates())) return;
-  const next = { ...tabStates() };
-  delete next[id];
-  setTabStates(next);
+    return next;
+  });
+  setTabStates((states) => {
+    if (!(id in states)) return states;
+    const next = { ...states };
+    delete next[id];
+    return next;
+  });
 }
 
-const [open, setOpen] = createLiveSignal<OpenTerm[]>([], { ownedWrite: true });
+const [open, setOpen] = createSignal<OpenTerm[]>([], { ownedWrite: true });
 // Live tab labels that can change after a tab is created (a session rename),
 // keyed by tab id and overriding OpenTerm.title when present. Kept in a signal
 // rather than mutated onto the tab object because the tab bar keys tabs by
 // identity (gotcha #64) and never re-runs renderTab for a still-mounted tab,
 // so a plain-property title read would not repaint; a signal read does.
-const [tabTitles, setTabTitles] = createLiveSignal<Record<string, string>>({}, { ownedWrite: true });
+const [tabTitles, setTabTitles] = createSignal<Record<string, string>>({}, { ownedWrite: true });
 const tabTitle = (t: OpenTerm) => tabTitles()[t.id] ?? t.title;
 // Tabs are grouped by workspace (branch-unit folder). Only the active
 // workspace's tabs show in the bar/stage, and the `shells:` group in the dock;
 // every other group stays mounted and CSS-hidden so its PTYs keep running
 // (gotcha #64). `activeWorkspace` is the workspace on screen and is never
 // `shells:`; `activeByWorkspace` remembers the focused tab per group.
-const [activeWorkspace, setActiveWorkspace] = createLiveSignal<string | null>(null, { ownedWrite: true });
-const [activeByWorkspace, setActiveByWorkspace] = createLiveSignal<Record<string, string>>({}, { ownedWrite: true });
+const [activeWorkspace, setActiveWorkspace] = createSignal<string | null>(null, { ownedWrite: true });
+const [activeByWorkspace, setActiveByWorkspace] = createSignal<Record<string, string>>({}, { ownedWrite: true });
 
 const tabsIn = (ws: string) => open().filter((t) => t.workspace === ws);
 // A group's remembered tab, falling back to its first tab when that record is
@@ -250,11 +256,11 @@ function focusTab(ws: string, id: string) {
   if (isShellsKey(ws)) return;
   noteTabFocus(id);
   setActiveWorkspace(ws);
-  setActiveByWorkspace({ ...activeByWorkspace(), [ws]: id });
+  setActiveByWorkspace((all) => ({ ...all, [ws]: id }));
 }
 function focusDockTab(id: string) {
   noteTabFocus(id);
-  setActiveByWorkspace({ ...activeByWorkspace(), [SHELLS_KEY]: id });
+  setActiveByWorkspace((all) => ({ ...all, [SHELLS_KEY]: id }));
 }
 
 export {
@@ -274,6 +280,16 @@ export {
   focusTab,
   focusDockTab,
 };
+
+// What the tab list and picks are once this tick's writes land. An edit that
+// reads them back has to start here: a plain read still answers the old value.
+export function latestTerminalModel() {
+  let tabs!: OpenTerm[];
+  let active!: Record<string, string>;
+  setOpen((prev) => (tabs = prev));
+  setActiveByWorkspace((prev) => (active = prev));
+  return { tabs, active };
+}
 
 // Called from Terminal.tsx's setup, nowhere else: the panel mounts once per app
 // run, so this keeps the model's lifetime what it was before the extraction
