@@ -1,4 +1,4 @@
-import { For, onCleanup, createStore } from "solid-js";
+import { For, onCleanup, createStore, runWithOwner } from "solid-js";
 import { createLiveSignal } from "../../../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import ToolCallCard from "../ToolCallCard";
@@ -143,7 +143,7 @@ export function createPrompts() {
     });
     ASKS().forEach(showAsk);
   };
-  askAgain();
+  runWithOwner(null, askAgain);
   onCleanup(() => ASKS().forEach((a) => closeAsk(a.id)));
   return {
     cards: () => store.cards,

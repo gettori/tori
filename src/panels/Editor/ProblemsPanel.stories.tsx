@@ -1,3 +1,4 @@
+import { runWithOwner } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import ProblemsPanel from "./ProblemsPanel";
 import { clearDiagnostics, publishDiagnostics, type Problem } from "../../utils/diagnostics";
@@ -38,6 +39,10 @@ const MEMBERS: MemberRoot[] = [
 /** Fill the store the panel reads. The editor publishes here on every lint
  *  change; a story has to do it by hand. */
 function loadDiagnostics() {
+  runWithOwner(null, seedDiagnostics);
+}
+
+function seedDiagnostics() {
   clearDiagnostics();
   publishDiagnostics(`${API}/src/routes/notifications.rs`, [
     p(42, "error", "cannot borrow `state` as mutable more than once"),
