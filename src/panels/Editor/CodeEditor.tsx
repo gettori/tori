@@ -2676,7 +2676,6 @@ export default function CodeEditor(props: {
   createEffect(
     () => props.openPaths,
     () => {
-      // Deferred: eviction drops entries from live stores, and a flush from here is a no-op.
       // Read when it runs, so a tab reopened in the meantime keeps its buffer.
       queueMicrotask(() => evictClosed(untrack(() => props.openPaths)));
     },

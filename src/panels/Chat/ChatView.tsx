@@ -1685,8 +1685,7 @@ export default function ChatView(props: {
   createEffect(
     () => state.ended,
     (ended) => {
-      // Deferred: the resume table is live state, and a flush from here is a no-op.
-      if (ended) queueMicrotask(() => cancelResume(props.sessionId));
+      if (ended) cancelResume(props.sessionId);
     },
   );
 
@@ -2076,8 +2075,7 @@ export default function ChatView(props: {
       return { sessionId: props.sessionId, accountKey: accountKey(props.agentId, resolvedProfile()), ...stop };
     },
     (a) => {
-      // Deferred: the resume table is live state, and a flush from here is a no-op.
-      if (a) queueMicrotask(() => arm({ ...a, byHand: false }));
+      if (a) arm({ ...a, byHand: false });
     },
   );
   createEffect(

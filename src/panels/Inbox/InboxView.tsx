@@ -566,8 +566,7 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
   createEffect(askedTab, (asked) => {
     if (!asked) return;
     setTab(asked);
-    // askedTab is live state: its setter flushes, which an effect callback cannot do.
-    queueMicrotask(() => setAskedTab(null));
+    setAskedTab(null);
   });
   const views: { id: InboxTab; label: string; icon: IconGlyph; count: () => number }[] = [
     { id: "since", label: "Since you looked", icon: Clock, count: () => digestCount(digest()) },
