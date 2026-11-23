@@ -12,7 +12,6 @@ import {
   Show,
   untrack,
 } from "solid-js";
-import { createLiveSignal } from "./lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { forgetWorkspace as forgetLayout, moveWorkspaceLayouts } from "./layout/layoutStore";
@@ -299,15 +298,19 @@ function StyleguideRoot() {
 
 function AppShell() {
   const initial = loadLayout();
-  // Live: `persistLayout` reads these back right after each write.
-  const [sidebar, setSidebar] = createLiveSignal(initial.sidebar);
-  const [showSidebar, setShowSidebar] = createLiveSignal(initial.showSidebar);
+  // Pane commands and the layout save read state back between their steps,
+  // through memos, so each step lands first. A caller under an owner cannot flush.
+  const settle = () => {
+    if (!getOwner()) flush();
+  };
+  const [sidebar, setSidebar] = createSignal(initial.sidebar);
+  const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
   // Hiding the sidebar hides its tree. With the space tiles in the rail, the
   // rail stays, since it is the way back to every space.
   const railOnly = () => !showSidebar() && settings.sidebar.spaceTiles === "side";
-  const [showFiletree, setShowFiletree] = createLiveSignal(initial.showFiletree);
-  const [dock, setDock] = createLiveSignal(initial.dock);
-  // Ownerless so each write lands at once: the next reset reads the one before it.
+  const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
+  const [dock, setDock] = createSignal(initial.dock);
+  // Ownerless because a component body refuses these writes.
   runWithOwner(null, () => {
     resetDock(initial.showDock);
     resetPaneLayoutModel();
@@ -443,7 +446,7 @@ function AppShell() {
   const dockMax = () => Math.max(px(DOCK_MIN), bodyH() - px(WORKSPACE_PAD) - px(GUTTER) - px(WORK_MIN));
   const dockH = () => Math.min(Math.max(dock(), px(DOCK_MIN)), dockMax());
 
-  const [selected, setSelected] = createLiveSignal<Selection | null>(loadSelection(), { equals: sameSelection });
+  const [selected, setSelected] = createSignal<Selection | null>(loadSelection(), { equals: sameSelection });
   // Seeded here so the first render already has a tree to read.
   const firstWs = untrack(wsKey);
   runWithOwner(null, () => ensureEnvelope(firstWs, seedEnvelope));
@@ -660,6 +663,10 @@ function AppShell() {
   );
 
   function persistLayout() {
+    settle();
+    writeLayout();
+  }
+  function writeLayout() {
     try {
       localStorage.setItem(
         LS_LAYOUT,
@@ -690,7 +697,7 @@ function AppShell() {
     dockOpen,
     (open) => {
       if (!open) blurIfInside("[data-dock]");
-      persistLayout();
+      writeLayout();
     },
     { defer: true },
   );
@@ -700,12 +707,6 @@ function AppShell() {
     setShowSidebar((v) => !v);
     persistLayout();
   }
-
-  // Pane commands read the tree and placement back between their steps, through
-  // memos, so each step lands first. A caller under an owner cannot flush.
-  const settle = () => {
-    if (!getOwner()) flush();
-  };
 
   const TERMINAL_KINDS = ["shell", "agent", "command", "chat", "task"];
   function togglePaneFor(kinds: string[], pinKind: string) {
