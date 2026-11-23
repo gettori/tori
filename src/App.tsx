@@ -349,8 +349,7 @@ function AppShell() {
     (next) => {
       const changed = pinsPushed;
       pinsPushed = true;
-      // These write live layout state, which cannot flush inside an effect.
-      queueMicrotask(() => {
+      untrack(() => {
         if (changed) freezePlacements();
         setPinSides(next);
       });
@@ -550,8 +549,7 @@ function AppShell() {
   // moves the active root itself once the promote lands.
   createEffect(topicsReloaded, (reloaded) => {
     if (!reloaded) return;
-    // `selected` is live, and a live write cannot flush inside an effect.
-    queueMicrotask(() => {
+    untrack(() => {
       const list = untrack(topics);
       const sel = untrack(selected);
       if (sel?.kind !== "topic") return;
@@ -586,8 +584,7 @@ function AppShell() {
     unlistenLinks = await watchPackLinks();
     if (disposed) releaseServices();
   };
-  // Later than settle: these write live state, which cannot flush inside it.
-  onSettled(() => queueMicrotask(() => void startServices()));
+  onSettled(() => untrack(() => void startServices()));
   function releaseServices() {
     unlistenMenu?.();
     unlistenSetup?.();
@@ -892,7 +889,7 @@ function AppShell() {
       if (!empty) return;
       const gone = empty;
       held.delete(`${ws}\u0000${gone}`);
-      // Live layout writes, which cannot flush inside an effect.
+      // A tick later, because the move that emptied it may be refilling it.
       queueMicrotask(() => {
         if (paneTabs(ws, gone).length > 0) {
           held.add(`${ws}\u0000${gone}`);
@@ -1117,8 +1114,7 @@ function AppShell() {
         kind: "info",
       });
     });
-    // Later than settle: these write live state, which cannot flush inside it.
-    queueMicrotask(() => {
+    untrack(() => {
       initSettings();
       invoke<GitReport>("git_health")
         .then((r) => {
