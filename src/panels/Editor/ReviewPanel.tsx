@@ -1363,8 +1363,7 @@ export default function ReviewPanel(props: {
 
   // showHistory reads the layout it writes, so tracking it would loop.
   createEffect(pendingReveal, (want) => {
-    // The layout and the tab are live state, and flush is refused in an effect callback.
-    if (want) queueMicrotask(() => showHistory("checkpoints"));
+    if (want) showHistory("checkpoints");
   });
 
   /** Picking a tab out of the `+N` menu reorders the strip. The order keeps

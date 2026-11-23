@@ -923,8 +923,7 @@ export default function Editor(props: {
   // mount-scoped release would re-parse the file on every switch back. This one
   // effect covers every way a tab goes away (close, purge, workspace delete).
   createEffect(allOpenPaths, (paths) => {
-    // The release writes the module level view store, whose write cannot flush from an effect callback.
-    queueMicrotask(() => releasePdfsExcept(paths));
+    releasePdfsExcept(paths);
   });
 
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
@@ -2141,8 +2140,7 @@ export default function Editor(props: {
   // Turn end clears the label immediately rather than waiting out the quiet
   // timer: "Executing" dropping is a definite end-of-turn signal.
   createEffect(selectedExecuting, (executing) => {
-    // Deferred: the editing indication is live state, and a flush from here is a no-op.
-    if (!executing) queueMicrotask(clearEditing);
+    if (!executing) clearEditing();
   });
 
   // A tree revert just rewrote/removed files on disk. The fs watcher would

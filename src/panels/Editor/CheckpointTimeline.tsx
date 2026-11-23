@@ -611,8 +611,7 @@ export default function CheckpointTimeline(props: {
     },
     (want) => {
       if (!want) return;
-      // The reveal is live state, and flush is refused in an effect callback.
-      queueMicrotask(() => setPendingReveal(null));
+      setPendingReveal(null);
       show({ kind: "turn", sessionId: want.sessionId, ts: want.promptTs });
     },
   );
