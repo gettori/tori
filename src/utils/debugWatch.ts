@@ -8,7 +8,6 @@
 // step. That is what a watch is for, and it is also why `MAX_WATCHES` exists.
 
 import { createEffect, createRoot, createSignal } from "solid-js";
-import { withoutFlush } from "../lib/liveState";
 
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
@@ -186,5 +185,5 @@ export function refreshWatches(): void {
 // any component reading it. No `defer`, so a module imported while something is
 // already paused answers that frame rather than waiting for the next one.
 createRoot(() => {
-  createEffect(selectedFrame, () => withoutFlush(() => void refreshWatches()));
+  createEffect(selectedFrame, () => void refreshWatches());
 });
