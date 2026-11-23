@@ -44,6 +44,14 @@ export const ENFORCED: readonly IdiomClass[] = [
 ];
 
 export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
+  "nested-root": [
+    {
+      file: "src/panels/Chat/composerField.ts",
+      count: 1,
+      reason:
+        "a chip reads the composer's context and dies with it, so its root stays owned; detached, its children would outlive the chip",
+    },
+  ],
   "boolean-attr": [
     {
       file: "src/components/IconButton/IconButton.tsx",
