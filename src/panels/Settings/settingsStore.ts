@@ -2,8 +2,7 @@
 // backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
-import { createMemo } from "solid-js";
-import { createLiveSignal, createLiveStore } from "../../lib/liveState";
+import { createMemo, createSignal, createStore, flush, getOwner } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
@@ -642,7 +641,7 @@ export const DEFAULT_SETTINGS: Settings = {
  */
 const BUILT_IN_EDITOR: EditorDefaults = { ...DEFAULT_SETTINGS.editorDefaults };
 
-const [settings, setSettingsDraft] = createLiveStore<Settings>(DEFAULT_SETTINGS);
+const [settings, setSettingsDraft] = createStore<Settings>(DEFAULT_SETTINGS);
 export { settings };
 
 // Merges shallowly, and a key set to undefined is deleted.
@@ -680,7 +679,7 @@ function readStoredZoom(): number {
   return Number.isFinite(raw) && raw > 0 ? clampZoom(raw) : 1;
 }
 
-const [zoom, setZoomSignal] = createLiveSignal(readStoredZoom());
+const [zoom, setZoomSignal] = createSignal(readStoredZoom());
 export { zoom };
 
 /** Effective terminal font size in px (base setting × zoom), read by xterm.
@@ -701,22 +700,26 @@ export function setZoom(z: number) {
   localStorage.setItem(ZOOM_KEY, String(next));
   // Re-fold the new zoom into the chrome/editor CSS tokens. (The terminal reads
   // terminalFontSize() reactively, so it needs no explicit re-apply here.)
-  applySettings(settings);
+  applySettings(settings, next);
+}
+function stepZoom(by: number) {
+  let current = 1;
+  setZoomSignal((z) => (current = z));
+  setZoom(current + by);
 }
 export function zoomIn() {
-  setZoom(zoom() + ZOOM_STEP);
+  stepZoom(ZOOM_STEP);
 }
 export function zoomOut() {
-  setZoom(zoom() - ZOOM_STEP);
+  stepZoom(-ZOOM_STEP);
 }
 export function resetZoom() {
   setZoom(1);
 }
 
 /** Map typography onto the CSS tokens that the chrome and editor read. */
-export function applySettings(s: Settings) {
+export function applySettings(s: Settings, z = zoom()) {
   const st = document.documentElement.style;
-  const z = zoom();
   st.setProperty("--tori-font-ui", s.typography.uiFontFamily);
   // Chrome sizing flows from one multiplier: every type step (and, in later
   // phases, spacing and control dimensions) is `calc(<base> * var(--ui-scale))`.
@@ -780,7 +783,7 @@ function applyAll(s: Settings) {
 // consumer that refuses an action on an empty setting has to know whether the
 // setting is empty or merely unread. A failed read still counts as loaded - the
 // defaults are then the answer the whole app is running on.
-const [settingsLoaded, setSettingsLoaded] = createLiveSignal(false);
+const [settingsLoaded, setSettingsLoaded] = createSignal(false);
 export { settingsLoaded };
 
 /** Read settings from disk into the store and apply them. */
@@ -814,6 +817,8 @@ export async function saveSettings(next: Settings): Promise<void> {
   }
   setSettings(saved);
   applyAll(saved);
+  // Listeners read the store back as they hear this.
+  if (!getOwner()) flush();
   emit(SETTINGS_CHANGED);
 }
 
@@ -861,8 +866,8 @@ export function forgetChatPrefsUnder(projectPath: string): Promise<void> {
 // answers are ever in force: the editor reads them, the Settings panel badges
 // them, and a background workspace's overlay would be a cache with no reader.
 
-const [overlayRoot, setOverlayRoot] = createLiveSignal<string | null>(null);
-const [overlay, setOverlay] = createLiveSignal<EditorOverlay>({});
+const [overlayRoot, setOverlayRoot] = createSignal<string | null>(null);
+const [overlay, setOverlay] = createSignal<EditorOverlay>({});
 export { overlayRoot };
 
 /**
@@ -924,8 +929,8 @@ export async function setWorkspaceOverride<K extends keyof EditorDefaults>(
 ): Promise<void> {
   const root = overlayRoot();
   if (!root) return;
-  const next = withOverride(overlay(), key, value);
-  setOverlay(next);
+  let next!: EditorOverlay;
+  setOverlay((was) => (next = withOverride(was, key, value)));
   try {
     await invoke("set_workspace_settings", { root, settings: overlayFile(next) });
   } catch (e) {
