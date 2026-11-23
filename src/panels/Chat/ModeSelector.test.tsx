@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render } from "../../test/harness";
 import { pointerClick } from "../../test/menus";
@@ -37,6 +38,7 @@ function openMenu(getByLabelText: (t: string) => HTMLElement) {
   // `pointerClick`, not `fireEvent.click`: a `Dropdown` trigger opens on
   // `pointerdown` and answers a bare click with nothing (src/test/menus.ts).
   pointerClick(getByLabelText("Permission mode"));
+  flush();
   const menus = document.querySelectorAll('[role="menu"]');
   return menus[menus.length - 1] as HTMLElement;
 }
@@ -85,6 +87,7 @@ describe("ModeSelector", () => {
     const menu = openMenu(getByLabelText);
     const row = [...menu.querySelectorAll("*")].find((el) => el.textContent?.trim().startsWith("Yolo"));
     pointerClick(row as HTMLElement);
+    flush();
     expect(onSelect).toHaveBeenCalledWith("yolo");
   });
 
@@ -228,6 +231,7 @@ describe("a mode the agent refused", () => {
       r.textContent?.includes("Yolo"),
     ) as HTMLElement;
     pointerClick(row);
+    flush();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -249,6 +253,7 @@ describe("a mode the agent refused", () => {
       r.textContent?.includes("Auto edit"),
     ) as HTMLElement;
     pointerClick(row);
+    flush();
     expect(onSelect).toHaveBeenCalledWith("auto_edit");
   });
 });

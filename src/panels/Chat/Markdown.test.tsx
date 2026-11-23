@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, fireEvent, waitFor } from "../../test/harness";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import Markdown from "./Markdown";
 
@@ -58,6 +58,7 @@ describe("Markdown block splitting", () => {
     const intro = container.querySelector("p");
     const pre = container.querySelector("pre");
     setText(FENCED + " that keeps growing");
+    flush();
     const paras = container.querySelectorAll("p");
     // The tail paragraph re-rendered with the delta; everything above it is
     // the same DOM, which is the point of splitting by block.

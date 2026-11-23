@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vite-plus/test";
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { render, fireEvent, screen } from "../../test/harness";
 import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -1131,6 +1131,7 @@ describe("the insert handle", () => {
     const { input } = setup({ handle: (h) => (handle = h) });
     handle!.insertBlock("> a\n\n");
     expect(input.value).toBe("> a\n\n");
+    flush();
     handle!.insertBlock("> b\n\n");
     expect(input.value).toBe("> a\n\n> b\n\n");
   });

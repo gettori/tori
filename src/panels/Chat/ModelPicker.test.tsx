@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi } from "vite-plus/test";
 import initializeCapture from "../../../dev/fixtures/claude/initialize.jsonl?raw";
 import { fireEvent, render, screen } from "../../test/harness";
@@ -130,6 +131,7 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   // nothing (src/test/menus.ts).
   const openEffort = () => {
     pointerClick(pills()[1]);
+    flush();
     const menus = [...document.querySelectorAll('[role="menu"]')];
     const menu = menus[menus.length - 1];
     if (!menu) throw new Error("the pill opened no menu");
@@ -263,6 +265,7 @@ describe("ModelPicker", () => {
     const menu = s.openEffort();
     const row = [...menu.children].find((r) => r.textContent?.startsWith("Xhigh"))!;
     pointerClick(row as HTMLElement);
+    flush();
     expect(s.onSelectEffort).toHaveBeenCalledWith("xhigh");
   });
 
@@ -323,6 +326,7 @@ describe("ModelPicker", () => {
     const menu = s.openEffort();
     const row = [...menu.children].find((r) => r.textContent?.startsWith("Default"))!;
     pointerClick(row as HTMLElement);
+    flush();
     expect(s.onSelectEffort).toHaveBeenCalledWith(null);
   });
 

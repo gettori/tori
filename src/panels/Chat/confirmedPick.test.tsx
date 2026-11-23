@@ -1,6 +1,7 @@
 // When an ACP chat records a mode pick as the tab's and the project's: on the
 // agent's answer, not on the invoke, which resolves on staging. Recording there
 // wrote a refused mode into every later draft in the project (issue 164).
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
@@ -125,10 +126,12 @@ function answer(mode: string) {
 
 function pick(getByLabelText: (t: string) => HTMLElement, label: string) {
   pointerClick(getByLabelText("Permission mode"));
+  flush();
   const menus = document.querySelectorAll('[role="menu"]');
   const menu = menus[menus.length - 1] as HTMLElement;
   const row = [...menu.querySelectorAll('[role="menuitem"]')].find((r) => r.textContent?.includes(label));
   pointerClick(row as HTMLElement);
+  flush();
 }
 
 const setModes = () => invokes.filter((i) => i.cmd === "chat_set_mode").map((i) => i.args.mode);

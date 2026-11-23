@@ -6,7 +6,7 @@
 // function here mutates a plain `ChatState` draft and touches nothing global,
 // so the whole event pipeline is testable without Solid, without a DOM and
 // without a live `claude`. `ChatView` owns the only reactive wrapper, applying
-// these through `produce`.
+// these through a draft setter.
 //
 // Mutating rather than returning a new state is deliberate: a session runs for
 // thousands of events and copying the item list on every delta is the one thing

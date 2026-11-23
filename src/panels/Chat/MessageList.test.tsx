@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
-import { Show, createSignal, createStore } from "solid-js";
+import { Show, createSignal, createStore, flush } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
 import { lastReply, speakableChunks } from "./speakable";
@@ -388,6 +388,7 @@ describe("MessageList turn anchoring", () => {
 
     expect(onAnchor).not.toHaveBeenCalled();
     setShowList(false);
+    flush();
 
     // jsdom gives every element a zero rect, so every header reads as at or
     // above the top and "the last one at or above" lands on the final turn.
@@ -452,12 +453,14 @@ describe("MessageList turn anchoring", () => {
     render(() => <Show when={showList()}>{list({ anchorTurnId: anchor(), onAnchor: setAnchor })}</Show>);
 
     setShowList(false);
+    flush();
     const left = anchor();
     expect(left).not.toBeNull();
 
     // Coming back re-renders the same turns, and the remembered anchor is what
     // the list opens on rather than being discarded for the tail.
     setShowList(true);
+    flush();
     expect(anchor()).toBe(left);
   });
 });
@@ -974,7 +977,10 @@ describe("agent work collapsed into a card", () => {
     const card = screen.getByRole("button", { name: "1 tool call" });
     fireEvent.click(card);
 
-    setState("items", 2, { state: "ok", approval: null });
+    setState((s) => {
+      Object.assign(s.items[2], { state: "ok", approval: null });
+    });
+    flush();
     expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
     const after = screen.getByRole("button", { name: "2 tool calls" });
     expect(after, "the card was rebuilt rather than kept").toBe(card);
@@ -987,7 +993,10 @@ describe("agent work collapsed into a card", () => {
     expect(screen.getByText("Which channel do you want?")).toBeTruthy();
     expect(screen.getByRole("button", { name: "1 tool call" })).toBeTruthy();
 
-    setState("items", 2, { result: "Stable" });
+    setState((s) => {
+      Object.assign(s.items[2], { result: "Stable" });
+    });
+    flush();
     expect(screen.queryByText("Which channel do you want?")).toBeNull();
     expect(screen.getByRole("button", { name: "1 tool call, 1 question" })).toBeTruthy();
   });
@@ -1015,7 +1024,10 @@ describe("agent work collapsed into a card", () => {
   it("says a call failed the moment it does", () => {
     const { setState } = mount([PROMPT, call("a", { state: "running" }), REPLY]);
     expect(screen.getByRole("button", { name: "1 tool call" })).toBeTruthy();
-    setState("items", 1, { state: "error" });
+    setState((s) => {
+      Object.assign(s.items[1], { state: "error" });
+    });
+    flush();
     expect(screen.getByRole("button", { name: "1 tool call, 1 failed" })).toBeTruthy();
   });
 
@@ -1227,11 +1239,16 @@ describe("the block being read aloud", () => {
     );
     expect(lit(container)).toEqual(["First part."]);
     setBlock(1);
+    flush();
     expect(lit(container)).toEqual(["Second part."]);
 
-    setState("items", 0, "text" as never, "First part.\n\nSecond part, and more." as never);
+    setState((s) => {
+      (s.items[0] as { text: string }).text = "First part.\n\nSecond part, and more.";
+    });
+    flush();
     await waitFor(() => expect(lit(container)).toEqual(["Second part, and more."]));
     setBlock(undefined);
+    flush();
     expect(lit(container)).toEqual([]);
   });
 });

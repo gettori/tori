@@ -1,4 +1,4 @@
-import { onMount } from "solid-js";
+import { onSettled, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -309,8 +309,9 @@ function lane(agentId: string, description: string, status: string | null): Lane
 
 function Strip(props: { sessions: RelatedSession[]; withLanes?: boolean; openList?: boolean }) {
   let row: HTMLDivElement | undefined;
-  onMount(() => {
-    if (props.openList) row?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click();
+  const openList = untrack(() => props.openList);
+  onSettled(() => {
+    if (openList) row?.querySelector<HTMLButtonElement>("button[aria-expanded]")?.click();
   });
   return (
     <div ref={row}>

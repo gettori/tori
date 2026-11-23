@@ -7,9 +7,10 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  on,
+  flush,
   onCleanup,
-  onMount,
+  onSettled,
+  untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
@@ -76,6 +77,7 @@ import {
 } from "./toolRenderers";
 import patterns from "../../styles/patterns.module.css";
 import { enterOnce } from "../../utils/enterOnce";
+import { createLiveSignal } from "../../lib/liveState";
 
 const VERDICT_ICON = { verified: CircleCheck, failed: CircleX, unverified: CircleDashed } as const;
 
@@ -143,12 +145,13 @@ export function stampLabel(at: number, now = Date.now()): string {
 
 // One clock for every stamp on screen, running only while one is mounted, so
 // "Just now" turns into "Today at ..." without each row keeping a timer.
-const [clock, setClock] = createSignal(Date.now());
+const [clock, setClock] = createLiveSignal(Date.now());
 let clockUsers = 0;
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 function useClock(): () => number {
   if (clockUsers++ === 0) {
-    setClock(Date.now());
+    // A write from a component body is refused on 2.0, so the fresh reading lands a microtask on.
+    queueMicrotask(() => setClock(Date.now()));
     clockTimer = setInterval(() => setClock(Date.now()), 30_000);
   }
   onCleanup(() => {
@@ -178,14 +181,18 @@ function ReplyText(props: {
 }) {
   let body!: HTMLDivElement;
   const [renders, setRenders] = createSignal(0);
-  createEffect(() => {
-    renders();
-    const block = props.readingBlock?.(props.id);
-    if (block === undefined) return;
-    const el = speakableBlocks(body)[block]?.el;
-    el?.classList.add(styles.readingBlock);
-    onCleanup(() => el?.classList.remove(styles.readingBlock));
-  });
+  createEffect(
+    () => {
+      renders();
+      return props.readingBlock?.(props.id);
+    },
+    (block) => {
+      if (block === undefined) return;
+      const el = speakableBlocks(body)[block]?.el;
+      el?.classList.add(styles.readingBlock);
+      return () => el?.classList.remove(styles.readingBlock);
+    },
+  );
   return (
     <div class={styles.replyText}>
       <Show when={props.onRead}>
@@ -393,16 +400,14 @@ export default function MessageList(props: {
   // a first row that changed some other way (a lane switch) is not rows above.
   let keep: { first: string | undefined; fromBottom: number } | null = null;
   createEffect(
-    on(
-      () => shown()[0]?.id,
-      (first) => {
-        if (!keep || !scroller || first === keep.first) return;
-        const was = keep.first;
-        if (shown().some((it) => it.id === was)) scroller.scrollTop = scroller.scrollHeight - keep.fromBottom;
-        keep = null;
-      },
-      { defer: true },
-    ),
+    () => shown()[0]?.id,
+    (first) => {
+      if (!keep || !scroller || first === keep.first) return;
+      const was = keep.first;
+      if (shown().some((it) => it.id === was)) scroller.scrollTop = scroller.scrollHeight - keep.fromBottom;
+      keep = null;
+    },
+    { defer: true },
   );
 
   // Earlier rows load as the reader nears the top, a screen ahead of them. An
@@ -440,7 +445,7 @@ export default function MessageList(props: {
     watcher.observe(earlierRow);
   }
 
-  onMount(() => {
+  onSettled(() => {
     if (!scroller || typeof IntersectionObserver === "undefined") return;
     watcher = new IntersectionObserver(
       (entries) => {
@@ -449,29 +454,39 @@ export default function MessageList(props: {
       { root: scroller, rootMargin: "100% 0px 0px 0px" },
     );
     if (earlierRow) watcher.observe(earlierRow);
-    onCleanup(() => watcher?.disconnect());
+    return () => watcher?.disconnect();
   });
 
   createEffect(
-    on(
-      () => shown()[0]?.id,
-      () => {
-        if (!loading()) return;
-        clearTimeout(giveUp);
-        setLoading(false);
-        lookAgain();
-      },
-      { defer: true },
-    ),
+    () => shown()[0]?.id,
+    () => {
+      if (!loading()) return;
+      clearTimeout(giveUp);
+      setLoading(false);
+      lookAgain();
+    },
+    { defer: true },
   );
 
-  function watchEarlierRow(el: HTMLElement) {
-    earlierRow = el;
-    watcher?.observe(el);
+  function EarlierRow(rowProps: { children: JSX.Element }) {
+    let el: HTMLDivElement | undefined;
     onCleanup(() => {
+      if (!el) return;
       watcher?.unobserve(el);
       if (earlierRow === el) earlierRow = undefined;
     });
+    return (
+      <div
+        class={styles.loadEarlier}
+        ref={(node) => {
+          el = node;
+          earlierRow = node;
+          watcher?.observe(node);
+        }}
+      >
+        {rowProps.children}
+      </div>
+    );
   }
 
   // Our own pins fire scroll events too. One that lands after a tall row
@@ -505,11 +520,10 @@ export default function MessageList(props: {
   const grouped = createMemo(() => (props.collapseWork ? groupRuns(shown(), runCache) : null));
   const rows = () => grouped()?.rows ?? shown();
   const arrivals = createMemo<{ rows: readonly TranscriptRow[]; fresh: ReadonlySet<TranscriptRow> }>(
-    (was) => {
+    (was = { rows: [], fresh: NONE }) => {
       const now = rows();
       return { rows: now, fresh: appended(was.rows, now) };
     },
-    { rows: [], fresh: NONE },
   );
 
   const turnIdOf = (it: ChatItem) =>
@@ -594,6 +608,8 @@ export default function MessageList(props: {
   const [revealed, setRevealed] = createSignal<string | null>(null);
   function showCall(toolUseId: string) {
     setRevealed(null);
+    // Writes coalesce: without this, asking for the same call twice shows no change to the effects.
+    flush();
     setRevealed(toolUseId);
     requestAnimationFrame(() =>
       scroller
@@ -759,25 +775,20 @@ export default function MessageList(props: {
     });
   }
 
-  onMount(() => {
-    // Captured now, not read again inside the microtask: props are reactive
-    // getters, and the anchor this mount is restoring is the one it opened
-    // with.
-    const anchor = props.anchorTurnId;
-    if (anchor) scrollToTurn(anchor);
+  const mountAnchor = untrack(() => props.anchorTurnId);
+  onSettled(() => {
+    if (mountAnchor) scrollToTurn(mountAnchor);
   });
 
   // An anchor that arrives later is somebody pointing at a turn - the blame
   // widget's "open the turn that wrote this line" - rather than a view being
   // restored, and the list is already mounted when it lands.
   createEffect(
-    on(
-      () => props.anchorTurnId,
-      (anchor) => {
-        if (anchor) scrollToTurn(anchor);
-      },
-      { defer: true },
-    ),
+    () => props.anchorTurnId,
+    (anchor) => {
+      if (anchor) scrollToTurn(anchor);
+    },
+    { defer: true },
   );
 
   onCleanup(() => props.onAnchor?.(visibleTurn()));
@@ -799,57 +810,51 @@ export default function MessageList(props: {
 
   // Re-pin after the DOM has the new content, and only while pinned.
   createEffect(
-    on(
-      () => [shown().length, shown()[shown().length - 1]?.id, tailLength()] as const,
-      () => {
-        if (!stuck() || !scroller || props.active === false) return;
-        pin();
-      },
-    ),
+    () => [shown().length, shown()[shown().length - 1]?.id, tailLength(), untrack(() => props.active)] as const,
+    ([, , , active]) => {
+      if (!stuck() || !scroller || active === false) return;
+      pin();
+    },
   );
   createEffect(
-    on(
-      () => props.active,
-      (active) => {
-        if (active !== false && stuck()) pin();
-      },
-      { defer: true },
-    ),
+    () => props.active,
+    (active) => {
+      if (active !== false && stuck()) pin();
+    },
+    { defer: true },
   );
 
   // Your own message is the exception to "scrolling up detaches": Enter is the
   // one moment the reader has asked for the tail, and a prompt sent into a
   // transcript scrolled up lands under the composer entire.
   createEffect(
-    on(
-      () => {
-        const last = shown()[shown().length - 1];
-        return last?.kind === "user" ? last.id : null;
-      },
-      (id) => {
-        if (!id) return;
-        // Re-pinned, not merely scrolled: the composer changes height again
-        // after a send (chips clear, a lane strip opens), and only the observer
-        // below follows that, and only while pinned.
-        setStuck(true);
-        pin();
-      },
-      // Not on mount: a restored transcript can end on a prompt, and opening it
-      // is not sending one.
-      { defer: true },
-    ),
+    () => {
+      const last = shown()[shown().length - 1];
+      return last?.kind === "user" ? last.id : null;
+    },
+    (id) => {
+      if (!id) return;
+      // Re-pinned, not merely scrolled: the composer changes height again
+      // after a send (chips clear, a lane strip opens), and only the observer
+      // below follows that, and only while pinned.
+      setStuck(true);
+      pin();
+    },
+    // Not on mount: a restored transcript can end on a prompt, and opening it
+    // is not sending one.
+    { defer: true },
   );
 
   // An image has no height until it loads, so a prompt carrying one is pinned
   // against a bubble still about to grow by up to 180px. `load` does not bubble
   // but does run the capture phase, so one listener covers every image.
-  onMount(() => {
+  onSettled(() => {
     if (!scroller) return;
     const onLoad = () => {
       if (stuck()) pin();
     };
     scroller.addEventListener("load", onLoad, true);
-    onCleanup(() => scroller?.removeEventListener("load", onLoad, true));
+    return () => scroller?.removeEventListener("load", onLoad, true);
   });
 
   // And re-pin when the *viewport* shrinks, which is the other way the bottom
@@ -866,7 +871,7 @@ export default function MessageList(props: {
   // Every row is watched as well, for the growth the effect above has no key
   // for: a question card or permission prompt filled into an item already
   // shown, a finished reply's code blocks highlighting after its last delta.
-  onMount(() => {
+  onSettled(() => {
     if (!scroller || typeof ResizeObserver === "undefined" || typeof MutationObserver === "undefined") return;
     // Only while pinned: a reader who has scrolled up is holding a position on
     // purpose, and a resize is not a reason to take it away from them.
@@ -884,10 +889,10 @@ export default function MessageList(props: {
       }
     });
     rows.observe(scroller, { childList: true });
-    onCleanup(() => {
+    return () => {
       rows.disconnect();
       ro.disconnect();
-    });
+    };
   });
 
   const Row = (p: { item: ChatItem; unanchored?: boolean }) => (
@@ -1111,10 +1116,15 @@ export default function MessageList(props: {
   const WorkCard = (p: { run: WorkRun }) => {
     const [open, setOpen] = createSignal(false);
     const held = () => grouped()?.members.get(p.run) ?? [];
-    createEffect(() => {
-      const id = revealed();
-      if (id && held().some((m) => m.kind === "tool" && m.toolUseId === id)) setOpen(true);
-    });
+    createEffect(
+      () => {
+        const id = revealed();
+        return !!id && held().some((m) => m.kind === "tool" && m.toolUseId === id);
+      },
+      (hit) => {
+        if (hit) setOpen(true);
+      },
+    );
     const label = createMemo(() => runLabel(held(), props.streaming && held()[held().length - 1]?.id === tailId()));
     return (
       <>
@@ -1163,11 +1173,11 @@ export default function MessageList(props: {
       <Show when={canLoadEarlier()}>
         {/* Kept as a button: it is how a keyboard or a screen reader reaches
             earlier rows, and how a page that failed to arrive is asked again. */}
-        <div class={styles.loadEarlier} ref={watchEarlierRow}>
+        <EarlierRow>
           <Button size="sm" onClick={loadEarlier}>
             {loading() ? "Loading earlier…" : "Load earlier"}
           </Button>
-        </div>
+        </EarlierRow>
       </Show>
       <For each={rows()}>
         {(row) => {

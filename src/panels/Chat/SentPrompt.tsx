@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, getOwner, onCleanup, runWithOwner, untrack } from "solid-js";
 import { render } from "@solidjs/web";
 import type { ContentBlock, RefTarget } from "../../utils/chatTypes";
 import { emitWith, NAVIGATE, OPEN_IN_EDITOR, SESSION_ACTION } from "../../utils/events";
@@ -36,32 +36,26 @@ function PromptTextField(props: {
   skills: readonly string[];
   chipFor: (label: string) => ChipSpec | null;
 }) {
-  let host!: HTMLDivElement;
   let field: ReturnType<typeof createPromptField> | undefined;
-  onMount(() => {
-    field = createPromptField({
-      parent: host,
-      doc: untrack(() => props.text),
-      skills: untrack(() => props.skills),
-      chipFor: props.chipFor,
-    });
-    onCleanup(() => field?.destroy());
-  });
+  const doc = untrack(() => props.text);
+  const skills = untrack(() => props.skills);
+  const chipFor = untrack(() => props.chipFor);
+  // Built here rather than from a ref or onSettled: the field renders its chips as it
+  // is made, which needs a root and a flush that neither of those allows.
+  const host = (<div class={styles.promptField} />) as HTMLDivElement;
+  field = createPromptField({ parent: host, doc, skills, chipFor });
+  onCleanup(() => field?.destroy());
   createEffect(
-    on(
-      () => props.text,
-      (t) => field?.set(t),
-      { defer: true },
-    ),
+    () => props.text,
+    (t) => field?.set(t),
+    { defer: true },
   );
   createEffect(
-    on(
-      () => props.skills,
-      (names) => field?.setSkills(names),
-      { defer: true },
-    ),
+    () => props.skills,
+    (names) => field?.setSkills(names),
+    { defer: true },
   );
-  return <div ref={host} class={styles.promptField} />;
+  return host;
 }
 
 /**
@@ -77,23 +71,26 @@ export default function SentPrompt(props: { blocks: readonly ContentBlock[]; cwd
   const [pointing, setPointing] = createSignal<string | null>(null);
   const [previewing, setPreviewing] = createSignal<ContentBlock | null>(null);
 
+  const owner = getOwner();
   const chipFor = (label: string): ChipSpec | null => {
     const a = untrack(prompt).held.find((h) => labelOf(h.block) === label);
     if (!a) return null;
     return {
       key: a.id,
       mount: (dom) =>
-        render(
-          () => (
-            <InlineChip
-              label={label}
-              block={a.block}
-              onPoint={(on) => setPointing(on ? a.id : null)}
-              onPreview={() => setPreviewing(a.block)}
-            />
+        runWithOwner(owner, () =>
+          render(
+            () => (
+              <InlineChip
+                label={label}
+                block={a.block}
+                onPoint={(on) => setPointing(on ? a.id : null)}
+                onPreview={() => setPreviewing(a.block)}
+              />
+            ),
+            dom,
           ),
-          dom,
-        ),
+        )!,
     };
   };
 

@@ -13,7 +13,7 @@
 // making them all narrow a nullable one would trade a small duplicate shell for
 // a large permanent lie. What the two genuinely share - what an `@` mention
 // means, and the model palette - is shared as code, not by living together.
-import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup, onSettled, untrack } from "solid-js";
 import Composer from "./Composer";
 import ConfigMirror from "./ConfigMirror";
 import FollowToggle from "./FollowToggle";
@@ -115,15 +115,17 @@ export default function ChatDraft(props: {
     () => !!findAdapter(props.agentId).chat?.tori_mcp,
   );
 
-  onMount(() => {
+  const tabId = untrack(() => props.tabId);
+  onSettled(() => {
     ensureAdaptersLoaded();
     ensureAgentHealthLoaded();
     void loadStash();
-    onCleanup(followScratch(props.tabId, props.tabId));
+    const stopScratch = followScratch(tabId, tabId);
     // The cache, then one probe for the agent this draft would actually start.
     // Opening a chat on claude is already going to launch claude, so asking it
     // costs nothing new; asking every other agent on the machine would.
     void ensureModelCatalogsLoaded().then(() => probeAgent(props.agentId, props.profile));
+    return stopScratch;
   });
   onCleanup(() => probeOnHighlight.cancel());
 
@@ -187,29 +189,37 @@ export default function ChatDraft(props: {
    * something (including by switching agents, which sets a model) has answered
    * this question already.
    */
-  createEffect(() => {
-    if (!models().length || hasPick(untrack(() => draftPick(props.tabId)))) return;
-    const restored = restoredPicks(models(), chatPrefs(props.workspace), chatConfig(), agentModes().modes);
-    const model = restored.model ?? models()[0];
-    if (!model) return;
-    setDraftPick(props.tabId, {
-      model: model.value,
-      effort: restored.effort,
-      mode: restored.mode,
-    });
-  });
+  createEffect(
+    () => {
+      if (!models().length || hasPick(untrack(() => draftPick(props.tabId)))) return null;
+      const restored = restoredPicks(models(), chatPrefs(props.workspace), chatConfig(), agentModes().modes);
+      const model = restored.model ?? models()[0];
+      if (!model) return null;
+      return { model: model.value, effort: restored.effort, mode: restored.mode };
+    },
+    (patch) => {
+      if (!patch) return;
+      // The pick lives in module level state, where a write from an effect callback cannot flush.
+      queueMicrotask(() => setDraftPick(tabId, patch));
+    },
+  );
 
   /** Drop picked values this catalogue no longer recognises, the check
    *  `restoredPicks` makes for a remembered model. Guarded on a catalogue
    *  existing: an unprobed agent publishes none, which is not a withdrawal. */
-  createEffect(() => {
-    if (!catalog()?.catalogue) return;
-    const values = untrack(() => draftPick(props.tabId)).optionValues;
-    const kept = keptOptionValues(options(), values);
-    if (Object.keys(kept).length !== Object.keys(values).length) {
-      setDraftPick(props.tabId, { optionValues: kept });
-    }
-  });
+  createEffect(
+    () => {
+      if (!catalog()?.catalogue) return null;
+      const values = untrack(() => draftPick(props.tabId)).optionValues;
+      const kept = keptOptionValues(options(), values);
+      return Object.keys(kept).length !== Object.keys(values).length ? kept : null;
+    },
+    (kept) => {
+      if (!kept) return;
+      // Module level state again: see the restore above.
+      queueMicrotask(() => setDraftPick(tabId, { optionValues: kept }));
+    },
+  );
 
   /** Why this draft cannot be sent, or null. The agent stays selected either
    *  way: a draft that silently switched away from a broken agent would be Tori
