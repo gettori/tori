@@ -72,8 +72,7 @@ export function turnWatch<T>(command: string) {
         for (const id of [...seen.keys()]) {
           if (live.has(id)) continue;
           seen.delete(id);
-          // Live state flushes on write, which an effect callback cannot do.
-          queueMicrotask(() => forget(id));
+          forget(id);
         }
         for (const t of list) {
           const key = `${t.agent}\u0000${t.cwd}\u0000${t.status}`;

@@ -505,8 +505,7 @@ export default function SearchResultsBuffer(props: {
       setRunning(false);
       if (searchBuffer(id) === e && props.id === id) showDoc();
     } else if (!e.doc && e.form.query) {
-      // Run writes the live tab titles, and flush is refused in an effect callback.
-      queueMicrotask(() => void untrack(() => run()));
+      void untrack(() => run());
     }
     if (!e.form.query) requestAnimationFrame(() => queryEl?.focus());
   }

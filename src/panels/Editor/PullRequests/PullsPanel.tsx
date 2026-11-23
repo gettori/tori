@@ -30,7 +30,7 @@
 // tab stacks Scripts, Outline and TODOs under its tree. A verdict row is the way
 // into its own tab, so the summary and the detail are not two things to find.
 
-import { createEffect, createMemo, createSignal, onCleanup, For, Match, Show, Switch } from "solid-js";
+import { untrack, createEffect, createMemo, createSignal, onCleanup, For, Match, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
@@ -252,8 +252,7 @@ export default function PullsPanel(props: {
   createEffect(
     () => [props.root, branch()] as const,
     ([root]) => {
-      // The viewing map is live state, and flush is refused in an effect callback.
-      if (root) queueMicrotask(() => setViewingPr(root, null));
+      if (root) setViewingPr(root, null);
     },
     { defer: true },
   );
@@ -420,8 +419,7 @@ export default function PullsPanel(props: {
       setMergeBusy(false);
       setMergeError(null);
       setMerged(false);
-      // The review store is live state, and flush is refused in an effect callback.
-      if (root && number !== undefined) queueMicrotask(() => ensure(root, number));
+      if (root && number !== undefined) untrack(() => ensure(root, number));
     },
   );
 
