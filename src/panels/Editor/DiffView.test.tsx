@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "../../test/harness";
 import type { FileStatus } from "../../utils/gitActions";
 import { tintedMember } from "../../utils/topicMembers";
@@ -113,6 +114,7 @@ beforeEach(() => {
   diffText = DIFF;
   fileLines = ["one", "TWO", "three"];
   writeDiffEditorLayout(false);
+  flush();
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -326,6 +328,7 @@ describe("staging from the editor layout", () => {
   async function remountAsBuffer(): Promise<EditorView> {
     cleanup();
     writeDiffEditorLayout(true);
+    flush();
     render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);
     const editor = await waitFor(() => {
       const el = document.querySelector<HTMLElement>(".cm-editor");
@@ -376,6 +379,7 @@ describe("staging from the editor layout", () => {
 describe("the editor layout's breadcrumbs", () => {
   it("names the file the way the editor tab's trail does", async () => {
     writeDiffEditorLayout(true);
+    flush();
     render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);
     const bar = await screen.findByRole("navigation", { name: "Breadcrumbs" });
     expect(bar.textContent).toBe(

@@ -4318,7 +4318,7 @@ export default function LeftSidebar(props: {
       // this effect would re-run on every failed tick's backoff write.
       later(() => {
         noteWatchedProjects(watched);
-        if (watched.length) void pollNow("focus");
+        if (watched.length) void pollNow("focus", Date.now(), undefined, watched);
       });
     },
   );

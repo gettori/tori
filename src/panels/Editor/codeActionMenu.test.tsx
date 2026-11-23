@@ -7,6 +7,7 @@
 // wiring between them. Only the transport is fake, and it answers the way a
 // server does.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 import { LSPClient, languageServerExtensions, type Transport } from "@codemirror/lsp-client";
 import { pointerClick } from "../../test/menus";
@@ -403,6 +404,7 @@ describe("what the palette is told about whole-file actions", () => {
 
     mounted!.unmount();
     mounted = null;
+    flush();
 
     expect(sourceActionKinds(), "no editor, no server answering for anything").toBeNull();
   });

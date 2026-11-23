@@ -2,9 +2,9 @@
 // palette can hide a command that server cannot answer. Eager and
 // CodeMirror-free for the reason `sourceActions.ts` is: the editor publishes,
 // the omnibox reads.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
-const [providers, setProviders] = createLiveSignal<readonly string[]>([]);
+const [providers, setProviders] = createSignal<readonly string[]>([]);
 
 export function publishServerProviders(next: readonly string[]): void {
   const now = providers();

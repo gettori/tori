@@ -14,8 +14,7 @@
 // One slot per root, not one slot total: inside a Topic every member is a
 // repo of its own, and the member in front is a pointer into the set rather
 // than the only one whose numbers are true.
-import { createMemo, createRoot, type Accessor, runWithOwner } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createMemo, createRoot, type Accessor, runWithOwner, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
@@ -190,9 +189,9 @@ const NO_SLOT: GitState = {
 };
 
 // The slot map, in the order the roots were entered, which is member order.
-const [slots, setSlots] = createLiveSignal<ReadonlyMap<string, GitState>>(new Map());
+const [slots, setSlots] = createSignal<ReadonlyMap<string, GitState>>(new Map());
 // Which slot the surfaces that only ever describe one repo are about.
-const [activeRoot, setActiveRoot] = createLiveSignal<string | null>(null);
+const [activeRoot, setActiveRoot] = createSignal<string | null>(null);
 export { setActiveRoot };
 
 /** This root's numbers. A root nobody entered reads blank rather than reading
@@ -307,7 +306,7 @@ export type GitBusy = "push" | "pull" | "fetch" | "reset" | "merge";
 // flag would label every one of them "Pushing..." for a push in any one. Per
 // kind as well, so a fetch in flight does not swallow a push pressed during it;
 // the backend already queues the two on the repo lock.
-const [busyRoots, setBusyRoots] = createLiveSignal<ReadonlyMap<string, ReadonlySet<GitBusy>>>(new Map());
+const [busyRoots, setBusyRoots] = createSignal<ReadonlyMap<string, ReadonlySet<GitBusy>>>(new Map());
 
 /** What is in flight in this member: `kind` when it is, or with no kind, the
  *  first thing running there. Null when nothing is. */
@@ -321,10 +320,12 @@ export function busyIn(root: string | null | undefined, kind?: GitBusy): GitBusy
 /** Is a push in flight in this member? */
 export const pushingIn = (root: string | null | undefined): boolean => busyIn(root, "push") !== null;
 
-function markBusy(root: string, kind: GitBusy, on: boolean): void {
+function markBusy(root: string, kind: GitBusy, on: boolean): boolean {
+  let moved = false;
   setBusyRoots((prev) => {
     const cur = prev.get(root) ?? new Set<GitBusy>();
     if (cur.has(kind) === on) return prev;
+    moved = true;
     const set = new Set(cur);
     if (on) set.add(kind);
     else set.delete(kind);
@@ -333,13 +334,13 @@ function markBusy(root: string, kind: GitBusy, on: boolean): void {
     else next.delete(root);
     return next;
   });
+  return moved;
 }
 
 /** Run `work` with `kind` marked in flight for `root`, or answer `refused`
  *  without running it when the same kind already is. */
 async function whileBusy<T>(root: string, kind: GitBusy, refused: T, work: () => Promise<T>): Promise<T> {
-  if (busyIn(root, kind)) return refused;
-  markBusy(root, kind, true);
+  if (!markBusy(root, kind, true)) return refused;
   try {
     return await work();
   } finally {
@@ -380,13 +381,15 @@ function coalesce(key: string, run: () => Promise<void>): Promise<void> {
   return started;
 }
 
-function writeSlot(root: string, patch: Partial<GitState>): void {
-  const prev = slots();
-  const cur = prev.get(root);
-  if (!cur) return;
-  const next = new Map(prev);
-  next.set(root, { ...cur, ...patch });
-  setSlots(next);
+function writeSlot(root: string, patch: Partial<GitState> | ((cur: GitState) => Partial<GitState> | null)): void {
+  setSlots((prev) => {
+    const cur = prev.get(root);
+    const change = cur && (typeof patch === "function" ? patch(cur) : patch);
+    if (!cur || !change) return prev;
+    const next = new Map(prev);
+    next.set(root, { ...cur, ...change });
+    return next;
+  });
 }
 
 /**
@@ -402,28 +405,29 @@ function writeSlot(root: string, patch: Partial<GitState>): void {
  * nobody is looking at any more.
  */
 export function enterRoots(roots: readonly string[], active: string | null = roots[0] ?? null): void {
-  const prev = slots();
-  const next = new Map<string, GitState>();
-  for (const root of roots) {
-    const cur = prev.get(root);
-    if (cur) {
-      next.set(root, cur);
-      continue;
+  setSlots((prev) => {
+    const next = new Map<string, GitState>();
+    for (const root of roots) {
+      const cur = prev.get(root);
+      if (cur) {
+        next.set(root, cur);
+        continue;
+      }
+      epochs.set(root, ++epoch);
+      next.set(root, {
+        root,
+        files: [],
+        branch: null,
+        aheadBehind: null,
+        head: null,
+        sync: null,
+        lastFetch: null,
+      });
     }
-    epochs.set(root, ++epoch);
-    next.set(root, {
-      root,
-      files: [],
-      branch: null,
-      aheadBehind: null,
-      head: null,
-      sync: null,
-      lastFetch: null,
-    });
-  }
-  for (const root of epochs.keys()) if (!next.has(root)) epochs.delete(root);
-  setActiveRoot(active && next.has(active) ? active : (roots[0] ?? null));
-  setSlots(next);
+    for (const root of epochs.keys()) if (!next.has(root)) epochs.delete(root);
+    return next;
+  });
+  setActiveRoot(active && roots.includes(active) ? active : (roots[0] ?? null));
 }
 
 const sameFile = (a: FileStatus, b: FileStatus) =>
@@ -469,9 +473,10 @@ export function refreshStatus(root: string | null): Promise<void> {
     // The root left the set while we were reading, so this answer is about a
     // workspace nobody is looking at any more.
     if (epochs.get(root) !== at) return;
-    const prev = gitStateFor(root).files;
-    const kept = keepIdentity(prev, files);
-    if (kept !== prev) writeSlot(root, { files: kept });
+    writeSlot(root, (cur) => {
+      const kept = keepIdentity(cur.files, files);
+      return kept === cur.files ? null : { files: kept };
+    });
   });
 }
 

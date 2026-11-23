@@ -11,13 +11,13 @@
 // import on that path would drag the editor graph into the startup chunk. The
 // editor side publishes into it; nothing here imports the editor.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { SOURCE_KINDS } from "./events";
 
 // Null means "nobody has said", which is the state before a file is open or
 // before its server has answered `initialize`. Distinct from `[]`, which is a
 // server that answered and offers nothing.
-const [kinds, setKinds] = createLiveSignal<readonly string[] | null>(null);
+const [kinds, setKinds] = createSignal<readonly string[] | null>(null);
 
 /** What the active file's server advertises, or null when nothing has said. */
 export function sourceActionKinds(): readonly string[] | null {
@@ -27,12 +27,13 @@ export function sourceActionKinds(): readonly string[] | null {
 /** Publish the active file's advertised kinds. Called by the editor on a tab
  *  swap and whenever a client comes or goes, since both change the answer. */
 export function publishSourceActionKinds(next: readonly string[] | null): void {
-  const now = kinds();
-  // Same answer, same array contents: publishing again would rebuild the
-  // palette's list for nothing, on a path that runs on every tab swap.
-  if (now === next) return;
-  if (now && next && now.length === next.length && now.every((k, i) => k === next[i])) return;
-  setKinds(next ? [...next] : null);
+  setKinds((now) => {
+    // Same answer, same array contents: publishing again would rebuild the
+    // palette's list for nothing, on a path that runs on every tab swap.
+    if (now === next) return now;
+    if (now && next && now.length === next.length && now.every((k, i) => k === next[i])) return now;
+    return next ? [...next] : null;
+  });
 }
 
 /**

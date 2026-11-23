@@ -15,7 +15,6 @@
 // through, so one account's 401 or rate limit leaves the others polling.
 
 import { createSignal } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
 import { invoke } from "@tauri-apps/api/core";
 import {
   forgeAccountName,
@@ -128,10 +127,10 @@ export function mergeWatched(lists: readonly (readonly WatchedProject[])[]): Wat
 
 // --- fed inputs -------------------------------------------------------------
 
-const [accounts, setAccounts] = createLiveSignal<readonly ForgeAccount[]>([]);
-const [viewers, setViewers] = createLiveSignal<Record<string, string>>({});
-const [enabled, setEnabled] = createLiveSignal(true);
-const [projects, setProjects] = createLiveSignal<readonly WatchedProject[]>([]);
+const [accounts, setAccounts] = createSignal<readonly ForgeAccount[]>([]);
+const [viewers, setViewers] = createSignal<Record<string, string>>({});
+const [enabled, setEnabled] = createSignal(true);
+const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
 
 const signedOut: AuthState = { kind: "signedOut" };
 const accountAuth = (id: string): AuthState => accounts().find((a) => a.id === id)?.auth ?? signedOut;
@@ -143,8 +142,11 @@ const ids = (list: readonly ForgeAccount[]) =>
 
 /** Every account and its credential state, from whoever last asked Rust. */
 export function noteForgeAccounts(list: readonly ForgeAccount[]) {
-  const was = accounts();
-  setAccounts(list);
+  let was = [] as readonly ForgeAccount[];
+  setAccounts((prev) => {
+    was = prev;
+    return list;
+  });
   // The viewer identity is a fact about *this* credential, and the review gate
   // reads it to decide whether approve and request-changes are offerable at
   // all. Carrying it across a sign-out, or across a 401, is how that gate ends
@@ -170,17 +172,17 @@ export function noteForgeAccounts(list: readonly ForgeAccount[]) {
   // An account added or removed can change which account any repo resolves
   // to, so every resolution is asked again.
   const changed = ids(was) !== ids(list);
-  if (changed) resetForgeResolutions();
+  if (changed) resetForgeResolutions(list);
   // Becoming usable is itself a trigger, because every tick before it was
   // refused by `mayPoll` and none of them will be retried on their own.
-  else if (becameUsable) void pollNow("focus");
+  else if (becameUsable) void pollNow("focus", Date.now(), list);
 }
 
 /** Every repo asks Rust again which account it acts as, starting now. */
-export function resetForgeResolutions() {
+export function resetForgeResolutions(signedIn: readonly ForgeAccount[] = accounts()) {
   setRepos({});
-  setResolvedAt({});
-  void pollNow("focus");
+  resolvedAt = {};
+  void pollNow("focus", Date.now(), signedIn);
 }
 
 /// Ask Rust who an account's token belongs to and fold it in.
@@ -249,26 +251,26 @@ export function noteWatchedProjects(list: readonly WatchedProject[]) {
 
 // --- owned state ------------------------------------------------------------
 
-const [repos, setRepos] = createLiveSignal<Record<string, RepoAccount>>({});
-const [resolvedAt, setResolvedAt] = createLiveSignal<Record<string, number>>({});
-const [statuses, setStatuses] = createLiveSignal<Record<string, UnitStatus>>({});
-const [uncovered, setUncovered] = createLiveSignal<Record<string, number>>({});
+const [repos, setRepos] = createSignal<Record<string, RepoAccount>>({});
+let resolvedAt: Record<string, number> = {};
+const [statuses, setStatuses] = createSignal<Record<string, UnitStatus>>({});
+const [uncovered, setUncovered] = createSignal<Record<string, number>>({});
 /** Epoch ms before which nothing on an account may poll, by account id. A rate
  *  limit belongs to the token, so it stops that account's projects and no
  *  other's. */
-const [accountBlocked, setAccountBlocked] = createLiveSignal<Record<string, number>>({});
+const [accountBlocked, setAccountBlocked] = createSignal<Record<string, number>>({});
 /** Per-project blocks, for the failures that belong to one repo (no origin, a
  *  remote this forge does not serve). */
-const [projectBlocked, setProjectBlocked] = createLiveSignal<Record<string, number>>({});
-const [lastPollAt, setLastPollAt] = createLiveSignal<Record<string, number>>({});
+const [projectBlocked, setProjectBlocked] = createSignal<Record<string, number>>({});
+let lastPollAt: Record<string, number> = {};
 /** The organisation standing in front of a checkout, by path. Rust names it on
  *  the `404`; nothing else in this store keeps a last error, because nothing
  *  else has an answer to offer for one. */
-const [orgBlocked, setOrgBlocked] = createLiveSignal<Record<string, string>>({});
-const [reviewLists, setReviewLists] = createLiveSignal<Record<string, ReviewRequests | null>>({});
+const [orgBlocked, setOrgBlocked] = createSignal<Record<string, string>>({});
+const [reviewLists, setReviewLists] = createSignal<Record<string, ReviewRequests | null>>({});
 /** Whether `gh` is on this machine, read once. It decides which route an
  *  organisation notice can offer, and a path lookup does not change under us. */
-const [cliInstalled, setCliInstalled] = createLiveSignal(false);
+const [cliInstalled, setCliInstalled] = createSignal(false);
 
 const key = (path: string, branch: string) => `${path}\n${branch}`;
 
@@ -285,7 +287,7 @@ export async function resolveForgeRepo(path: string): Promise<RepoAccount | null
 
 export type RepoAccess = "yes" | "no" | "unknown";
 
-const [access, setAccess] = createLiveSignal<Record<string, Record<string, RepoAccess>>>({});
+const [access, setAccess] = createSignal<Record<string, Record<string, RepoAccess>>>({});
 
 // Once per checkout and session: it costs one request per account on the host.
 async function loadAccess(path: string) {
@@ -307,7 +309,7 @@ export function accountWithAccess(path: string, account: ForgeAccount): string {
   return reach === "yes" ? `${name} (can read it)` : reach === "no" ? `${name} (no access)` : name;
 }
 
-const [avatars, setAvatars] = createLiveSignal<Record<string, { url: string | null; at: number }>>({});
+const [avatars, setAvatars] = createSignal<Record<string, { url: string | null; at: number }>>({});
 const AVATAR_RETRY_MS = 5 * 60 * 1000;
 
 // Asked lazily, for an account signed in before Tori kept the host's avatar.
@@ -362,9 +364,13 @@ export function unitStatus(path: string, branch: string | null): UnitStatus | nu
 
 /** Every branch of this project the ticks so far have covered. */
 export function projectStatuses(path: string): Record<string, UnitStatus> {
+  return statusesOf(statuses(), path);
+}
+
+function statusesOf(all: Record<string, UnitStatus>, path: string): Record<string, UnitStatus> {
   const prefix = `${path}\n`;
   const out: Record<string, UnitStatus> = {};
-  for (const [k, status] of Object.entries(statuses())) {
+  for (const [k, status] of Object.entries(all)) {
     if (k.startsWith(prefix)) out[k.slice(prefix.length)] = status;
   }
   return out;
@@ -381,10 +387,13 @@ export function mergedHeads(path: string): Record<string, string> {
   return out;
 }
 
-const reportListeners = new Set<(path: string) => void>();
+type ReportListener = (path: string, statuses: Record<string, UnitStatus>) => void;
+const reportListeners = new Set<ReportListener>();
 
-/** Runs `fn` with the project path each time a tick's answer lands. */
-export function onForgeReport(fn: (path: string) => void): () => void {
+/** Runs `fn` with the project path each time a tick's answer lands, and that
+ *  project's statuses as the tick left them, which a read of the store would
+ *  not yet show. */
+export function onForgeReport(fn: ReportListener): () => void {
   reportListeners.add(fn);
   return () => reportListeners.delete(fn);
 }
@@ -462,17 +471,19 @@ export function forgePause(path: string | null): PauseReason | null {
   return repo ? projectPause(repo, accountAuth, true) : null;
 }
 
-function clockFor(path: string, repo: RepoAccount): PollClock {
+function clockFor(path: string, repo: RepoAccount, lastPoll: number | undefined): PollClock {
   const account = repo.kind === "account" ? (accountBlocked()[repo.accountId] ?? null) : null;
   const project = projectBlocked()[path] ?? null;
   const blockedUntil = account === null ? project : project === null ? account : Math.max(account, project);
-  return { lastPollAt: lastPollAt()[path] ?? null, blockedUntil };
+  return { lastPollAt: lastPoll ?? null, blockedUntil };
 }
 
 function applyReport(path: string, repo: RepoAccount, report: StatusReport, now: number) {
+  let all = {} as Record<string, UnitStatus>;
   setStatuses((m) => {
     const next = { ...m };
     for (const s of report.statuses) next[key(path, s.headRef)] = s;
+    all = next;
     return next;
   });
   setUncovered((m) => ({ ...m, [path]: report.uncovered }));
@@ -493,7 +504,8 @@ function applyReport(path: string, repo: RepoAccount, report: StatusReport, now:
   // standing it would outlive the authorization that cleared it, and the row
   // would keep offering a route the user has already taken.
   setOrgBlocked(({ [path]: _gone, ...rest }) => rest);
-  for (const fn of reportListeners) fn(path);
+  const mine = statusesOf(all, path);
+  for (const fn of reportListeners) fn(path, mine);
 }
 
 async function noteFailure(path: string, repo: RepoAccount, err: unknown, now: number) {
@@ -529,11 +541,12 @@ async function noteFailure(path: string, repo: RepoAccount, err: unknown, now: n
 /// A resolved account changes only through an account or pick change, which
 /// re-resolves on its own; anything else is re-asked at most once per gap.
 async function repoFor(path: string, trigger: Trigger, now: number): Promise<RepoAccount | null> {
-  const cached = repos()[path];
-  const at = resolvedAt()[path];
+  const at = resolvedAt[path];
+  // No stamp means a reset cleared this path, even while `repos` still shows it.
+  const cached = at === undefined ? undefined : repos()[path];
   const fresh = at !== undefined && now - at < MIN_GAP_MS && trigger !== "manual";
   if (cached && (cached.kind === "account" || fresh)) return cached;
-  setResolvedAt((m) => ({ ...m, [path]: now }));
+  resolvedAt = { ...resolvedAt, [path]: now };
   return resolveForgeRepo(path);
 }
 
@@ -541,12 +554,12 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
   const repo = await repoFor(project.path, trigger, now);
   if (!repo) return;
   const pause = projectPause(repo, accountAuth, enabled());
-  if (!mayPoll(clockFor(project.path, repo), trigger, now, pause)) return;
   // Stamped before the await, so two triggers landing together do not both get
   // past the gap check. Rust coalesces the duplicate anyway; this stops it from
   // reaching Rust at all. Before the branch check too, since a project watched
   // only for its review rule has no branches and still asks below.
-  setLastPollAt((m) => ({ ...m, [project.path]: now }));
+  if (!mayPoll(clockFor(project.path, repo, lastPollAt[project.path]), trigger, now, pause)) return;
+  lastPollAt = { ...lastPollAt, [project.path]: now };
   // A failure here says nothing about the status call, so it stays out of that backoff.
   void invoke("autopilot_pickup", { projectPath: project.path }).catch(() => {});
   void invoke<ReviewRequests | null>("review_requests", { projectPath: project.path }).then(
@@ -575,11 +588,16 @@ const keepLastReviewList = () => {};
 /// One tick over every watched project.
 ///
 /// `now` is a parameter so a test can drive the schedule without a fake clock.
-export async function pollNow(trigger: Trigger, now: number = Date.now()) {
+export async function pollNow(
+  trigger: Trigger,
+  now: number = Date.now(),
+  signedIn: readonly ForgeAccount[] = accounts(),
+  watched: readonly WatchedProject[] = projects(),
+) {
   // With no account nothing can be polled, and resolving every project to
   // learn that would cost a git read each.
-  if (accounts().length === 0 || !enabled()) return;
-  await Promise.all(projects().map((p) => pollProject(p, trigger, now)));
+  if (signedIn.length === 0 || !enabled()) return;
+  await Promise.all(watched.map((p) => pollProject(p, trigger, now)));
 }
 
 /// What every "the window came back" trigger does, wherever it comes from.
@@ -645,12 +663,12 @@ export function resetForgeStatusForTests() {
   setEnabled(true);
   setProjects([]);
   setRepos({});
-  setResolvedAt({});
+  resolvedAt = {};
   setStatuses({});
   setUncovered({});
   setAccountBlocked({});
   setProjectBlocked({});
-  setLastPollAt({});
+  lastPollAt = {};
   setOrgBlocked({});
   setReviewLists({});
   setCliInstalled(false);

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, screen, fireEvent } from "../../test/harness";
 import OutlinePanel from "./OutlinePanel";
 import { publishSymbols, clearSymbols, normalizeDocumentSymbols } from "../../utils/symbols";
@@ -99,6 +100,7 @@ describe("OutlinePanel", () => {
     render(() => <OutlinePanel path={PATH} />);
     expect(screen.getByText("No symbols in this file.")).toBeTruthy();
     publishSymbols(PATH, TREE);
+    flush();
     expect(screen.getByText("Thing")).toBeTruthy();
   });
 

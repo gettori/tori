@@ -10,7 +10,7 @@
 // This exists as its own module rather than as state inside the chat panel so
 // `folderActors` (utils) does not have to import a panel, and so the revert
 // guard can be tested against it without mounting anything.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { awaitingUser, type SessionStatus } from "./sessionStatus";
 
 export type LiveChat = {
@@ -43,7 +43,7 @@ export type LiveChat = {
   side?: string;
 };
 
-const [liveChats, setLiveChats] = createLiveSignal<LiveChat[]>([]);
+const [liveChats, setLiveChats] = createSignal<LiveChat[]>([]);
 export { liveChats };
 
 /** Register or update one chat. Called from the chat panel's status effect, so

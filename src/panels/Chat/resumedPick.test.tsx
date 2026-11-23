@@ -15,6 +15,7 @@
 // and the model per *turn*, which leaves the pills describing nobody from mount
 // until the first turn lands.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, waitFor, screen, fireEvent } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
@@ -168,6 +169,7 @@ beforeEach(async () => {
   channels.length = 0;
   spawnProfile = "default";
   clearDraftPick(TAB);
+  flush();
   await ensureAdaptersLoaded();
   await ensureModelCatalogsLoaded();
 });
@@ -221,6 +223,7 @@ const initFrame = (over: { model?: string; permissionMode?: string } = {}) => ({
 describe("a chat restored from the store", () => {
   it("opens the resumed session on what the tab was running", async () => {
     setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });
+    flush();
     mount(true);
 
     await waitFor(() => expect(spawn()).toBeTruthy());
@@ -289,6 +292,7 @@ describe("the account a reconnect comes back on", () => {
 describe("the controls of a tab whose pick rode argv", () => {
   it("name the mode and the model the child was started on, on a restore", async () => {
     setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });
+    flush();
     const { getByLabelText } = mount(true);
 
     await waitFor(() => expect(getByLabelText("Permission mode").textContent).toContain("Plan"));
@@ -300,6 +304,7 @@ describe("the controls of a tab whose pick rode argv", () => {
     // is, so the pill must not flip back to "Ask" the moment the draft becomes
     // a session.
     setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });
+    flush();
     const { getByLabelText } = mount(false);
 
     await waitFor(() => expect(getByLabelText("Permission mode").textContent).toContain("Plan"));
@@ -311,6 +316,7 @@ describe("the controls of a tab whose pick rode argv", () => {
     // is running. The second wins, or a mode the agent left by itself (or a
     // model changed by `/model`) would be misnamed for the life of the tab.
     setDraftPick(TAB, { model: "sonnet", mode: "plan" });
+    flush();
     const { getByLabelText } = mount(true);
 
     await waitFor(() => expect(channels.length).toBeGreaterThan(0));
@@ -337,6 +343,7 @@ describe("the controls of an ACP tab", () => {
     // `chat_set_mode` goes out after the session opens and can be refused, so a
     // seeded pill would name a mode nothing has applied yet.
     setDraftPick(TAB, { model: "sonnet", mode: "plan" });
+    flush();
     const { getByLabelText } = mount(true, "codexy");
 
     await waitFor(() => expect(spawn()).toBeTruthy());

@@ -1,4 +1,4 @@
-import { createSignal, createUniqueId, onCleanup, Show, omit } from "solid-js";
+import { createSignal, createUniqueId, onCleanup, Show, omit, untrack } from "solid-js";
 import { type JSX, dynamic, Portal } from "@solidjs/web";
 import { callHandler, type TriggerHandler } from "../callHandler";
 import { useDialogSurface } from "../Dialog/surface";
@@ -88,7 +88,7 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(prop
     id: `contextmenu-${createUniqueId()}-trigger`,
     ref: (el: HTMLElement) => {
       menu.setTrigger(el);
-      (handlers.ref as ((el: HTMLElement) => void) | undefined)?.(el);
+      untrack(() => handlers.ref as ((el: HTMLElement) => void) | undefined)?.(el);
     },
     get style() {
       const style = handlers.style;

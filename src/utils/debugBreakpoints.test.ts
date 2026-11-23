@@ -97,8 +97,12 @@ async function flush(times = 10): Promise<void> {
   for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
+// The solid-js instance the fresh modules use, which is not the one imported here.
+let flushSignals: () => void = () => {};
+
 async function freshModules() {
   vi.resetModules();
+  ({ flush: flushSignals } = await import("solid-js"));
   const sessions = await import("./dapSessions");
   // Imported second and for its side effect: it installs itself as the
   // breakpoint source on the module it watches.
@@ -127,8 +131,10 @@ const setsFor = (path: string) =>
       lines: (s.args.breakpoints as { line: number }[]).map((b) => b.line),
     }));
 
-const states = (bp: typeof import("./debugBreakpoints"), path = FILE) =>
-  bp.breakpointMarks(WS, path).map((m) => `${m.line}:${m.state}`);
+const states = (bp: typeof import("./debugBreakpoints"), path = FILE) => {
+  flushSignals();
+  return bp.breakpointMarks(WS, path).map((m) => `${m.line}:${m.state}`);
+};
 
 let warn: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
@@ -151,7 +157,9 @@ describe("what a session configures itself with", () => {
   it("sends every file that was marked before the run started", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     bp.toggleBreakpointAt(WS, OTHER, 2);
+    flushSignals();
 
     await sessions.startDebugSession(start);
     await flush();
@@ -169,8 +177,11 @@ describe("what a session configures itself with", () => {
   it("leaves out a file with unsaved edits", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     bp.toggleBreakpointAt(WS, OTHER, 2);
+    flushSignals();
     bp.noteBufferDirty(WS, FILE, true);
+    flushSignals();
 
     await sessions.startDebugSession(start);
     await flush();
@@ -205,6 +216,7 @@ describe("a toggle while a run is live", () => {
   it("reaches every session in the run", async () => {
     const { bp } = await running();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await flush();
 
     // Each session is its own DAP connection with its own breakpoint set; the
@@ -218,9 +230,12 @@ describe("a toggle while a run is live", () => {
   it("sends the whole file, and an empty set to clear it", async () => {
     const { bp } = await running();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 9);
+    flushSignals();
     await flush();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await flush();
 
     // DAP replaces a file's set on every call, so removing one means sending the
@@ -235,6 +250,7 @@ describe("a toggle while a run is live", () => {
   it("touches no other file", async () => {
     const { bp } = await running();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await flush();
 
     expect(setsFor(OTHER)).toEqual([]);
@@ -249,7 +265,10 @@ describe("a buffer with unsaved edits", () => {
     sent.length = 0;
 
     bp.noteBufferDirty(WS, FILE, true);
+
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await flush();
 
     // Arming a line number against text the adapter has never seen is how a
@@ -265,14 +284,20 @@ describe("a buffer with unsaved edits", () => {
     sent.length = 0;
 
     bp.noteBufferDirty(WS, FILE, true);
+
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     // Five lines inserted above it: the gutter maps its position through the
     // edit and reports back, which is the order the save pipeline runs in.
     bp.breakpointsMoved(WS, FILE, [11], 60);
+    flushSignals();
     await flush();
     expect(setsFor(FILE)).toEqual([]);
 
     bp.noteBufferDirty(WS, FILE, false);
+
+    flushSignals();
     await flush();
 
     // `formatOnSave` and `organizeOnSave` rewrite the file before the bytes are
@@ -287,10 +312,14 @@ describe("a buffer with unsaved edits", () => {
     await sessions.startDebugSession(start);
     await flush();
     bp.noteBufferDirty(WS, FILE, true);
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     sent.length = 0;
 
     bp.noteBufferClosed(WS, FILE);
+
+    flushSignals();
     await flush();
 
     // Closing a dirty tab is a save that never comes. Left pending, this file
@@ -303,8 +332,11 @@ describe("a buffer with unsaved edits", () => {
   it("keeps every breakpoint in the file pending, not only the new one", async () => {
     const { bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 3);
+    flushSignals();
     bp.noteBufferDirty(WS, FILE, true);
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 8);
+    flushSignals();
 
     // The moment the buffer differs from what the adapter was told, no line in
     // it can be claimed to be armed.
@@ -316,6 +348,7 @@ describe("where a bound marker comes from", () => {
   it("is not the handshake response, which always says no", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await sessions.startDebugSession(start);
     await flush();
     event("sess0", "initialized");
@@ -331,6 +364,7 @@ describe("where a bound marker comes from", () => {
   it("is the breakpoint event", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await sessions.startDebugSession(start);
     await flush();
     bound("sess0", FILE, 6);
@@ -341,8 +375,11 @@ describe("where a bound marker comes from", () => {
   it("keys on the file and the line, never on the id", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 9);
+    flushSignals();
     bp.toggleBreakpointAt(WS, OTHER, 6);
+    flushSignals();
     await sessions.startDebugSession(start);
     await flush();
 
@@ -361,6 +398,7 @@ describe("where a bound marker comes from", () => {
     await flush();
     verifyResponses = true;
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await flush();
 
     // Sent while the target is up, js-debug answers `verified: true` at once.
@@ -371,6 +409,7 @@ describe("where a bound marker comes from", () => {
   it("goes back to armed when the adapter unbinds it", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await sessions.startDebugSession(start);
     await flush();
     bound("sess0", FILE, 6);
@@ -383,13 +422,17 @@ describe("where a bound marker comes from", () => {
   it("does not carry over to a line that was cleared and set again", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await sessions.startDebugSession(start);
     await flush();
     bound("sess0", FILE, 6);
     expect(states(bp)).toEqual(["6:bound"]);
 
     bp.toggleBreakpointAt(WS, FILE, 6);
+
+    flushSignals();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
 
     // A different breakpoint on the same line, and the adapter has said nothing
     // about it yet. Rendering it filled would claim execution stops there on the
@@ -400,6 +443,7 @@ describe("where a bound marker comes from", () => {
   it("forgets it when the run ends", async () => {
     const { sessions, bp } = await freshModules();
     bp.toggleBreakpointAt(WS, FILE, 6);
+    flushSignals();
     await sessions.startDebugSession(start);
     await flush();
     bound("sess0", FILE, 6);

@@ -2,6 +2,7 @@
 // mounted for real here, unlike everywhere else, because what is under test is
 // *when* the apply fires rather than what it sends.
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, waitFor } from "../../test/harness";
 import { wholeHistory } from "../../test/history";
 
@@ -113,6 +114,7 @@ beforeEach(async () => {
   channel = null;
   refuseSet = false;
   clearDraftPick(TAB);
+  flush();
   await ensureAdaptersLoaded();
 });
 
@@ -142,6 +144,7 @@ function mount() {
 describe("a draft's option picks, once it has a session", () => {
   it("waits for the session to be able to take a turn", async () => {
     setDraftOption(TAB, "web_search", true);
+    flush();
     mount();
     await waitFor(() => expect(channel).not.toBeNull());
 
@@ -171,6 +174,7 @@ describe("a draft's option picks, once it has a session", () => {
     const toasts: string[] = [];
     const off = onWith<{ message: string }>(TOAST, (d) => toasts.push(d.message));
     setDraftOption(TAB, "web_search", true);
+    flush();
     const { getByLabelText } = mount();
     await waitFor(() => expect(channel).not.toBeNull());
     goLive();

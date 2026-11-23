@@ -2,11 +2,11 @@
 // to move or remove a folder: the editor's dirty buffers, plus last quit's
 // stash entries that no tab has restored yet.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { pendingStashPaths } from "./hotExit";
 import { isUnderPath } from "./pathScope";
 
-const [dirtyPaths, setDirtyPaths] = createLiveSignal<readonly string[]>([]);
+const [dirtyPaths, setDirtyPaths] = createSignal<readonly string[]>([]);
 
 export const publishDirtyPaths = setDirtyPaths;
 

@@ -1,5 +1,5 @@
 import type { Accessor } from "solid-js";
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -43,9 +43,9 @@ export function createDownload<Id extends string, Status extends DownloadStatus<
   sizes: SizeChoice<Id>[];
   empty: Exclude<Status, Function>;
 }): DownloadStore<Id, Status> {
-  const [status, setStatus] = createLiveSignal<Status>(opts.empty);
-  const [asking, setAsking] = createLiveSignal(false);
-  const [failed, setFailed] = createLiveSignal<string | null>(null);
+  const [status, setStatus] = createSignal<Status>(opts.empty);
+  const [asking, setAsking] = createSignal(false);
+  const [failed, setFailed] = createSignal<string | null>(null);
 
   let pending: (() => void) | null = null;
   let listening: Promise<unknown> | null = null;

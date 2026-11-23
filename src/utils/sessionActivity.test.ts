@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 // Rust composes every dot (`rpc/dots.rs`, pinned by the golden fixtures there),
@@ -90,20 +91,26 @@ describe("the status Rust composed", () => {
     noteLiveTabs([tab("t1", "s1")]);
 
     // Nothing composed yet reads as nothing running, not as idle.
+    flush();
     expect(sessionStatus("s1")).toBe("none");
     rust("s1", "solid");
+    flush();
     expect(sessionStatus("s1")).toBe("idle");
     rust("s1", "working");
+    flush();
     expect(sessionStatus("s1")).toBe("executing");
     rust("s1", "needsYou");
+    flush();
     expect(sessionStatus("s1")).toBe("waitingForApproval");
     rust("s1", "none");
+    flush();
     expect(sessionStatus("s1")).toBe("none");
   });
 
   it("marks the inferred tier as inferred", async () => {
     await seedSessions([meta("s1", "main")]);
     noteLiveTabs([tab("t1", "s1")]);
+    flush();
     expect(sessionCertainty("s1")).toBe("inferred");
   });
 });
@@ -139,6 +146,7 @@ describe("the two tiers in one list", () => {
       status: "waitingForApproval",
     });
 
+    flush();
     const mine = liveSessionStatuses().filter((s) => s.sessionId === "c1");
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({
@@ -163,6 +171,7 @@ describe("the two tiers in one list", () => {
       visible: false,
       status: "executing",
     });
+    flush();
     expect(liveSessionStatuses().filter((s) => s.sessionId === "c1")).toHaveLength(1);
   });
 
@@ -179,6 +188,7 @@ describe("the two tiers in one list", () => {
       status: "executing",
       side: "c1",
     });
+    flush();
     expect(liveSessionStatuses().find((s) => s.sessionId === "c-side")).toBeUndefined();
     dropLiveChat("c-side");
   });
@@ -201,6 +211,7 @@ describe("the metadata a live status carries", () => {
     noteLiveTabs([tab("t1", "s1")]);
     rust("s1", "solid", home);
 
+    flush();
     const s = liveSessionStatuses()[0];
     expect(s.home).toEqual(home);
     expect(s.agent).toBe("claude");
@@ -213,6 +224,7 @@ describe("the metadata a live status carries", () => {
   it("leaves the unit absent when no unit holds the session", async () => {
     await seedSessions([meta("s1", "")]);
     noteLiveTabs([tab("t1", "s1")]);
+    flush();
     expect(liveSessionStatuses()[0].home).toBeNull();
   });
 });
@@ -231,6 +243,7 @@ describe("the editor's accumulated-diff gate", () => {
     await seedSessions([meta("s1", "main")]);
     noteLiveTabs([tab("t1", "s1")]);
     rust("s1", "working");
+    flush();
     expect(sessionStatus("s1")).toBe("executing");
     expect(shouldPollAccumulatedDiff("s1")).toBe(true);
 
@@ -245,6 +258,7 @@ describe("the editor's accumulated-diff gate", () => {
       visible: true,
       status: "executing",
     });
+    flush();
     expect(liveSessionStatuses().find((s) => s.sessionId === "c1")?.status).toBe("executing");
     expect(shouldPollAccumulatedDiff("c1")).toBe(false);
   });
@@ -294,6 +308,7 @@ describe("a failing check on the branch a session owns", () => {
     });
     noteForgeUnits([unit("main", true)]);
 
+    flush();
     expect(sessionFacts()).toEqual({
       tabs: [{ id: "t1", session: "pty", live: true, workspace: FOLDER, agent: "claude" }],
       chats: [
@@ -315,6 +330,7 @@ describe("a failing check on the branch a session owns", () => {
   it("hands Rust a unit's pull request and whether the forge has answered", () => {
     const pr = { number: 7, state: "merged" as const, title: "Fix it" };
     noteForgeUnits([{ ...unit("main", false), prKnown: true, pullRequest: pr }]);
+    flush();
     expect(sessionFacts().forge).toEqual([
       {
         folderPath: FOLDER,
@@ -347,6 +363,7 @@ describe("a failing check on the branch a session owns", () => {
     noteForgeUnits([unit("main", true)]);
     rust("c-budget", "needsYou", null, "exact");
 
+    flush();
     const mine = liveSessionStatuses().find((s) => s.sessionId === "c-budget");
     expect(mine?.status).toBe("budgetStopped");
     dropLiveChat("c-budget");
@@ -378,6 +395,7 @@ describe("the session that speaks for a branch", () => {
     await seedSessions([meta("on-main", "main", "claude", at("main")), meta("on-feat", "feat", "claude", at("feat"))]);
     noteForgeUnits([plain("main"), plain("feat")]);
 
+    flush();
     expect(branchOwner(FOLDER, "feat")?.session.id).toBe("on-feat");
     expect(branchOwner(FOLDER, "main")?.session.id).toBe("on-main");
   });
@@ -389,6 +407,7 @@ describe("the session that speaks for a branch", () => {
       { ...meta("middling", "feat", "claude", at("feat")), last_active: 50 },
     ]);
     noteForgeUnits([plain("feat")]);
+    flush();
     expect(branchOwner(FOLDER, "feat")?.session.id).toBe("recent");
   });
 
@@ -412,6 +431,7 @@ describe("the session that speaks for a branch", () => {
       { folderPath: wt, projectPath: FOLDER, branch: "feat", kind: "worktree", isCurrent: false, attention: false },
     ]);
 
+    flush();
     const owner = branchOwner(FOLDER, "feat");
     expect(owner?.session.id).toBe("in-wt");
     // The folder the message must be composed against: the unit's, not the one
@@ -423,6 +443,7 @@ describe("the session that speaks for a branch", () => {
   it("answers nothing rather than something close, for a branch nobody has worked", async () => {
     await seedSessions([meta("on-main", "main", "claude", at("main"))]);
     noteForgeUnits([plain("main")]);
+    flush();
     expect(branchOwner(FOLDER, "feat")).toBeNull();
     expect(branchOwner(FOLDER, "")).toBeNull();
     expect(branchOwner("/some/other/repo", "main")).toBeNull();

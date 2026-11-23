@@ -117,8 +117,12 @@ afterEach(() => {
   warn.mockRestore();
 });
 
+// The solid-js instance the fresh modules use, which is not the one imported here.
+let flushSignals: () => void = () => {};
+
 async function freshModules() {
   vi.resetModules();
+  ({ flush: flushSignals } = await import("solid-js"));
   const sessions = await import("./dapSessions");
   const stack = await import("./debugStack");
   const watch = await import("./debugWatch");
@@ -149,6 +153,8 @@ describe("what a watch answers", () => {
     const { watch } = await paused();
 
     watch.addWatchExpression(WS, "count");
+
+    flushSignals();
     await flush();
 
     // A watch that stays blank until the next step reads as broken.
@@ -165,7 +171,9 @@ describe("what a watch answers", () => {
   it("re-reads every watch on every stop", async () => {
     const { watch, stack, id } = await paused();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
     watch.addWatchExpression(WS, "user.name");
+    flushSignals();
     await flush();
     const before = commands("evaluate").length;
 
@@ -184,6 +192,8 @@ describe("what a watch answers", () => {
     const { watch } = await paused();
 
     watch.addWatchExpression(WS, "nope");
+
+    flushSignals();
     await flush();
 
     // A watch that vanishes when it errors is one nobody can fix, because there
@@ -197,6 +207,7 @@ describe("what a watch answers", () => {
   it("holds no value while the program is running", async () => {
     const { watch, stack } = await paused();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
     await flush();
     expect(watch.watchRows(WS)[0].value).toBe("3");
 
@@ -211,6 +222,7 @@ describe("what a watch answers", () => {
   it("re-reads against the frame that is selected, not the one that stopped", async () => {
     const { watch, stack, id } = await paused();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
     await flush();
     const before = commands("evaluate").length;
 
@@ -226,10 +238,14 @@ describe("what a watch answers", () => {
   it("forgets a removed expression's answer", async () => {
     const { watch } = await paused();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
     await flush();
 
     watch.removeWatchExpression(WS, 0);
+
+    flushSignals();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
 
     // Re-added, so it is pending rather than showing the answer from before it
     // was removed.
@@ -240,6 +256,8 @@ describe("what a watch answers", () => {
     const { watch } = await paused();
 
     watch.addWatchExpression("/elsewhere", "count");
+
+    flushSignals();
     await flush();
 
     // The frame belongs to one project, and `count` means something else in
@@ -251,7 +269,9 @@ describe("what a watch answers", () => {
   it("keeps two workspaces' answers apart even for identical text", async () => {
     const { watch } = await paused();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
     watch.addWatchExpression("/elsewhere", "count");
+    flushSignals();
     await flush();
 
     expect(watch.watchRows(WS)[0].value).toBe("3");
@@ -261,6 +281,7 @@ describe("what a watch answers", () => {
   it("re-reads after a variable is written, which has no event of its own", async () => {
     const { watch, vars } = await paused();
     watch.addWatchExpression(WS, "count");
+    flushSignals();
     await flush();
     vars.toggleVariables("s0", 100);
     await flush();
@@ -279,6 +300,8 @@ describe("what a watch answers", () => {
     const { watch } = await running();
 
     watch.addWatchExpression(WS, "count");
+
+    flushSignals();
     await flush();
 
     expect(commands("evaluate")).toEqual([]);

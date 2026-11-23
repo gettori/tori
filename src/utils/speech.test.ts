@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 
 type SpeechEvent = { kind: string; read: number; chunk?: number; error?: string };
@@ -32,8 +33,10 @@ vi.mock("./events", () => ({ TOAST: "toast", emitWith: (...a: unknown[]) => emit
 const { changeRate, preview, read, readSelection, readingBlockOf, stop, reading } = await import("./speech");
 
 type Speak = { chunks: string[]; rate: number; voice: string | null };
-const fire = (kind: string, read: number, chunk?: number, error?: string) =>
+const fire = (kind: string, read: number, chunk?: number, error?: string) => {
   handler?.({ payload: { kind, read, chunk, error } });
+  flush();
+};
 const calls = () => speak.mock.calls.map(([o]) => o as Speak);
 const lastId = () => speak.mock.results[speak.mock.results.length - 1].value as Promise<number>;
 

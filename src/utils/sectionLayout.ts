@@ -5,7 +5,7 @@
 // their section names are different sets, and one store would let a tab hide a
 // section the other one owns.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 /** A section nobody has dragged yet: the header and about seven rows. */
 export const SECTION_DEFAULT_H = 230;
@@ -64,11 +64,12 @@ export function createSectionLayout<Id extends string>(opts: {
     }
   }
 
-  const [layout, setLayout] = createLiveSignal<Layout<Id>>(load());
+  const [layout, setLayout] = createSignal<Layout<Id>>(load());
 
-  function write(next: Layout<Id>, persist = true) {
-    setLayout(next);
-    if (!persist) return;
+  function write(change: (l: Layout<Id>) => Layout<Id>, persist = true) {
+    let next = null as Layout<Id> | null;
+    setLayout((l) => (next = change(l)));
+    if (!persist || !next) return;
     try {
       localStorage.setItem(key, JSON.stringify(next));
     } catch {
@@ -83,24 +84,20 @@ export function createSectionLayout<Id extends string>(opts: {
     open: (id) => !layout().closed.includes(id),
     setShown(id, shown) {
       if (id === pinned) return;
-      const l = layout();
-      write({ ...l, hidden: shown ? without(l.hidden, id) : [...without(l.hidden, id), id] });
+      write((l) => ({ ...l, hidden: shown ? without(l.hidden, id) : [...without(l.hidden, id), id] }));
     },
     setOpen(id, open) {
-      const l = layout();
-      write({ ...l, closed: open ? without(l.closed, id) : [...without(l.closed, id), id] });
+      write((l) => ({ ...l, closed: open ? without(l.closed, id) : [...without(l.closed, id), id] }));
     },
     reveal(id) {
-      const l = layout();
-      write({ ...l, hidden: without(l.hidden, id), closed: without(l.closed, id) });
+      write((l) => ({ ...l, hidden: without(l.hidden, id), closed: without(l.closed, id) }));
     },
     size: (id) => layout().sizes[id] ?? defaultH,
     setSize(id, h) {
-      const l = layout();
-      write({ ...l, sizes: { ...l.sizes, [id]: Math.max(SECTION_MIN_H, Math.round(h)) } }, false);
+      write((l) => ({ ...l, sizes: { ...l.sizes, [id]: Math.max(SECTION_MIN_H, Math.round(h)) } }), false);
     },
     saveSizes() {
-      write(layout());
+      write((l) => l);
     },
   };
 }

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: () => Promise.resolve(true) }));
@@ -8,8 +9,10 @@ describe("socketAsks", () => {
   it("drops a card answered from another session", () => {
     showAsk({ id: "ask-1", session: "w1", question: "which?", options: [] });
     showAsk({ id: "ask-2", session: "w1", question: "and?", options: [] });
+    flush();
     expect(asksFor("w1").map((a) => a.id)).toEqual(["ask-1", "ask-2"]);
     closeAsk("ask-1");
+    flush();
     expect(asksFor("w1").map((a) => a.id)).toEqual(["ask-2"]);
   });
 
@@ -21,9 +24,11 @@ describe("socketAsks", () => {
       options: ["Approve", "Reject"],
       shown_in: ["worker", "autopilot"],
     });
+    flush();
     expect(asksFor("worker").map((a) => a.id)).toContain("ask-3");
     expect(asksFor("autopilot").map((a) => a.id)).toEqual(["ask-3"]);
     await answerAsk("ask-3", "Approve");
+    flush();
     expect(asksFor("worker").map((a) => a.id)).not.toContain("ask-3");
     expect(asksFor("autopilot")).toEqual([]);
   });

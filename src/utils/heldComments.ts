@@ -1,7 +1,7 @@
 // A review is several comments and one send each costs a trip per hunk, so they
 // wait here and go as one message. Memory only: a range goes stale once the agent
 // edits. A reviewer's live in Rust, which checks staleness per file.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import type { SessionTarget } from "./safeSend";
 
 export type HeldComment = {
@@ -23,7 +23,7 @@ export type HeldComment = {
   stale?: boolean;
 };
 
-const [held, setHeld] = createLiveSignal<Record<string, readonly HeldComment[]>>({});
+const [held, setHeld] = createSignal<Record<string, readonly HeldComment[]>>({});
 let nextId = 0;
 
 export function heldFor(key: string): readonly HeldComment[] {
@@ -62,8 +62,9 @@ export function dropHeld(key: string, ids: readonly string[]) {
 }
 
 export function clearHeld(key: string) {
-  dropHeld(
-    key,
-    heldFor(key).map((c) => c.id),
-  );
+  setHeld((prev) => {
+    const next = { ...prev };
+    delete next[key];
+    return next;
+  });
 }

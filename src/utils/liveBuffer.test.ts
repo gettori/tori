@@ -5,6 +5,7 @@
 // The store's bound is the part worth testing hardest. It holds whole
 // documents, so a rule that lets an entry outlive its tab is a leak that grows
 // for as long as the session does.
+import { flush } from "solid-js";
 import { describe, it, expect, beforeEach } from "vite-plus/test";
 
 import {
@@ -28,6 +29,7 @@ const TS = "/space/proj/main.ts";
 
 beforeEach(() => {
   clearLiveBuffers();
+  flush();
 });
 
 describe("which files have a second view", () => {
@@ -49,6 +51,7 @@ describe("which files have a second view", () => {
 describe("what a sibling surface can read", () => {
   it("answers with the text that was published", () => {
     publishBufferText(MD, "# one");
+    flush();
     expect(bufferTextOf(MD)).toBe("# one");
   });
 
@@ -57,18 +60,23 @@ describe("what a sibling surface can read", () => {
     // distinguishable from a buffer that genuinely holds an empty document.
     expect(bufferTextOf(MD)).toBeUndefined();
     publishBufferText(MD, "");
+    flush();
     expect(bufferTextOf(MD)).toBe("");
   });
 
   it("forgets a file outright when its tab closes", () => {
     publishBufferText(MD, "# one");
+    flush();
     dropLiveBuffer(MD);
+    flush();
     expect(bufferTextOf(MD)).toBeUndefined();
   });
 
   it("forgets everything on a project switch", () => {
     publishBufferText(MD, "# one");
+    flush();
     clearLiveBuffers();
+    flush();
     expect(bufferTextOf(MD)).toBeUndefined();
   });
 });
@@ -109,6 +117,7 @@ describe("handing a reading position between the two views", () => {
   it("drops a pending position with the tab it belonged to", () => {
     handOff(MD, "source", 0.4);
     dropLiveBuffer(MD);
+    flush();
     expect(takeHandOff(MD, "preview")).toBeUndefined();
   });
 });
@@ -173,6 +182,7 @@ describe("remembering where the preview was read", () => {
   it("goes with the tab it belonged to", () => {
     notePreviewAnchor(MD, { box: 3, offset: 0 });
     dropLiveBuffer(MD);
+    flush();
     expect(previewAnchorOf(MD)).toBeUndefined();
   });
 });

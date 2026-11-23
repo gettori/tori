@@ -18,7 +18,7 @@
 // see each other's half-finished work. Attribution says who wrote what; it does
 // not make concurrent editing of one tree safe, and no attribution scheme
 // would.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 const LS_NOTICED = "tori.multiChatNotice";
 
@@ -37,7 +37,7 @@ function loadNoticed(): Set<string> {
 // Shared, not per-panel. The notice appears in *both* chats sharing a worktree,
 // so a private copy per panel would leave the banner up in the other one after
 // it had been dismissed in the first.
-const [noticed, setNoticed] = createLiveSignal<ReadonlySet<string>>(loadNoticed());
+const [noticed, setNoticed] = createSignal<ReadonlySet<string>>(loadNoticed());
 export { noticed };
 
 /** Dismiss this worktree's notice, everywhere, for good. */

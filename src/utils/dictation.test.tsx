@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 
 const backend = vi.hoisted(() => ({
@@ -98,6 +99,7 @@ describe("dictation", () => {
     expect(dropActive()).toBe(false);
     await toggle(insert);
     expect(dropActive()).toBe(true);
+    flush();
     expect(invoke).toHaveBeenCalledWith("dictation_cancel");
     expect(state()).toBe("idle");
     expect(insert).not.toHaveBeenCalled();

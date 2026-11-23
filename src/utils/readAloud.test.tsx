@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render } from "../test/harness";
 
 const speak = vi.hoisted(() => vi.fn(async (_cmd: string, _o?: { chunks: string[] }) => 1));
@@ -57,6 +58,7 @@ describe("read aloud from the palette", () => {
   it("hands Read Last Reply to the chat that offered it", () => {
     const readLast = vi.fn();
     const withdraw = offerLastReply(readLast);
+    flush();
     emit(READ_LAST_REPLY);
     expect(readLast).toHaveBeenCalledTimes(1);
     withdraw();

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect } from "vite-plus/test";
 import { writtenPaths, setTouchedPaths, touchedPaths, isTouched, type TouchOp } from "./touchedFiles";
 
@@ -33,16 +34,20 @@ describe("writtenPaths", () => {
 describe("the shared touched set", () => {
   it("swaps wholesale, so a previous session leaves no residue", () => {
     setTouchedPaths(new Set(["/r/first.ts"]));
+    flush();
     expect(isTouched("/r/first.ts")).toBe(true);
 
     setTouchedPaths(new Set(["/r/second.ts"]));
+    flush();
     expect(isTouched("/r/first.ts")).toBe(false);
     expect(isTouched("/r/second.ts")).toBe(true);
   });
 
   it("clears to empty when no session is selected", () => {
     setTouchedPaths(new Set(["/r/a.ts"]));
+    flush();
     setTouchedPaths(new Set());
+    flush();
     expect(touchedPaths().size).toBe(0);
     expect(isTouched("/r/a.ts")).toBe(false);
   });

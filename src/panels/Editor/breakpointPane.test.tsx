@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, waitFor, cleanup } from "../../test/harness";
 
 // Breakpoints from the pane's side.
@@ -140,6 +141,7 @@ describe("the gutter click", () => {
     await mountAt(repo);
     await openFile(file);
     code!.onToggleBreakpoint!(file, 12);
+    flush();
     code!.onToggleBreakpoint!(file, 90);
     await waitFor(() => expect(code!.breakpoints).toHaveLength(2));
 
@@ -237,6 +239,7 @@ describe("when the file moves or goes", () => {
     // And the path is not left in the pending set: a name reused later would
     // arrive already waiting on a save nobody made.
     code!.onToggleBreakpoint!(file, 5);
+    flush();
     expect(breakpointMarks(repo, file)).toEqual([{ line: 5, state: "armed" }]);
   });
 });

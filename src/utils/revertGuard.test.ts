@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, afterEach } from "vite-plus/test";
 import { revertGuard, revertBlockers, type RevertCandidate } from "./revertGuard";
 import { applyEvent, chatStatus, initialChat } from "../panels/Chat/chatStore";
@@ -189,6 +190,7 @@ describe("a live chat blocks a real tree revert", () => {
       visible: false,
       status: chatStatus(state),
     });
+    flush();
   }
 
   afterEach(() => dropLiveChat(SESSION));

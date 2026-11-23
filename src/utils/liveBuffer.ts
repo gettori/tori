@@ -12,7 +12,7 @@
 // here would pull the editor's dependency graph into the startup chunk and
 // defeat the lazy boundary around CodeEditor.
 
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 
 /** Files with a rendered second view worth publishing text for. Deliberately
  *  narrow: the store holds whole documents, so it holds only the ones a
@@ -24,7 +24,7 @@ export function isMarkdownPath(path: string): boolean {
 
 // ---- text --------------------------------------------------------------
 
-const [texts, setTexts] = createLiveSignal<Record<string, string>>({});
+const [texts, setTexts] = createSignal<Record<string, string>>({});
 
 /** The buffer's own reading of a file, or undefined when no buffer holds it
  *  (a restored tab nobody has focused yet), which is the caller's cue to fall

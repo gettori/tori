@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { flush as flushSolid } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "../../test/harness";
 
 // Watches and the console's input, from the pane's side.
@@ -84,7 +85,10 @@ const watch = await import("../../utils/debugWatch");
  *  one mount in the app. Emptied through its own API rather than a test-only
  *  reset, so nothing here can pass against a door that does not exist. */
 function clearWatches() {
-  while (watch.watchRows(REPO).length) watch.removeWatchExpression(REPO, 0);
+  while (watch.watchRows(REPO).length) {
+    watch.removeWatchExpression(REPO, 0);
+    flushSolid();
+  }
 }
 
 function deliver(session: string, frame: Record<string, unknown>): void {

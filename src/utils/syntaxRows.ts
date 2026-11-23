@@ -3,7 +3,7 @@
 // have both arrived, then answers spans per row. Same shape as the chat's
 // `highlight.ts`, and the same cap, so a block too big to colour there is too
 // big here.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { HIGHLIGHT_MAX } from "../panels/Chat/highlight";
 import type { DiffRow } from "./diffView";
 
@@ -11,7 +11,7 @@ type Engine = typeof import("../panels/Editor/syntaxLines");
 type Language = NonNullable<Awaited<ReturnType<Engine["languageForPath"]>>>;
 export type Span = ReturnType<Engine["tokenLines"]>[number][number];
 
-const [version, setVersion] = createLiveSignal(0);
+const [version, setVersion] = createSignal(0);
 let engine: Engine | null = null;
 let engineRequested = false;
 const languages = new Map<string, Language | null>();

@@ -5,7 +5,7 @@
 // being replaced (which is what promotes a draft into a chat). The agent itself
 // is *not* here - it lives on the tab record as `program`, which is what makes
 // the tab bar and the palette agree without a second copy.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import type { ChatTransport } from "./agents";
 import type { ChatConfigValue } from "./chatTypes";
 
@@ -22,7 +22,7 @@ export type DraftPick = {
 
 const EMPTY: DraftPick = { model: null, mode: null, effort: null, optionValues: {} };
 
-const [picks, setPicks] = createLiveSignal<Record<string, DraftPick>>({});
+const [picks, setPicks] = createSignal<Record<string, DraftPick>>({});
 
 /** What this tab will start as. All-null before anything was picked, which is
  *  the CLI's own defaults rather than an assertion of them. */

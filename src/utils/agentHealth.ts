@@ -6,7 +6,7 @@
 // twice is cheap; the store exists so the answer is *the same* in both places,
 // not to save the call. A picker that offered a agent the Agents panel was
 // simultaneously calling "not installed" would be Tori disagreeing with itself.
-import { createLiveSignal } from "../lib/liveState";
+import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agents } from "./agents";
 
@@ -65,7 +65,7 @@ export type AgentHealth = {
 
 // Null means "not asked yet", which is deliberately distinct from an empty
 // array: one is ignorance and the other is an answer.
-const [agentHealth, setAgentHealth] = createLiveSignal<AgentHealth[] | null>(null);
+const [agentHealth, setAgentHealth] = createSignal<AgentHealth[] | null>(null);
 export { agentHealth };
 
 let requested = false;

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, fireEvent, waitFor } from "../../test/harness";
 import { expectNoAxeViolations } from "../../test/axe";
@@ -665,6 +666,7 @@ describe("@ - the open file's symbols", () => {
     );
     open("@");
     publishEditorState({ activePath: other, dirty: false, tabCount: 1, projectRoot: REPO, recentJumps: [] });
+    flush();
     expect(rowLabels()).toEqual(["elsewhere"]);
   });
 });

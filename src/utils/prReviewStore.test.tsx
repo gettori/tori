@@ -1,3 +1,4 @@
+import { flush as flushNow } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import type { ForgeAccount, PrFile, PullRequest, StatusReport } from "./forgeTypes";
 
@@ -264,6 +265,7 @@ describe("the pull request review store", () => {
 
     // A comment written against the patch in hand, and then two commits.
     addPending(ROOT, 42, held());
+    flushNow();
     // The store works the verdict out from the patches it holds, so a call site
     // cannot hand it a wrong one or forget it.
     expect(prEntry(ROOT, 42).pending[0].anchor).toBe("ok");
@@ -305,6 +307,7 @@ describe("the pull request review store", () => {
     // What a relaunch actually is: the key survives, nothing in memory does.
     const stored = localStorage.getItem(PR_REVIEW_DRAFTS_KEY);
     resetPrReviewStoreForTests();
+    flushNow();
     expect(prEntry(ROOT, 42).pending).toHaveLength(0);
     localStorage.setItem(PR_REVIEW_DRAFTS_KEY, stored!);
 
@@ -347,6 +350,7 @@ describe("the pull request review store", () => {
     ensure(ROOT, 42);
     await settle();
     addPending(ROOT, 42, held());
+    flushNow();
     expect(prEntry(ROOT, 42).pending).toHaveLength(1);
   });
 

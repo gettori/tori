@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, screen, waitFor } from "../../test/harness";
 import type { DiffHunk } from "../../utils/diffHunks";
 
@@ -68,6 +69,7 @@ const { writeDiffEditorLayout } = await import("../../utils/diffLayout");
 it("never draws a reloaded diff over the old file text", async () => {
   enterRoots(["/proj"]);
   writeDiffEditorLayout(true);
+  flush();
   bridge.diff = diffOf("TWO");
   bridge.lines = ["one", "TWO", "three"];
   render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { flush } from "solid-js";
 import { render, screen, waitFor, cleanup } from "../../test/harness";
 
 let stored: Record<string, unknown> = {};
@@ -107,6 +108,7 @@ describe("InstallBanner", () => {
 
     await waitFor(() => expect(screen.getByText(/language server pack for this file: Ruby/)).toBeTruthy());
     screen.getByRole("button", { name: "Get" }).click();
+    flush();
 
     expect(pendingPackInstall()).toEqual({ kind: "lsp", id: "ruby", origin: "editor" });
     dismissPackInstall();
@@ -155,6 +157,7 @@ describe("InstallBanner", () => {
     const { default: FreshBanner } = await import("./InstallBanner");
     await store.loadSettings();
     fresh.offerInstall(id, "Python (pyright)", file);
+    (await import("solid-js")).flush();
     cleanup();
     render(() => <FreshBanner path={file} />);
 
