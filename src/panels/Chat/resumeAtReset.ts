@@ -1,7 +1,7 @@
 // Here and not in Rust: the spend ceiling and the queue hold exist only in the
 // webview, and a timer firing through `ChatHost::deliver` would walk past both.
 // A restart drops every arm, since restored tabs are inert by design.
-import { createLiveStore } from "../../lib/liveState";
+import { createStore } from "solid-js";
 
 export type Arm = {
   sessionId: string;
@@ -28,7 +28,7 @@ export const RESUME_BUSY = "The usage limit reset while a turn was running, so T
 export const RESUME_STOPPED =
   "The usage limit reset, but this chat is over its spend ceiling, so Tori did not continue it.";
 
-const [armed, setArmed] = createLiveStore<Record<string, Arm | undefined>>({});
+const [armed, setArmed] = createStore<Record<string, Arm | undefined>>({});
 const spent = new Set<string>();
 const fires = new Map<string, Fire>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -41,11 +41,15 @@ export const armedFor = (sessionId: string): Arm | null => armed[sessionId] ?? n
 // The button can: pressing it after a cancel is the user changing their mind.
 export function arm(a: Arm): boolean {
   const identity = `${a.sessionId} ${a.turnId} ${a.resetsAt}`;
-  if ((spent.has(identity) && !a.byHand) || armed[a.sessionId]) return false;
-  spent.add(identity);
+  if (spent.has(identity) && !a.byHand) return false;
+  let claimed = false;
   setArmed((all) => {
+    if (all[a.sessionId]) return;
     all[a.sessionId] = a;
+    claimed = true;
   });
+  if (!claimed) return false;
+  spent.add(identity);
   const delay = Math.max(0, a.resetsAt * 1000 + FIRE_GRACE_MS - Date.now());
   timers.set(
     a.sessionId,
@@ -54,14 +58,22 @@ export function arm(a: Arm): boolean {
   return true;
 }
 
+function takeArm(sessionId: string): Arm | undefined {
+  let taken: Arm | undefined;
+  setArmed((all) => {
+    const held = all[sessionId];
+    if (!held) return;
+    taken = { ...held };
+    delete all[sessionId];
+  });
+  return taken;
+}
+
 export function cancel(sessionId: string) {
   clearTimeout(timers.get(sessionId));
   timers.delete(sessionId);
-  const a = armed[sessionId];
+  const a = takeArm(sessionId);
   if (!a) return;
-  setArmed((all) => {
-    delete all[sessionId];
-  });
   const waiting = due.get(a.accountKey);
   if (waiting)
     due.set(
@@ -92,10 +104,7 @@ async function pump(accountKey: string) {
   const next = due.get(accountKey)?.shift();
   if (next === undefined) return;
   busy.add(accountKey);
-  const a = armed[next];
-  setArmed((all) => {
-    delete all[next];
-  });
+  const a = takeArm(next);
   const fire = fires.get(next);
   try {
     if (a && fire) await fire(a);
