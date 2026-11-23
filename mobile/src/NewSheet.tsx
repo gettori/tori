@@ -1,4 +1,5 @@
-import { For, Show, createEffect, createResource, createSignal } from "solid-js";
+import { For, Show, createDeferred, createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { createFetchState } from "../../src/lib/fetchState";
 import { issueDraft, type Issue, type IssueRef } from "../../src/utils/issues";
 import type { RemoteClient } from "./remote";
 import type { Unit } from "./tree";
@@ -26,17 +27,30 @@ export default function NewSheet(props: {
   onStarted: (started: Started) => void;
   onDone: () => void;
 }) {
-  const [agents] = createResource(() => props.client.request<Agents>("agents.list", { folder: props.unit.folder }));
+  const agents = createMemo<Agents | undefined>(
+    () =>
+      untrack(() => props.client.request<Agents>("agents.list", { folder: props.unit.folder }).catch(() => undefined)),
+    { loadingValue: undefined },
+  );
   const [agent, setAgent] = createSignal<string | null>(null);
   const [account, setAccount] = createSignal<string | null>(null);
-  createEffect(() => {
-    const listed = agents();
-    if (!listed || agent() !== null) return;
-    const kept = listed.remembered;
-    setAgent(kept?.agent ?? listed.agents[0]?.id ?? null);
-    setAccount(kept?.account ?? null);
-  });
-  const [accounts] = createResource(agent, (id) => props.client.request<Account[]>("accounts.list", { agent: id }));
+  createEffect(
+    () => ({ listed: agents(), current: agent() }),
+    ({ listed, current }) => {
+      if (!listed || current !== null) return;
+      const kept = listed.remembered;
+      setAgent(kept?.agent ?? listed.agents[0]?.id ?? null);
+      setAccount(kept?.account ?? null);
+    },
+  );
+  const accounts = createDeferred<Account[] | undefined>(
+    (was) => {
+      const id = agent();
+      if (id == null) return was;
+      return untrack(() => props.client.request<Account[]>("accounts.list", { agent: id }).catch(() => undefined));
+    },
+    { loadingValue: undefined },
+  );
   const [where, setWhere] = createSignal<Where>("here");
   const [branch, setBranch] = createSignal("");
   const [base, setBase] = createSignal("");
@@ -46,7 +60,7 @@ export default function NewSheet(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  const [assigned] = createResource(
+  const [assigned] = createFetchState(
     () => (where() === "issue" || where() === "review") && props.project,
     (project) => props.client.request<Assigned>("issues.assigned", { project }),
   );

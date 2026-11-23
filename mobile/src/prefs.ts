@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../../src/lib/liveState";
 import { getBundledTheme } from "../../src/theme/bundled";
 import { applyResolved } from "../../src/theme/resolver";
 import { buildRoles } from "../../src/theme/roles";
@@ -9,9 +9,9 @@ const THEME_KEY = "tori.mobile.theme";
 const WHEEL_KEY = "tori.mobile.wheel";
 const SPACE_KEY = "tori.mobile.space";
 
-const [theme, setThemeSignal] = createSignal<Theme>(localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark");
-const [showWheel, setShowWheelSignal] = createSignal(localStorage.getItem(WHEEL_KEY) !== "off");
-const [spaceName, setSpaceNameSignal] = createSignal(localStorage.getItem(SPACE_KEY));
+const [theme, setThemeSignal] = createLiveSignal<Theme>(localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark");
+const [showWheel, setShowWheelSignal] = createLiveSignal(localStorage.getItem(WHEEL_KEY) !== "off");
+const [spaceName, setSpaceNameSignal] = createLiveSignal(localStorage.getItem(SPACE_KEY));
 
 export { theme, showWheel, spaceName };
 

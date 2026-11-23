@@ -36,7 +36,9 @@ export default function BottomBar(props: {
               const current = () => props.tab === "projects" && space.name === props.space?.name;
               const glyph = () => resolveIcon(space.icon);
               let item!: HTMLButtonElement;
-              createEffect(() => current() && item.scrollIntoView({ inline: "nearest", block: "nearest" }));
+              createEffect(current, (on) => {
+                if (on) item.scrollIntoView({ inline: "nearest", block: "nearest" });
+              });
               return (
                 <button
                   ref={item}

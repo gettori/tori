@@ -11,7 +11,7 @@
 // of a split is the filler (it absorbs the slack and any rounding), every other
 // child gets an explicit px size derived from its stored share of the measured
 // box. That is why a seeded two-pane layout renders the DOM it always did.
-import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createSignal, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Resizer from "../components/Resizer/Resizer";
 import PaneView from "../tabs/PaneView";
@@ -51,11 +51,11 @@ function Split(props: { node: PaneSplit; roles: PaneRoles; filler: boolean }) {
   const [box, setBox] = createSignal(0);
   const row = () => props.node.dir === "row";
   const dim = () => (row() ? "width" : "height");
-  onMount(() => {
+  onSettled(() => {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => setBox(row() ? entry.contentRect.width : entry.contentRect.height));
     ro.observe(el);
-    onCleanup(() => ro.disconnect());
+    return () => ro.disconnect();
   });
 
   const visible = () => props.node.children.filter((c) => !hiddenNode(c));

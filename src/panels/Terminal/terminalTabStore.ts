@@ -161,7 +161,8 @@ export const tabState = (t: OpenTerm): TabState => tabStates()[t.id] ?? defaultS
 export function advanceTabState(t: OpenTerm, next: TabState): boolean {
   if (!statesFor(t.kind).includes(next)) return false;
   if (RANK[next] <= RANK[tabState(t)]) return false;
-  setTabStates({ ...tabStates(), [t.id]: next });
+  // An updater: tabs waking in one flush would otherwise overwrite each other.
+  setTabStates((states) => ({ ...states, [t.id]: next }));
   return true;
 }
 

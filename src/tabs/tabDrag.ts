@@ -9,7 +9,7 @@
 // `dragover` may read `types` but not `getData`, so the MIME is what a target
 // recognizes and the signal is what it reads. `DRAG_PATH_MIME` rides along
 // unchanged, which is what keeps a file tab droppable on a terminal.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 
 /** DataTransfer MIME marking a drag that moves a tab between panes. */
 export const TAB_MOVE_MIME = "application/x-tori-tab";
@@ -39,7 +39,7 @@ export type DropAction =
 export const EDGE_FRACTION = 0.2;
 export const EDGE_MAX = 120;
 
-const [dragging, setDragging] = createSignal<DragTab | null>(null);
+const [dragging, setDragging] = createLiveSignal<DragTab | null>(null);
 
 /** The tab in flight, or null. Panes draw drop zones only while this is set. */
 export const draggingTab = dragging;

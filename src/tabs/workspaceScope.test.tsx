@@ -46,13 +46,23 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 // logged, so an assertion can tell a real edge from a same-value re-run.
 vi.mock("../panels/Terminal/TerminalView", () => ({
   default: (props: { id: string; active: boolean }) => {
-    createEffect(() => bridge.log.push(`${props.id}:${props.active}`));
+    createEffect(
+      () => `${props.id}:${props.active}`,
+      (line) => {
+        bridge.log.push(line);
+      },
+    );
     return <div data-testid="pty" data-id={props.id} data-active={props.active ? "1" : "0"} />;
   },
 }));
 vi.mock("../panels/Chat/ChatView", () => ({
   default: (props: { tabId: string; active: boolean }) => {
-    createEffect(() => bridge.log.push(`${props.tabId}:${props.active}`));
+    createEffect(
+      () => `${props.tabId}:${props.active}`,
+      (line) => {
+        bridge.log.push(line);
+      },
+    );
     return <div data-testid="chat" data-id={props.tabId} data-active={props.active ? "1" : "0"} />;
   },
 }));

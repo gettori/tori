@@ -1,4 +1,5 @@
-import { createResource, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
+import { createFetchState } from "../../../src/lib/fetchState";
 import type { JSX } from "@solidjs/web";
 import type { ConnectionRequest } from "../pick";
 import { pickShortcut } from "../shortcut";
@@ -51,7 +52,7 @@ async function connection(): Promise<string | null> {
 }
 
 export function ShortcutRow() {
-  const [shortcut] = createResource(pickShortcut);
+  const shortcut = createMemo(() => pickShortcut().catch(() => null), { loadingValue: undefined });
   return (
     <Row
       id="shortcut"
@@ -75,7 +76,7 @@ export function ShortcutRow() {
 }
 
 export function ConnectionRow() {
-  const [reach, { refetch }] = createResource(connection);
+  const [reach, { refetch }] = createFetchState(connection);
   return (
     <Row
       id="connection"

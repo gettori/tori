@@ -8,7 +8,7 @@
 // back to a freshly seeded envelope rather than crashing the shell. The
 // stored value is never repaired in place; only focusedPaneId, whose loss is
 // recoverable, is patched to a visible pane.
-import { createSignal } from "solid-js";
+import { createLiveSignal } from "../lib/liveState";
 import { deferredWrite } from "../utils/deferredWrite";
 import { dockFocused } from "./dockStore";
 import { pinRulesFor } from "./tabPlacement";
@@ -89,7 +89,7 @@ function loadAll(): Record<string, LayoutEnvelope> {
   return out;
 }
 
-const [envelopes, setEnvelopes] = createSignal<Record<string, LayoutEnvelope>>(loadAll());
+const [envelopes, setEnvelopes] = createLiveSignal<Record<string, LayoutEnvelope>>(loadAll());
 
 const envelopeWrite = deferredWrite(() => {
   try {

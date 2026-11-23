@@ -8,6 +8,7 @@
 // strips and tabs are given the rects a real layout would have. What that
 // leaves untested is the browser's own drag plumbing, which is what the CDP
 // probe (dev/p10-drag-probe.mjs) is for.
+import { flush } from "solid-js";
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
 import { render, screen, waitFor, within } from "./test/harness";
 
@@ -169,6 +170,7 @@ function fire(el: Element, type: string, o: { x?: number; y?: number; dt?: FakeD
     relatedTarget: { value: null },
   });
   el.dispatchEvent(e);
+  flush();
   return e;
 }
 

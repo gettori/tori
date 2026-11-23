@@ -1,4 +1,15 @@
-import { Match, Show, Switch, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
+import {
+  Match,
+  Show,
+  Switch,
+  createDeferred,
+  createEffect,
+  createSignal,
+  onCleanup,
+  onSettled,
+  refresh,
+  untrack,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { rgbTriple, spaceHue } from "../../src/utils/spaceTint";
@@ -53,25 +64,30 @@ function liveRows(client: RemoteClient) {
         setListed(true);
       })
       .catch(() => {});
-  createEffect(on(client.generation, (n) => n > 0 && void relist()));
+  createEffect(client.generation, (n) => {
+    if (n > 0) void relist();
+  });
   onCleanup(
     client.subscribe("sessions", (data) => {
       const ev = data as { kind?: string; id?: string; dot?: string } | null;
       if (ev?.kind === "session.started" || ev?.kind === "session.ended") return void relist();
       if (ev?.kind !== "session.dot") return;
-      setRows(rows().map((row) => (row.id === ev.id ? { ...row, dot: ev.dot } : row)));
+      setRows((current) => current.map((row) => (row.id === ev.id ? { ...row, dot: ev.dot } : row)));
     }),
   );
   return [rows, relist, listed] as const;
 }
 
 function watchTree(client: RemoteClient) {
-  const [tree, { refetch }] = createResource<Tree, number>(
-    () => client.generation() || undefined,
-    // A failed load keeps the last tree: the reconnect that follows refetches.
-    (_, info) => client.request<Tree>("projects.list").catch(() => info.value ?? { spaces: [], topics: [] }),
+  const tree = createDeferred<Tree | undefined>(
+    (was) => {
+      if (!client.generation()) return was;
+      // A failed load keeps the last tree: the reconnect that follows refetches.
+      return untrack(() => client.request<Tree>("projects.list").catch(() => was ?? { spaces: [], topics: [] }));
+    },
+    { loadingValue: undefined },
   );
-  return [tree, () => void refetch()] as const;
+  return [tree, () => void refresh(tree)] as const;
 }
 
 function toSessionCallOp(command: string, args: Record<string, unknown>) {
@@ -156,19 +172,23 @@ function Paired(props: { client: RemoteClient; notice: string | null; onDisconne
     const t = tapped();
     return t && (t.project ? `Opening a session in ${t.project}...` : "Opening the session...");
   };
-  onMount(pickUp);
+  onSettled(() => {
+    pickUp();
+  });
   const shown = () => document.visibilityState === "visible" && pickUp();
   document.addEventListener("visibilitychange", shown);
   onCleanup(() => document.removeEventListener("visibilitychange", shown));
-  createEffect(() => {
-    const t = tapped();
-    if (!t || !listed()) return;
-    setTapped(null);
-    const home = { project: t.project, folder: t.folder ?? "", branch: t.branch };
-    openSession(
-      live().find((row) => row.id === t.session) ?? { id: t.session, cwd: t.folder ?? "", home, last_active: 0 },
-    );
-  });
+  createEffect(
+    () => ({ t: tapped(), ready: listed() }),
+    ({ t, ready }) => {
+      if (!t || !ready) return;
+      setTapped(null);
+      const home = { project: t.project, folder: t.folder ?? "", branch: t.branch };
+      openSession(
+        live().find((row) => row.id === t.session) ?? { id: t.session, cwd: t.folder ?? "", home, last_active: 0 },
+      );
+    },
+  );
 
   // From a chat reached through its worktree, the worktree is one step back.
   const openHome = (row: SessionRow) => {
@@ -366,24 +386,22 @@ export default function App() {
   const [client, setClient] = createSignal<RemoteClient | null>(null);
   const [link, setLink] = createSignal<{ url: string; code: string } | null>(null);
 
-  createEffect(
-    on(saved, (s) => {
-      client()?.close();
-      setClient(
-        s &&
-          new RemoteClient(s, () => {
-            setNotice("This phone was removed from Tori. Pair it again to reconnect.");
-            setSaved(null);
-          }),
-      );
-    }),
-  );
+  createEffect(saved, (s) => {
+    client()?.close();
+    setClient(
+      s &&
+        new RemoteClient(s, () => {
+          setNotice("This phone was removed from Tori. Pair it again to reconnect.");
+          setSaved(null);
+        }),
+    );
+  });
 
   createEffect(
-    on(
-      () => client()?.generation() ?? 0,
-      (n) => n > 0 && void syncAlerts(client()!),
-    ),
+    () => client()?.generation() ?? 0,
+    (n) => {
+      if (n > 0) void syncAlerts(client()!);
+    },
   );
 
   const opened = (urls: string[] | null) => {
@@ -393,7 +411,7 @@ export default function App() {
     else setLink(found);
   };
   let unlisten: (() => void) | undefined;
-  onMount(() => {
+  onSettled(() => {
     // Outside the Tauri shell (the Vite dev page) there is no deep link plugin.
     invoke<string[] | null>("plugin:deep-link|get_current").then(opened, () => {});
     listen<string[]>("deep-link://new-url", (e) => opened(e.payload)).then(
