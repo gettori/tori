@@ -46,3 +46,56 @@ describe("PendingRequests", () => {
     expect(accepts).toEqual([["chat_request_accept", { session: "me", id: "req-1", link: true }]]);
   });
 });
+
+describe("the waiting list", () => {
+  function hold() {
+    let resolve!: (value: ChatRequest[]) => void;
+    const promise = new Promise<ChatRequest[]>((yes) => (resolve = yes));
+    return { promise, resolve };
+  }
+
+  it("shows no banner until the list is read, then one per message", async () => {
+    const list = hold();
+    setChatCall(async <T,>(command: string) => (command === "chat_requests_list" ? (list.promise as T) : (true as T)));
+    const { container, findByText } = render(() => <PendingRequests sessionId="me" />);
+    expect(container.textContent).toBe("");
+
+    list.resolve([request]);
+    expect(await findByText(/please rebase/)).toBeTruthy();
+  });
+
+  // A refresh after a change elsewhere asks the same question again, so the
+  // banner stays until the new answer is in.
+  it("keeps the banner while the list is read again", async () => {
+    let next: () => Promise<ChatRequest[]> = async () => [request];
+    setChatCall(async <T,>(command: string) =>
+      command === "chat_requests_list" ? ((await next()) as T) : (true as T),
+    );
+    const { findByText, getByText, queryByText } = render(() => <PendingRequests sessionId="me" />);
+    await findByText(/please rebase/);
+
+    const again = hold();
+    next = () => again.promise;
+    fireEvent.click(getByText("Discard"));
+    await waitFor(() => expect(getByText("Discard").closest("button")?.disabled).toBe(false));
+    expect(getByText(/please rebase/)).toBeTruthy();
+
+    again.resolve([]);
+    await waitFor(() => expect(queryByText(/please rebase/)).toBeNull());
+  });
+
+  it("says the list could not be read, in place, and can ask again", async () => {
+    let fail = true;
+    setChatCall(async <T,>(command: string) => {
+      if (command !== "chat_requests_list") return true as T;
+      if (fail) throw "store locked";
+      return [request] as T;
+    });
+    const { findByText, getByText } = render(() => <PendingRequests sessionId="me" />);
+    expect(await findByText(/could not be read: store locked/)).toBeTruthy();
+
+    fail = false;
+    fireEvent.click(getByText("Try again"));
+    expect(await findByText(/please rebase/)).toBeTruthy();
+  });
+});
