@@ -1,5 +1,4 @@
-import { For, Match, Show, Switch } from "solid-js";
-import { createFetchState } from "../../lib/fetchState";
+import { Errored, For, Loading, Match, Show, Switch, createMemo } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import Dialog from "../../components/Dialog/Dialog";
@@ -29,21 +28,15 @@ function regionOf(block: FileRef, file: string): string {
 function FileText(props: { block: FileRef }) {
   // A selection that carries its text needs no read at all, which is also what
   // keeps a preview working for a file deleted since it was selected.
-  const [file] = createFetchState(
-    () => (props.block.text ? null : props.block.path),
-    (path: string) => invoke<string>("fs_read_file", { path }),
+  const file = createMemo<string | null>(() =>
+    props.block.text ? null : invoke<string>("fs_read_file", { path: props.block.path }),
   );
   return (
-    <Show
-      when={props.block.text || file()}
-      fallback={
-        <Show when={file.error} fallback={<p class={styles.previewNote}>Reading the file...</p>}>
-          <p class={styles.previewNote}>This file cannot be shown as text.</p>
-        </Show>
-      }
-    >
-      <CodeBlock lang={langOfPath(props.block.path)} code={regionOf(props.block, file() ?? "")} />
-    </Show>
+    <Errored fallback={<p class={styles.previewNote}>This file cannot be shown as text.</p>}>
+      <Loading on={props.block.path} fallback={<p class={styles.previewNote}>Reading the file...</p>}>
+        <CodeBlock lang={langOfPath(props.block.path)} code={regionOf(props.block, file() ?? "")} />
+      </Loading>
+    </Errored>
   );
 }
 
