@@ -4,6 +4,7 @@
 // watcher event. The reactive store backs the settings panel (Phase 4).
 import { createMemo, createSignal, createStore, flush, getOwner } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { createLent } from "../../lib/lent";
 import { listen } from "@tauri-apps/api/event";
 import { emit, emitWith, SETTINGS_CHANGED, TOAST } from "../../utils/events";
 import { lspDisabledChanged } from "../../utils/lspServers";
@@ -866,27 +867,26 @@ export function forgetChatPrefsUnder(projectPath: string): Promise<void> {
 // answers are ever in force: the editor reads them, the Settings panel badges
 // them, and a background workspace's overlay would be a cache with no reader.
 
-const [overlayRoot, setOverlayRoot] = createSignal<string | null>(null);
-const [overlay, setOverlay] = createSignal<EditorOverlay>({});
-export { overlayRoot };
+const selectedRoot = createLent<string | null>(null);
+export const overlayRoot = selectedRoot.read;
+export const lendOverlayRoot = selectedRoot.lend;
+// Tagged with the workspace it was read for, so answers still on hand when the
+// selection moves on never apply to the next workspace.
+const [loaded, setLoaded] = createSignal<{ root: string | null; values: EditorOverlay }>({ root: null, values: {} });
+const overlayFor = (root: string | null): EditorOverlay => {
+  const l = loaded();
+  return l.root === root ? l.values : {};
+};
 
-/**
- * Read the overlay for a workspace, or clear it when nothing is selected.
- *
- * Cleared *before* the read rather than after it, so the moment the selection
- * changes the editor stops applying the previous workspace's answers. Leaving
- * them up during the round trip would show one project's settings applied to
- * another's files, which is worse than a flicker of the user defaults.
- */
+/** Read the overlay for a workspace. */
 export async function loadWorkspaceSettings(root: string | null): Promise<void> {
-  setOverlayRoot(root);
-  setOverlay({});
+  selectedRoot.set(root);
   if (!root) return;
   const raw = await invoke<unknown>("get_workspace_settings", { root }).catch(() => null);
   // Re-checked after the await: the selection can move while the read is in
   // flight, and a slow answer for the old workspace must not overwrite the new.
   if (overlayRoot() !== root) return;
-  setOverlay(parseOverlay(raw, BUILT_IN_EDITOR));
+  setLoaded({ root, values: parseOverlay(raw, BUILT_IN_EDITOR) });
 }
 
 /**
@@ -898,7 +898,7 @@ export async function loadWorkspaceSettings(root: string | null): Promise<void> 
  * report a *different* project's settings.
  */
 function editorDefaultsFor(root: string | null): EditorDefaults {
-  const own = root && root === overlayRoot() ? overlay() : {};
+  const own = root && root === overlayRoot() ? overlayFor(root) : {};
   return resolveEditorDefaults(BUILT_IN_EDITOR, settings.editorDefaults, own);
 }
 
@@ -911,7 +911,7 @@ export function editorDefaults(): EditorDefaults {
 
 /** Which layer supplied each value, for the Settings panel's badge. */
 export function editorOrigin(): Record<keyof EditorDefaults, Layer> {
-  return editorOrigins(BUILT_IN_EDITOR, settings.editorDefaults, overlay());
+  return editorOrigins(BUILT_IN_EDITOR, settings.editorDefaults, overlayFor(overlayRoot()));
 }
 
 /**
@@ -930,7 +930,7 @@ export async function setWorkspaceOverride<K extends keyof EditorDefaults>(
   const root = overlayRoot();
   if (!root) return;
   let next!: EditorOverlay;
-  setOverlay((was) => (next = withOverride(was, key, value)));
+  setLoaded((was) => ({ root, values: (next = withOverride(was.root === root ? was.values : {}, key, value)) }));
   try {
     await invoke("set_workspace_settings", { root, settings: overlayFile(next) });
   } catch (e) {
