@@ -1136,6 +1136,13 @@ export default function FileTree(props: {
   // same file twice reveal it twice instead of going quiet after the first.
   const [revealing, setRevealing] = createSignal<Reveal | null>(null);
   let revealNonce = 0;
+  // Arriving ends the walk without a write, since every row's reveal effect
+  // reads `revealing` and clearing it would rerun them all.
+  let arrived = 0;
+  const walking = () => {
+    const r = revealing();
+    return r && r.nonce !== arrived ? r : null;
+  };
 
   // One bucket per mount when nothing is persisted, so the two session-only
   // panes cannot close each other's folders through the shared store.
@@ -1345,8 +1352,8 @@ export default function FileTree(props: {
             wantFiles={wantFiles}
             collapseAll={collapseNonce}
             compactFolders={compactFolders()}
-            revealing={revealing}
-            onRevealed={() => setRevealing(null)}
+            revealing={walking}
+            onRevealed={() => (arrived = revealNonce)}
             selected={selected}
             toggleSelected={toggleSelected}
             clearSelected={clearSelected}

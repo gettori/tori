@@ -9,7 +9,7 @@
 //
 // A snapshot rather than live signals, so a reader cannot half-update: the
 // active path and its dirty flag always describe the same moment.
-import { createSignal } from "solid-js";
+import { createLent } from "../lib/lent";
 import type { JumpEntry } from "./jumpList";
 
 export type EditorSnapshot = {
@@ -38,19 +38,21 @@ const EMPTY: EditorSnapshot = {
   recentJumps: [],
 };
 
-const [editorState, setEditorState] = createSignal<EditorSnapshot>(EMPTY);
-export { editorState };
+const state = createLent<EditorSnapshot>(EMPTY);
+export const editorState = state.read;
 
 /** The worktree the palette's per-worktree commands act on. */
 export const frontWorktree = (): string | null => editorState().projectRoot;
 
-/** Called by Editor.tsx from an effect over the state it already owns. */
+export const lendEditorState = state.lend;
+
+/** A fixed snapshot, for tests and stories that mount no editor. */
 export function publishEditorState(next: EditorSnapshot) {
-  setEditorState(next);
+  state.set(next);
 }
 
 /** Reset. Only the editor unmounting should reach this: a consumer reading a
  *  path from a pane that is gone would offer to save a buffer nobody holds. */
 export function clearEditorState() {
-  setEditorState(EMPTY);
+  state.set(EMPTY);
 }

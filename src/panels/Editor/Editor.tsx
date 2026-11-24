@@ -51,7 +51,7 @@ import crumbStyles from "./Breadcrumbs.module.css";
 import { progressFor, progressLabel } from "../../utils/lspProgress";
 import { traceSettle } from "../../utils/perfTrace";
 import { isMarkdownPath } from "../../utils/liveBuffer";
-import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
+import { chromeScale, editorDefaults, lendOverlayRoot, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
 import { clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
@@ -241,7 +241,7 @@ import { dropWorkspaceBreakpoints, moveBreakpointWorkspaces } from "../../utils/
 import { dropWorkspaceExpanded, mapExpandedFiles, moveExpandedWorkspaces } from "../../utils/treeExpanded";
 import { dropWorkspaceWatches, moveWatchWorkspaces } from "../../utils/debugWatch";
 import { moveDeep, type PathMove } from "../../utils/moveWorkspace";
-import { publishDirtyPaths } from "../../utils/unsavedPaths";
+import { lendDirtyPaths } from "../../utils/unsavedPaths";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { followEdits } from "../../utils/followPref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
@@ -260,7 +260,8 @@ import {
   refreshGit,
   startGitWatch,
   enterRoots,
-  setActiveRoot,
+  lendActiveRoot,
+  lendGitRoots,
   gitStateFor,
   isConflicted,
   statusLetter,
@@ -294,7 +295,7 @@ import {
   branchNames,
   type IntegrateOutcome,
 } from "../../utils/gitActions";
-import { publishEditorState, clearEditorState } from "../../utils/editorState";
+import { lendEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
 import { searchBufferRoots, searchTabTitle } from "./searchResultsStore";
 import { renameTabsUnder, repoint, retargetCleanTabs } from "./renameTabs";
@@ -605,9 +606,14 @@ export default function Editor(props: {
       if (!prev) return;
       const paths = (byWs: typeof now) => new Set(Object.values(byWs).flatMap((ts) => ts.map((t) => t.path)));
       const open = paths(now);
-      for (const path of paths(prev)) {
-        if (!open.has(path)) emitWith<EditorTabClosed>(EDITOR_TAB_CLOSED, { path });
-      }
+      const closed = [...paths(prev)].filter((path) => !open.has(path));
+      for (const path of closed) emitWith<EditorTabClosed>(EDITOR_TAB_CLOSED, { path });
+      if (closed.length)
+        setCarets((c) => {
+          const next = { ...c };
+          for (const path of closed) delete next[path];
+          return next;
+        });
     },
     { defer: true },
   );
@@ -789,23 +795,21 @@ export default function Editor(props: {
   const [jumpsByWs, setJumpsByWs] = createSignal<JumpStore>({});
   const jumps = () => listFor(jumpsByWs(), ws());
 
-  // Where the caret is, for the breadcrumb trail. Carries its own path so a tab
-  // swap cannot leave the trail naming a symbol from the file you just left: the
-  // bar reads this only while the path still matches what is on screen.
-  const [caret, setCaret] = createSignal<{ path: string; line: number; column: number } | null>(null);
+  // Where the caret last was in each open file, for the breadcrumb trail.
+  const [carets, setCarets] = createSignal<Readonly<Record<string, { line: number; column: number }>>>({});
   function noteCaret(path: string, line: number, column: number) {
-    const at = caret();
-    if (at && at.path === path && at.line === line && at.column === column) return;
-    setCaret({ path, line, column });
+    const at = carets()[path];
+    if (at && at.line === line && at.column === column) return;
+    setCarets((c) => ({ ...c, [path]: { line, column } }));
   }
   // Only while the buffer that caret belongs to is the thing on screen. The path
   // test alone is not enough: toggling a Markdown or SVG preview keeps the path
   // and takes the caret away with the source, so the trail would go on naming a
   // symbol in a rendered page where nothing is being edited.
   const caretHere = () => {
-    const at = caret();
-    if (!at || isImageTab() || showingPreview()) return null;
-    return at.path === activeFileTab()?.path ? { line: at.line, column: at.column } : null;
+    if (isImageTab() || showingPreview()) return null;
+    const path = activeFileTab()?.path;
+    return (path && carets()[path]) || null;
   };
 
   /** Set or clear a breakpoint, from a click on its gutter. */
@@ -976,6 +980,8 @@ export default function Editor(props: {
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
   // For a Topic it is the active member, and null (never "") with none present.
   const root = createMemo(() => selectionRoot(props.selected));
+  onSettled(() => lendActiveRoot(root));
+  onSettled(() => lendOverlayRoot(root));
 
   // Inside a Topic the file tree draws one section per member, unusable ones
   // included, so a member with no worktree has somewhere to say so and a Retry
@@ -1535,10 +1541,6 @@ export default function Editor(props: {
   // review surface refresh on external changes.
   createEffect(root, (r) => {
     untrack(() => {
-      // Which slot the one-repo surfaces read. Only the pointer: the slots
-      // themselves follow the member set, below, so moving the active member
-      // inside a Topic costs no read at all.
-      setActiveRoot(r);
       // The per-workspace settings overlay, for the same reason: this pane is
       // always mounted and is what knows which workspace is selected, and the
       // Settings panel (which badges the overlay) is usually not open.
@@ -1592,6 +1594,11 @@ export default function Editor(props: {
   // rebuilt with an equal root list would re-issue the whole set. The memo's
   // string equality is what makes moving the active root a no-op here.
   const watchKey = createMemo(() => watchRoots().join("\n"));
+  const watched = createMemo(() => {
+    const joined = watchKey();
+    return joined ? joined.split("\n") : [];
+  });
+  onSettled(() => lendGitRoots(watched));
   // The git store spans the same set, and for the same reason: a background
   // member's numbers have to be true for the section showing them, the palette
   // and the sidebar count, none of which is the member in front.
@@ -2318,15 +2325,8 @@ export default function Editor(props: {
     });
   }
 
-  createEffect(
-    () => Object.keys(dirty()).filter((p) => dirty()[p]),
-    (paths) => {
-      untrack(() => publishDirtyPaths(paths));
-    },
-  );
-  onCleanup(() => publishDirtyPaths([]));
-
-  onCleanup(clearEditorState);
+  const dirtyList = createMemo(() => Object.keys(dirty()).filter((p) => dirty()[p]));
+  onSettled(() => lendDirtyPaths(dirtyList));
 
   // --- Command registry -----------------------------------------------------
   //
@@ -2424,27 +2424,23 @@ export default function Editor(props: {
   const gitRoot = () => rootOf(activeId(), watchRoots()) ?? root();
 
   // Published for the command palette, which is this pane's sibling and can
-  // reach none of the above. One effect over everything the snapshot names, so
+  // reach none of the above. One memo over everything the snapshot names, so
   // its parts can never describe two different moments.
-  createEffect(
-    () => {
-      const active = activeId();
-      // A synthetic view reports no active *file*, so the palette's save, preview,
-      // go-to-line and stage commands correctly refuse on it. `tabCount` still
-      // counts it, which is what keeps "Close editor tab" available.
-      const file = active && !isSyntheticId(active) ? active : null;
-      return {
-        activePath: file,
-        dirty: file ? !!dirty()[file] : false,
-        tabCount: tabs().length,
-        projectRoot: gitRoot(),
-        recentJumps: recentTargets(jumps()),
-      };
-    },
-    (state) => {
-      untrack(() => publishEditorState(state));
-    },
-  );
+  const snapshot = createMemo(() => {
+    const active = activeId();
+    // A synthetic view reports no active *file*, so the palette's save, preview,
+    // go-to-line and stage commands correctly refuse on it. `tabCount` still
+    // counts it, which is what keeps "Close editor tab" available.
+    const file = active && !isSyntheticId(active) ? active : null;
+    return {
+      activePath: file,
+      dirty: file ? !!dirty()[file] : false,
+      tabCount: tabs().length,
+      projectRoot: gitRoot(),
+      recentJumps: recentTargets(jumps()),
+    };
+  });
+  onSettled(() => lendEditorState(snapshot));
 
   // The root a palette command that writes git may act in. A reference member's
   // checkout is the user's own, so it answers null with the reason said, the

@@ -1,38 +1,33 @@
 {
   "$dev": {
     "app start": {
-      "EFFECT_RELAY_TEAR": 3,
-      "EFFECT_WRITES_OWN_SOURCE": 7,
-      "HOT_SCOPE_TIME": 2,
-      "IMMUTABLE_UPDATE_IN_STORE": 14,
-      "STRICT_READ_UNTRACKED": 152,
-      "UNSTABLE_LIST_IDENTITY": 1,
-      "UNSTABLE_MEMO_OUTPUT": 22
+      "EFFECT_WRITES_OWN_SOURCE": 6,
+      "HOT_SCOPE_TIME": 1,
+      "IMMUTABLE_UPDATE_IN_STORE": 13,
+      "STRICT_READ_UNTRACKED": 156,
+      "UNSTABLE_MEMO_OUTPUT": 20
     },
     "worktree switch": {
-      "EFFECT_RELAY_TEAR": 7,
-      "EFFECT_WRITES_OWN_SOURCE": 7,
+      "EFFECT_RELAY_TEAR": 2,
+      "EFFECT_WRITES_OWN_SOURCE": 5,
+      "FALLBACK_FLASH": 4,
       "IMMUTABLE_UPDATE_IN_STORE": 1,
-      "STRICT_READ_UNTRACKED": 2081,
-      "UNSTABLE_LIST_IDENTITY": 2,
-      "UNSTABLE_MEMO_OUTPUT": 12
+      "STRICT_READ_UNTRACKED": 2357,
+      "UNSTABLE_MEMO_OUTPUT": 7
     },
     "tab switch": {
-      "EFFECT_RELAY_TEAR": 6,
-      "EFFECT_WRITES_OWN_SOURCE": 2,
-      "FALLBACK_FLASH": 1,
-      "STRICT_READ_UNTRACKED": 551,
-      "UNSTABLE_MEMO_OUTPUT": 1
+      "FALLBACK_FLASH": 2,
+      "STRICT_READ_UNTRACKED": 610
     },
     "settings save": {
       "FALLBACK_FLASH": 4,
-      "STRICT_READ_UNTRACKED": 1244
+      "STRICT_READ_UNTRACKED": 1316
     },
     "chat send (replayed plain-turn fixture)": {
       "EFFECT_RELAY_TEAR": 1,
       "IMMUTABLE_UPDATE_IN_STORE": 3,
-      "STRICT_READ_UNTRACKED": 1365,
-      "UNSTABLE_MEMO_OUTPUT": 3,
+      "STRICT_READ_UNTRACKED": 1483,
+      "UNSTABLE_MEMO_OUTPUT": 1,
       "WASTED_RECOMPUTE": 1,
       "WIDE_SCOPE_DEPS": 4
     }
@@ -549,8 +544,6 @@
     "STRICT_READ_UNTRACKED": 20
   },
   "src/panels/Editor/FileTree/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 1,
-    "EFFECT_RELAY_TEAR": 2,
-    "EFFECT_WRITES_OWN_SOURCE": 1
+    "STRICT_READ_UNTRACKED": 1
   }
 }

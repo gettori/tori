@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vite-plus/test";
+import { createSignal } from "solid-js";
 import PaneView from "../../tabs/PaneView";
 import { render, screen, waitFor, fireEvent } from "../../test/harness";
 
@@ -220,10 +221,18 @@ describe("the conflict banner", () => {
     // the answer goes with it: a file conflicted *there* can never flag a file
     // here, and neither can this file's own list once nobody is reading it.
     statusRows = [CONFLICT];
-    await mountWith(FILE);
+    const [sel, setSel] = createSignal(selection);
+    mounted = render(() => (
+      <>
+        <Editor selected={sel() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(listening.ready).toBe(true));
+    emitWith(OPEN_IN_EDITOR, { path: FILE });
     await waitFor(() => expect(screen.getByText(BANNER)).toBeTruthy());
 
-    enterRoots(["/space/proj/other"]);
+    setSel(selectionFor("/space/proj/other"));
 
     await waitFor(() => expect(screen.queryByText(BANNER)).toBeNull());
   });

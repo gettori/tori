@@ -16,6 +16,7 @@
 // than the only one whose numbers are true.
 import { createMemo, createRoot, type Accessor, runWithOwner, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { createLent } from "../lib/lent";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
 import { rootOf } from "./topics";
@@ -188,11 +189,56 @@ const NO_SLOT: GitState = {
   lastFetch: null,
 };
 
-// The slot map, in the order the roots were entered, which is member order.
-const [slots, setSlots] = createSignal<ReadonlyMap<string, GitState>>(new Map());
+// Which generation of membership each entered root is on. Doubles as the
+// membership set itself, and as the stale-answer guard: a read files its answer
+// only while the root it asked about is still the one it entered.
+const epochs = new Map<string, number>();
+let epoch = 0;
+
+// Which roots the store is about, in member order. Lent by Editor.tsx, whose
+// member set it is, so the slot map follows a switch in the same flush.
+const members = createLent<readonly string[]>([]);
+export const lendGitRoots = members.lend;
+// What each entered root's reads last answered, apart from membership, filed
+// under the generation that asked. A root that left and came back is on a new
+// generation, so its old answer reads as blank without anything clearing it.
+const [answers, setAnswers] = createSignal<ReadonlyMap<string, { epoch: number; state: GitState }>>(new Map());
+// A root that has not answered yet reads the same blank object every time, so
+// rebuilding the map does not hand its readers a new slot.
+const blanks = new Map<string, GitState>();
+function blankFor(root: string): GitState {
+  let blank = blanks.get(root);
+  if (!blank) {
+    blank = { root, files: [], branch: null, aheadBehind: null, head: null, sync: null, lastFetch: null };
+    blanks.set(root, blank);
+  }
+  return blank;
+}
+const current = (root: string, have: ReadonlyMap<string, { epoch: number; state: GitState }>) => {
+  const answer = have.get(root);
+  return answer && answer.epoch === epochs.get(root) ? answer.state : blankFor(root);
+};
+const sameSlots = (a: ReadonlyMap<string, GitState>, b: ReadonlyMap<string, GitState>) => {
+  if (a.size !== b.size) return false;
+  const bs = [...b];
+  return [...a].every(([root, state], i) => bs[i][0] === root && bs[i][1] === state);
+};
+const slots = runWithOwner(null, () =>
+  createRoot(() =>
+    createMemo(
+      () => {
+        const have = answers();
+        return new Map(members.read().map((root) => [root, current(root, have)]));
+      },
+      { equals: sameSlots },
+    ),
+  ),
+)!;
 // Which slot the surfaces that only ever describe one repo are about.
-const [activeRoot, setActiveRoot] = createSignal<string | null>(null);
-export { setActiveRoot };
+const active = createLent<string | null>(null);
+const activeRoot = active.read;
+const setActiveRoot = active.set;
+export const lendActiveRoot = active.lend;
 
 /** This root's numbers. A root nobody entered reads blank rather than reading
  *  somebody else's, which is what keeps every consumer failing closed. */
@@ -360,12 +406,6 @@ function toastDone(message: string, ok: boolean): boolean {
   return ok;
 }
 
-// Which generation of membership each entered root is on. Doubles as the
-// membership set itself, and as the stale-answer guard: a read files its answer
-// only while the root it asked about is still the one it entered.
-const epochs = new Map<string, number>();
-let epoch = 0;
-
 // A refresh already running for the same key is the answer to a second request
 // for it: the Changes panel and Editor both refresh on a root change, and
 // without this that is two `git status` runs for one switch.
@@ -382,12 +422,14 @@ function coalesce(key: string, run: () => Promise<void>): Promise<void> {
 }
 
 function writeSlot(root: string, patch: Partial<GitState> | ((cur: GitState) => Partial<GitState> | null)): void {
-  setSlots((prev) => {
-    const cur = prev.get(root);
-    const change = cur && (typeof patch === "function" ? patch(cur) : patch);
-    if (!cur || !change) return prev;
-    const next = new Map(prev);
-    next.set(root, { ...cur, ...change });
+  const at = epochs.get(root);
+  if (at === undefined) return;
+  setAnswers((prev) => {
+    const cur = current(root, prev);
+    const change = typeof patch === "function" ? patch(cur) : patch;
+    if (!change) return prev;
+    const next = new Map([...prev].filter(([r, a]) => a.epoch === epochs.get(r)));
+    next.set(root, { epoch: at, state: { ...cur, ...change } });
     return next;
   });
 }
@@ -395,7 +437,7 @@ function writeSlot(root: string, patch: Partial<GitState> | ((cur: GitState) => 
 /**
  * Declare which roots the store is about, and which of them is in front.
  *
- * The only writer of membership. A refresh fills a slot and never opens or
+ * A refresh fills a slot and never opens or
  * closes one, so committing in one member cannot drop the numbers of the
  * members beside it - which is exactly what `enterRoot`-inside-`refreshStatus`
  * did when the store held a single slot.
@@ -405,28 +447,9 @@ function writeSlot(root: string, patch: Partial<GitState> | ((cur: GitState) => 
  * nobody is looking at any more.
  */
 export function enterRoots(roots: readonly string[], active: string | null = roots[0] ?? null): void {
-  setSlots((prev) => {
-    const next = new Map<string, GitState>();
-    for (const root of roots) {
-      const cur = prev.get(root);
-      if (cur) {
-        next.set(root, cur);
-        continue;
-      }
-      epochs.set(root, ++epoch);
-      next.set(root, {
-        root,
-        files: [],
-        branch: null,
-        aheadBehind: null,
-        head: null,
-        sync: null,
-        lastFetch: null,
-      });
-    }
-    for (const root of epochs.keys()) if (!next.has(root)) epochs.delete(root);
-    return next;
-  });
+  members.set(roots);
+  for (const root of roots) if (!epochs.has(root)) epochs.set(root, ++epoch);
+  for (const root of [...epochs.keys()]) if (!roots.includes(root)) epochs.delete(root);
   setActiveRoot(active && roots.includes(active) ? active : (roots[0] ?? null));
 }
 
