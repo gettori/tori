@@ -31,6 +31,8 @@ const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
 let spawnProfile: string | null = "default";
 /** Every `Channel` ChatView opened, so a test can push a frame down the newest. */
 const channels: { onmessage?: (raw: unknown) => void }[] = [];
+/** The transcript scan's answer, swapped per test to hold or fail it. */
+let detailReply: () => Promise<unknown> = () => Promise.resolve(DETAIL);
 
 vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {
@@ -57,7 +59,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       // The transcript scan. It names the model the session's last turn ran,
       // which is the honest answer only while nothing rode argv.
       case "chat_session_detail":
-        return Promise.resolve(DETAIL);
+        return detailReply();
       default:
         return Promise.resolve(null);
     }
@@ -168,6 +170,7 @@ beforeEach(async () => {
   invokes.length = 0;
   channels.length = 0;
   spawnProfile = "default";
+  detailReply = () => Promise.resolve(DETAIL);
   clearDraftPick(TAB);
   flush();
   await ensureAdaptersLoaded();
@@ -334,7 +337,7 @@ describe("the controls of a tab with no pick", () => {
     const { getByLabelText } = mount(true);
 
     await waitFor(() => expect(getByLabelText("Permission mode").textContent).toContain("Ask"));
-    expect(getByLabelText("Model").textContent).toContain("Opus");
+    await waitFor(() => expect(getByLabelText("Model").textContent).toContain("Opus"));
   });
 });
 
@@ -349,5 +352,65 @@ describe("the controls of an ACP tab", () => {
     await waitFor(() => expect(spawn()).toBeTruthy());
     expect(getByLabelText("Permission mode").textContent).toContain("Mode");
     expect(getByLabelText("Permission mode").textContent).not.toContain("Plan");
+  });
+});
+
+describe("the transcript scan behind the model pill", () => {
+  const turnCompleted = (turnId: string) => ({
+    type: "turnCompleted",
+    sessionId: SESSION,
+    turnId,
+    outcome: "completed",
+    stopReason: null,
+    usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, thinkingTokens: 0 },
+    costUsd: null,
+    permissionDenials: [],
+  });
+
+  function hold() {
+    let resolve!: (value: unknown) => void;
+    const promise = new Promise((yes) => (resolve = yes));
+    return { promise, resolve };
+  }
+
+  it("draws the chat before the scan lands, then names the transcript's model", async () => {
+    const scan = hold();
+    detailReply = () => scan.promise;
+    const { getByLabelText } = mount(true);
+    await waitFor(() => expect(getByLabelText("Permission mode").textContent).toContain("Ask"));
+    expect(getByLabelText("Model").textContent).not.toContain("Opus");
+
+    scan.resolve(DETAIL);
+    await waitFor(() => expect(getByLabelText("Model").textContent).toContain("Opus"));
+  });
+
+  // The scan runs again when a turn ends. Until it answers, the pill keeps
+  // the model the last scan named rather than dropping back to nothing.
+  it("keeps the last scan's model while a finished turn is scanned again", async () => {
+    const { getByLabelText } = mount(true);
+    await waitFor(() => expect(getByLabelText("Model").textContent).toContain("Opus"));
+    await waitFor(() => expect(channels.length).toBeGreaterThan(0));
+
+    const rescan = hold();
+    detailReply = () => rescan.promise;
+    channels[channels.length - 1].onmessage?.(turnCompleted("turn-1"));
+    await waitFor(() => expect(invokes.filter((i) => i.cmd === "chat_session_detail")).toHaveLength(2));
+    expect(getByLabelText("Model").textContent).toContain("Opus");
+
+    rescan.resolve({ ...DETAIL, model: "claude-sonnet-5" });
+    await waitFor(() => expect(getByLabelText("Model").textContent).toContain("Sonnet"));
+  });
+
+  it("keeps the last figures when a rescan fails, and the chat stays up", async () => {
+    const { getByLabelText } = mount(true);
+    await waitFor(() => expect(getByLabelText("Model").textContent).toContain("Opus"));
+    await waitFor(() => expect(channels.length).toBeGreaterThan(0));
+
+    detailReply = () => Promise.reject("transcript locked");
+    channels[channels.length - 1].onmessage?.(turnCompleted("turn-1"));
+    await waitFor(() => expect(invokes.filter((i) => i.cmd === "chat_session_detail")).toHaveLength(2));
+    await Promise.resolve();
+    expect(getByLabelText("Model").textContent).toContain("Opus");
+    expect(getByLabelText("Permission mode").textContent).toContain("Ask");
   });
 });
