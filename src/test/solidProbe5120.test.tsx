@@ -45,7 +45,7 @@ describe("removing one row", () => {
     expect(removeFirst(10_000, false, false)).toEqual(removeFirst(1_000, false, false));
   });
 
-  test.fails("costs the same at 1k and 10k when the row iterated the store array (#5120)", () => {
+  test.fails("costs the same at 1k and 10k when the row iterated the store array (solidjs/solid 5120)", () => {
     expect(removeFirst(10_000, true, true)).toEqual(removeFirst(1_000, true, true));
   });
 });
