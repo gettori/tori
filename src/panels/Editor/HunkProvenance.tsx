@@ -1,5 +1,4 @@
-import { createFetchState } from "../../lib/fetchState";
-import { createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import { createMemo, createSignal, Errored, For, Loading, Match, onCleanup, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Footprints } from "../../components/Icon/icons";
 import {
@@ -41,10 +40,7 @@ import hunkStyles from "./HunkCommentInput.module.css";
 /** One hunk's provenance, read when the panel opens: who wrote each run of its
  *  lines, in what turn, by which call, and what the agent said before it. */
 export default function HunkProvenance(props: { file: string; hunk: DiffHunk; read: ClaimReader }) {
-  const [ranges] = createFetchState(
-    () => ({ hunk: props.hunk, read: props.read }),
-    (k) => k.read(k.hunk),
-  );
+  const ranges = createMemo(() => props.read(props.hunk));
   const failure = () => {
     const r = ranges();
     return r && !Array.isArray(r) ? r.error : null;
@@ -56,24 +52,29 @@ export default function HunkProvenance(props: { file: string; hunk: DiffHunk; re
 
   return (
     <div class={styles.panel}>
-      <Switch>
-        <Match when={ranges.loading}>
-          <div class={styles.quiet}>Reading the sessions that ran here...</div>
-        </Match>
-        <Match when={failure()}>
-          {(why) => <div class={styles.quiet}>Tori could not work out who wrote this hunk: {why()}</div>}
-        </Match>
-        <Match when={claims()?.length === 0}>
-          <div class={styles.quiet}>Tori cannot follow this file line by line.</div>
-        </Match>
-        <Match when={claims()}>
-          {(all) => (
-            <For each={all()}>
-              {(range) => <RangeClaim file={props.file} hunk={props.hunk} range={range} labelled={all().length > 1} />}
-            </For>
-          )}
-        </Match>
-      </Switch>
+      <Errored
+        fallback={(err) => <div class={styles.quiet}>Tori could not work out who wrote this hunk: {String(err())}</div>}
+      >
+        <Loading fallback={<div class={styles.quiet}>Reading the sessions that ran here...</div>}>
+          <Switch>
+            <Match when={failure()}>
+              {(why) => <div class={styles.quiet}>Tori could not work out who wrote this hunk: {why()}</div>}
+            </Match>
+            <Match when={claims()?.length === 0}>
+              <div class={styles.quiet}>Tori cannot follow this file line by line.</div>
+            </Match>
+            <Match when={claims()}>
+              {(all) => (
+                <For each={all()}>
+                  {(range) => (
+                    <RangeClaim file={props.file} hunk={props.hunk} range={range} labelled={all().length > 1} />
+                  )}
+                </For>
+              )}
+            </Match>
+          </Switch>
+        </Loading>
+      </Errored>
     </div>
   );
 }

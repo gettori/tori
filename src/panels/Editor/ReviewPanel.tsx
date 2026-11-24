@@ -6,7 +6,10 @@ import {
   onSettled,
   onCleanup,
   untrack,
+  refresh,
+  Errored,
   For,
+  Loading,
   Show,
 } from "solid-js";
 import { pendingReveal } from "../../utils/checkpointReveal";
@@ -265,7 +268,6 @@ export default function ReviewPanel(props: {
   };
   const connectable = () => (settings.forge.enabled ? connectHost(origin(), forgeHosts()) : null);
   const [applying, setApplying] = createSignal(false);
-  const [stashes, setStashes] = createSignal<StashEntry[]>([]);
   // Which stashes show their files, by sha: a selector shifts as entries come
   // and go, so an open row would follow the wrong stash.
   const [openStashes, setOpenStashes] = createSignal<ReadonlySet<string>>(new Set());
@@ -336,6 +338,14 @@ export default function ReviewPanel(props: {
    *  while the chips read `members`: a caller that passes one and not the other
    *  would otherwise blank the whole panel instead of showing one repo. */
   const viewedRoot = createMemo(() => (headed() ? (viewed()?.key ?? props.root) : props.root));
+  const stashes = createMemo(() => {
+    const root = viewedRoot();
+    return root ? invoke<StashEntry[]>("git_stash_list", { projectPath: root }) : [];
+  });
+  // A failed re-read shows in the stash list's own Errored, not as a failed action.
+  function loadStashes() {
+    return refresh(stashes).catch(() => {});
+  }
 
   // Accounts changing clears every resolution in the store, so ask again.
   createEffect(
@@ -359,7 +369,7 @@ export default function ReviewPanel(props: {
       void gitStateFor(root);
       return invoke<{ files: number; insertions: number; deletions: number }>("git_worktree_stat", {
         projectPath: root,
-      }).catch(() => null);
+      });
     },
     { loadingValue: undefined },
   );
@@ -955,7 +965,7 @@ export default function ReviewPanel(props: {
         // described the work that has now moved into the stash, and what was
         // left behind would attach itself to whatever gets committed next.
         setMessage("");
-        await Promise.all([refreshStatus(root), loadStashes()]);
+        await Promise.all([refreshStatus(root), untrack(loadStashes)]);
         emitWith<ToastEvent>(TOAST, { message: "Stashed changes.", kind: "info" });
       }),
     );
@@ -974,7 +984,7 @@ export default function ReviewPanel(props: {
         // Same channel discard and checkpoint revert use: a stash laid back down
         // over an open buffer must offer Reload / Keep mine, not lose a side.
         untrack(() => props.onReverted)?.({ backstop_ts: null, ...outcome });
-        await Promise.all([refreshStatus(root), loadStashes()]);
+        await Promise.all([refreshStatus(root), untrack(loadStashes)]);
       }),
     );
   }
@@ -995,19 +1005,9 @@ export default function ReviewPanel(props: {
         });
         if (!ok) return;
         await invoke("git_stash_drop", { projectPath: root, selector: entry.selector });
-        await loadStashes();
+        await untrack(loadStashes);
       }),
     );
-  }
-
-  async function loadStashes() {
-    const root = viewedRoot();
-    if (!root) {
-      setStashes([]);
-      return;
-    }
-    const list = await invoke<StashEntry[]>("git_stash_list", { projectPath: root }).catch(() => []);
-    setStashes(Array.isArray(list) ? list : []);
   }
 
   /** Tell the editor which files just changed underneath it.
@@ -1042,13 +1042,12 @@ export default function ReviewPanel(props: {
     emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}` });
   }
 
-  // A chip switch changes which repo the one-repo surfaces are about, and two
-  // of them are read here rather than from the store: the stash reflog, and the
-  // origin plus base branch the "Open PR" button needs. The file lists are the
-  // store's and every member's slot is already filled, so those just re-read.
+  // A chip switch changes which repo the one-repo surfaces are about, and one
+  // of them is read here rather than from the store: the origin plus base
+  // branch the "Open PR" button needs. The file lists are the store's and every
+  // member's slot is already filled, so those just re-read.
   createEffect(viewedRoot, () => {
     void refreshHeader();
-    void loadStashes();
   });
 
   // Keyed on the member set rather than the member in front: moving between
@@ -1564,14 +1563,24 @@ export default function ReviewPanel(props: {
           do to it. Here rather than over the file list, which is not drawn once
           everything is committed. */}
       <div class={styles.branchBar}>
-        <Show when={total()?.files ? total() : null}>
-          {(t) => (
+        <Errored
+          fallback={(err) => (
             <span class={styles.changesTotal} data-changes-total>
-              {plural(t().files, "file")} · <span class={styles.added}>{`+${t().insertions}`}</span>/
-              <span class={styles.deleted}>{`-${t().deletions}`}</span>
+              Changes could not be counted: {String(err())}
             </span>
           )}
-        </Show>
+        >
+          <Loading fallback={null}>
+            <Show when={total()?.files ? total() : null}>
+              {(t) => (
+                <span class={styles.changesTotal} data-changes-total>
+                  {plural(t().files, "file")} · <span class={styles.added}>{`+${t().insertions}`}</span>/
+                  <span class={styles.deleted}>{`-${t().deletions}`}</span>
+                </span>
+              )}
+            </Show>
+          </Loading>
+        </Errored>
         <span class={styles.spacer} />
         <Show when={aheadBehind()}>
           {(ab) => (
@@ -1933,9 +1942,13 @@ export default function ReviewPanel(props: {
                   value={t.id}
                   id={`review-tab-${t.id}`}
                   trailing={
-                    <Show when={tabCount(t.id)}>
-                      <span class={styles.tabCount}>{tabCount(t.id)}</span>
-                    </Show>
+                    <Errored fallback={null}>
+                      <Loading on={viewedRoot()} fallback={null}>
+                        <Show when={tabCount(t.id)}>
+                          <span class={styles.tabCount}>{tabCount(t.id)}</span>
+                        </Show>
+                      </Loading>
+                    </Errored>
                   }
                 >
                   {t.label}
@@ -2044,77 +2057,90 @@ export default function ReviewPanel(props: {
                 class={styles.tabPanel}
                 hidden={tab() !== "stashes"}
               >
-                <Show when={stashes().length} fallback={<div class="tree-empty">Nothing stashed.</div>}>
-                  <OverlayScroll class={styles.sectionScroll}>
-                    <For each={stashes()}>
-                      {(st) => (
-                        <>
-                          <div
-                            class={[styles.stashRow, { [styles.active]: openStashes().has(st.sha) }]}
-                            title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
-                            onClick={() => toggleStash(st.sha)}
-                          >
-                            <span class={styles.stashIcon} aria-hidden="true">
-                              <Icon icon={Archive} />
-                            </span>
-                            <span class={styles.reviewName}>{st.message}</span>
-                            <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
-                            <span class={styles.rowEnd}>
-                              {/* A stash is a commit, so the commit view shows what
+                <Errored
+                  fallback={(err, reset) => (
+                    <div class="tree-empty">
+                      The stash list could not be read: {String(err())}{" "}
+                      <Button size="xs" variant="ghost" onClick={() => reset()}>
+                        Try again
+                      </Button>
+                    </div>
+                  )}
+                >
+                  <Loading on={viewedRoot()} fallback={<div class="tree-empty">Reading the stashes...</div>}>
+                    <Show when={stashes().length} fallback={<div class="tree-empty">Nothing stashed.</div>}>
+                      <OverlayScroll class={styles.sectionScroll}>
+                        <For each={stashes()}>
+                          {(st) => (
+                            <>
+                              <div
+                                class={[styles.stashRow, { [styles.active]: openStashes().has(st.sha) }]}
+                                title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
+                                onClick={() => toggleStash(st.sha)}
+                              >
+                                <span class={styles.stashIcon} aria-hidden="true">
+                                  <Icon icon={Archive} />
+                                </span>
+                                <span class={styles.reviewName}>{st.message}</span>
+                                <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
+                                <span class={styles.rowEnd}>
+                                  {/* A stash is a commit, so the commit view shows what
                                 it holds; nothing here has to know how to diff one. */}
-                              <IconButton
-                                size="xs"
-                                icon={<Icon icon={GitCommitHorizontal} />}
-                                aria-label="Open stash"
-                                tooltip="Open this stash as a commit"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
-                                }}
-                              />
-                              <IconButton
-                                size="xs"
-                                icon={<Icon icon={ArchiveRestore} />}
-                                disabled={applying()}
-                                aria-label="Apply stash"
-                                tooltip="Lay this stash back down and keep it in the list"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void applyStash(st, false);
-                                }}
-                              />
-                              <IconButton
-                                size="xs"
-                                icon={<Icon icon={ArchiveX} />}
-                                disabled={applying()}
-                                aria-label="Pop stash"
-                                tooltip="Lay this stash back down and remove it from the list"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void applyStash(st, true);
-                                }}
-                              />
-                              <IconButton
-                                size="xs"
-                                icon={<Icon icon={Trash2} />}
-                                disabled={applying()}
-                                aria-label="Drop stash"
-                                tooltip="Delete this stash without applying it"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void dropStash(st);
-                                }}
-                              />
-                            </span>
-                          </div>
-                          <Show when={openStashes().has(st.sha)}>
-                            <CommitFiles root={viewedRoot()!} sha={st.sha} />
-                          </Show>
-                        </>
-                      )}
-                    </For>
-                  </OverlayScroll>
-                </Show>
+                                  <IconButton
+                                    size="xs"
+                                    icon={<Icon icon={GitCommitHorizontal} />}
+                                    aria-label="Open stash"
+                                    tooltip="Open this stash as a commit"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
+                                    }}
+                                  />
+                                  <IconButton
+                                    size="xs"
+                                    icon={<Icon icon={ArchiveRestore} />}
+                                    disabled={applying()}
+                                    aria-label="Apply stash"
+                                    tooltip="Lay this stash back down and keep it in the list"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void applyStash(st, false);
+                                    }}
+                                  />
+                                  <IconButton
+                                    size="xs"
+                                    icon={<Icon icon={ArchiveX} />}
+                                    disabled={applying()}
+                                    aria-label="Pop stash"
+                                    tooltip="Lay this stash back down and remove it from the list"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void applyStash(st, true);
+                                    }}
+                                  />
+                                  <IconButton
+                                    size="xs"
+                                    icon={<Icon icon={Trash2} />}
+                                    disabled={applying()}
+                                    aria-label="Drop stash"
+                                    tooltip="Delete this stash without applying it"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void dropStash(st);
+                                    }}
+                                  />
+                                </span>
+                              </div>
+                              <Show when={openStashes().has(st.sha)}>
+                                <CommitFiles root={viewedRoot()!} sha={st.sha} />
+                              </Show>
+                            </>
+                          )}
+                        </For>
+                      </OverlayScroll>
+                    </Show>
+                  </Loading>
+                </Errored>
               </div>
               <div
                 id="review-panel-checkpoints"

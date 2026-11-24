@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, refresh, Errored, For, Loading, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../components/Button/Button";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
@@ -50,41 +50,22 @@ function diffLineClass(line: string): string {
  * so whatever they had staged survives it (the manual-git invariant).
  */
 export default function LocalHistory(props: { workspace: string; file: string }) {
-  const [entries, setEntries] = createSignal<Entry[]>([]);
   const [picked, setPicked] = createSignal<number | null>(null);
   // `null` is "not read yet", `""` is "identical to the file". Two different
   // things that would otherwise both render as the empty-diff message, so
   // picking a row would claim it matched the file before anything had looked.
   const [diff, setDiff] = createSignal<string | null>(null);
-  const [loading, setLoading] = createSignal(true);
-  const [error, setError] = createSignal<string | null>(null);
   const [restoring, setRestoring] = createSignal(false);
 
   const abs = () => `${props.workspace}/${props.file}`;
 
-  async function reload() {
-    setLoading(true);
-    try {
-      const found = await invoke<Entry[]>("local_history_list", {
-        repoPath: props.workspace,
-        path: abs(),
-      });
-      setEntries(found);
-      setError(null);
-    } catch (e) {
-      setEntries([]);
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
+  const entries = createMemo(() => invoke<Entry[]>("local_history_list", { repoPath: props.workspace, path: abs() }));
 
   createEffect(
     () => [props.workspace, props.file] as const,
     () => {
       setPicked(null);
       setDiff(null);
-      void reload();
     },
   );
 
@@ -120,7 +101,8 @@ export default function LocalHistory(props: { workspace: string; file: string })
       // file is what the watcher would have to reconcile anyway.
       emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: abs() });
       emitWith<ToastEvent>(TOAST, { message: `Restored ${props.file} to ${shortTime(ts)}`, kind: "info" });
-      await reload();
+      // A failed re-read shows in the list's own Errored, not as a failed restore.
+      await refresh(entries).catch(() => {});
       setPicked(null);
       setDiff(null);
     } catch (e) {
@@ -136,63 +118,76 @@ export default function LocalHistory(props: { workspace: string; file: string })
         <span class={styles.title}>Local history</span>
         <span class={styles.sub}>{props.file}</span>
       </div>
-      <Show when={!error()} fallback={<div class="tree-empty">{error()}</div>}>
-        <Show
-          when={loading() || entries().length}
-          fallback={
-            <div class="tree-empty">
-              No saved versions yet. Tori keeps one each time you save this file, whether or not it is committed.
-            </div>
-          }
-        >
-          <div class={styles.list}>
-            <For each={entries()}>
-              {(entry, i) => (
-                <>
-                  <div
-                    class={[styles.row, { [styles.rowOn]: picked() === entry.ts }]}
-                    onClick={() => void pick(entry.ts)}
-                  >
-                    <span class={styles.when}>{shortTime(entry.ts)}</span>
-                    {/* The newest entry is what the file was at its last save,
+      <Errored
+        fallback={(err, reset) => (
+          <div class="tree-empty">
+            {String(err())}{" "}
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
+          </div>
+        )}
+      >
+        <Loading on={props.file} fallback={<div class="tree-empty">Reading the saved versions...</div>}>
+          <Show
+            when={entries().length}
+            fallback={
+              <div class="tree-empty">
+                No saved versions yet. Tori keeps one each time you save this file, whether or not it is committed.
+              </div>
+            }
+          >
+            <div class={styles.list}>
+              <For each={entries()}>
+                {(entry, i) => (
+                  <>
+                    <div
+                      class={[styles.row, { [styles.rowOn]: picked() === entry.ts }]}
+                      onClick={() => void pick(entry.ts)}
+                    >
+                      <span class={styles.when}>{shortTime(entry.ts)}</span>
+                      {/* The newest entry is what the file was at its last save,
                         which is the one version whose relationship to what is on
                         screen is worth naming. */}
-                    <span class={styles.tag}>{i() === 0 ? "last save" : ""}</span>
-                    <span class={styles.size}>{formatBytes(entry.size)}</span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      class={styles.restore}
-                      disabled={restoring()}
-                      tooltip="Write this version back to the file"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void restore(entry.ts);
-                      }}
-                    >
-                      Restore
-                    </Button>
-                  </div>
-                  <Show when={picked() === entry.ts}>
-                    <div class={styles.diff}>
-                      <Show when={diff() !== null} fallback={<div class={styles.same}>Reading that version…</div>}>
-                        <Show
-                          when={diff()}
-                          fallback={<div class={styles.same}>Identical to the file as it is now.</div>}
-                        >
-                          <For each={diff()!.split("\n")}>
-                            {(line) => <div class={[styles.diffLine, styles[diffLineClass(line)]]}>{line || " "}</div>}
-                          </For>
-                        </Show>
-                      </Show>
+                      <span class={styles.tag}>{i() === 0 ? "last save" : ""}</span>
+                      <span class={styles.size}>{formatBytes(entry.size)}</span>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        class={styles.restore}
+                        disabled={restoring()}
+                        tooltip="Write this version back to the file"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void restore(entry.ts);
+                        }}
+                      >
+                        Restore
+                      </Button>
                     </div>
-                  </Show>
-                </>
-              )}
-            </For>
-          </div>
-        </Show>
-      </Show>
+                    <Show when={picked() === entry.ts}>
+                      <div class={styles.diff}>
+                        <Show when={diff() !== null} fallback={<div class={styles.same}>Reading that version…</div>}>
+                          <Show
+                            when={diff()}
+                            fallback={<div class={styles.same}>Identical to the file as it is now.</div>}
+                          >
+                            <For each={diff()!.split("\n")}>
+                              {(line) => (
+                                <div class={[styles.diffLine, styles[diffLineClass(line)]]}>{line || " "}</div>
+                              )}
+                            </For>
+                          </Show>
+                        </Show>
+                      </div>
+                    </Show>
+                  </>
+                )}
+              </For>
+            </div>
+          </Show>
+        </Loading>
+      </Errored>
     </div>
   );
 }

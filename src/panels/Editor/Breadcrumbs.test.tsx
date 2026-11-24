@@ -28,6 +28,7 @@ const entry = (dir: string, name: string, is_dir = false, ignored = false): Entr
 
 const dirs: Record<string, Entry[]> = {};
 const unreadable = new Set<string>();
+const slow = new Map<string, Promise<void>>();
 const reads: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -36,6 +37,8 @@ vi.mock("@tauri-apps/api/core", () => ({
       const path = args.path as string;
       reads.push(path);
       if (unreadable.has(path)) return Promise.reject("permission denied");
+      const wait = slow.get(path);
+      if (wait) return wait.then(() => dirs[path] ?? []);
       return Promise.resolve(dirs[path] ?? []);
     }
     return Promise.resolve(null);
@@ -72,6 +75,7 @@ beforeEach(() => {
   opened = [];
   reads.length = 0;
   unreadable.clear();
+  slow.clear();
   for (const key of Object.keys(dirs)) delete dirs[key];
   offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opened.push(d));
 });
@@ -280,6 +284,20 @@ describe("picking somewhere else from a crumb", () => {
     render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
     pointerClick(screen.getByText("panels"));
     expect(await screen.findByText("This folder is empty.")).toBeTruthy();
+  });
+
+  it("says it is reading a folder until its entries land", async () => {
+    let land!: () => void;
+    const gate = new Promise<void>((yes) => (land = yes));
+    slow.set(`${ROOT}/src/panels`, gate);
+    dirs[`${ROOT}/src/panels`] = [entry(`${ROOT}/src/panels`, "other.ts")];
+    render(() => <Breadcrumbs root={ROOT} path={PATH} caret={null} />);
+    pointerClick(screen.getByText("panels"));
+    expect(await screen.findByText("Reading the folder…")).toBeTruthy();
+
+    land();
+    expect(await screen.findByRole("menuitem", { name: "other.ts" })).toBeTruthy();
+    expect(screen.queryByText("Reading the folder…")).toBeNull();
   });
 
   it("does not call a folder it could not read an empty one", async () => {
