@@ -1,31 +1,40 @@
 {
   "$dev": {
     "app start": {
-      "STRICT_READ_UNTRACKED": 53,
-      "EFFECT_WRITES_OWN_SOURCE": 2,
-      "HOT_SCOPE_TIME": 1,
-      "UNSTABLE_MEMO_OUTPUT": 3,
-      "IMMUTABLE_UPDATE_IN_STORE": 13
+      "EFFECT_RELAY_TEAR": 3,
+      "EFFECT_WRITES_OWN_SOURCE": 7,
+      "HOT_SCOPE_TIME": 2,
+      "IMMUTABLE_UPDATE_IN_STORE": 14,
+      "STRICT_READ_UNTRACKED": 152,
+      "UNSTABLE_LIST_IDENTITY": 1,
+      "UNSTABLE_MEMO_OUTPUT": 22
     },
     "worktree switch": {
-      "UNSTABLE_MEMO_OUTPUT": 9,
-      "STRICT_READ_UNTRACKED": 2
+      "EFFECT_RELAY_TEAR": 7,
+      "EFFECT_WRITES_OWN_SOURCE": 7,
+      "IMMUTABLE_UPDATE_IN_STORE": 1,
+      "STRICT_READ_UNTRACKED": 2081,
+      "UNSTABLE_LIST_IDENTITY": 2,
+      "UNSTABLE_MEMO_OUTPUT": 12
     },
     "tab switch": {
-      "STRICT_READ_UNTRACKED": 585,
-      "FALLBACK_FLASH": 3
+      "EFFECT_RELAY_TEAR": 6,
+      "EFFECT_WRITES_OWN_SOURCE": 2,
+      "FALLBACK_FLASH": 1,
+      "STRICT_READ_UNTRACKED": 551,
+      "UNSTABLE_MEMO_OUTPUT": 1
     },
     "settings save": {
-      "STRICT_READ_UNTRACKED": 1221,
-      "UNSTABLE_MEMO_OUTPUT": 3
+      "FALLBACK_FLASH": 4,
+      "STRICT_READ_UNTRACKED": 1244
     },
     "chat send (replayed plain-turn fixture)": {
       "EFFECT_RELAY_TEAR": 1,
-      "STRICT_READ_UNTRACKED": 1081,
-      "UNSTABLE_MEMO_OUTPUT": 7,
       "IMMUTABLE_UPDATE_IN_STORE": 3,
-      "WIDE_SCOPE_DEPS": 4,
-      "UNSTABLE_LIST_IDENTITY": 2
+      "STRICT_READ_UNTRACKED": 1365,
+      "UNSTABLE_MEMO_OUTPUT": 3,
+      "WASTED_RECOMPUTE": 1,
+      "WIDE_SCOPE_DEPS": 4
     }
   },
   "src/appDragDrop.test.tsx": {
