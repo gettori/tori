@@ -540,6 +540,13 @@
   "src/tabs/workspaceScope.test.tsx": {
     "STRICT_READ_UNTRACKED": 61
   },
+  "src/test/solidProbe5117.test.tsx": {
+    "ASYNC_OUTSIDE_LOADING_BOUNDARY": 1,
+    "REACTIVITY_HALTED": 1
+  },
+  "src/test/solidProbe5118.test.tsx": {
+    "ASYNC_OUTSIDE_LOADING_BOUNDARY": 1
+  },
   "src/utils/remoteSync.test.tsx": {
     "STRICT_READ_UNTRACKED": 30
   },
