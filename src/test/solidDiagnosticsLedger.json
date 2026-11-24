@@ -47,9 +47,9 @@
     "src/panels/Editor/pdfToolbar.test.tsx": "the page field at PdfToolbar.tsx:123 is controlled by the viewer's page, and the test moves the page while a typed value is uncommitted; not investigated",
     "src/panels/ProjectSettings/ProjectSettingsDialog.test.tsx": "agentEnabled.ts:28 and :113 read settings and agents after an await in a caller; not located",
     "src/panels/ProjectSettings/ToolingCommands.test.tsx": "the same agentEnabled reads after an await as ProjectSettingsDialog.test.tsx",
-    "src/test/solidProbe5117.test.tsx": "upstream #5117 repro, test.fails",
-    "src/test/solidProbe5118.test.tsx": "upstream #5118 repro, test.fails",
-    "src/test/solidProbe5120.test.tsx": "upstream #5120 repro: a memo over 10k store items"
+    "src/test/solidProbe5117.test.tsx": "upstream solidjs/solid 5117 repro, test.fails",
+    "src/test/solidProbe5118.test.tsx": "upstream solidjs/solid 5118 repro, test.fails",
+    "src/test/solidProbe5120.test.tsx": "upstream solidjs/solid 5120 repro: a memo over 10k store items"
   },
   "src/components/Dialog/Dialog.test.tsx": {
     "NO_OWNER_EFFECT": 1
