@@ -1,9 +1,10 @@
-import { For, Show, createEffect, createSignal, onCleanup, onSettled, untrack } from "solid-js";
+import { Errored, For, Show, createDeferred, createSignal, onCleanup, onSettled, refresh } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { File, FileCode, FileImage, FileSpreadsheet, FileText } from "../../components/Icon/icons";
 import type { IconGlyph } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
+import Button from "../../components/Button/Button";
 import { WorkingMark } from "../../components/Icon/statusMarks";
 import { GroupHead } from "../LeftSidebar/SidebarRows";
 import { bytes } from "../Chat/toolRenderers";
@@ -34,28 +35,22 @@ export function artifactKind(name: string): { label: string; icon: IconGlyph } {
 }
 
 export default function ArtifactsPanel(props: { chatId: string; root: string; activePath?: string | null }) {
-  const [list, setList] = createSignal<Artifacts>({ made: [], added: [] });
   const [madeOpen, setMadeOpen] = createSignal(true);
   const [addedOpen, setAddedOpen] = createSignal(true);
-  const transcripts = () => (chatById(props.chatId)?.sessions ?? []).map((s) => s.path);
-
-  // Read apart from the refresh so the effect can take it in its compute: the
-  // parent passes these props as computed expressions, which an apply cannot read.
-  const request = () => ({ folder: chatById(props.chatId)?.folder ?? props.root, transcripts: transcripts() });
-
-  async function refresh(args = request()) {
-    const next = await invoke<Artifacts | null>("chat_artifacts", args).catch(() => null);
-    if (next) setList(next);
-  }
 
   // Keyed on the transcripts and their stamps, which move at each turn end:
   // that is when an attachment can first appear.
-  createEffect(
-    () => ({
-      key: `${props.chatId}\n${(chatById(props.chatId)?.sessions ?? []).map((s) => `${s.path}@${s.last_active}`).join("\n")}`,
-      args: untrack(request),
-    }),
-    ({ args }) => void refresh(args),
+  const list = createDeferred<Artifacts>(
+    () => {
+      const chat = chatById(props.chatId);
+      const sessions = chat?.sessions ?? [];
+      for (const s of sessions) void s.last_active;
+      return invoke<Artifacts>("chat_artifacts", {
+        folder: chat?.folder ?? props.root,
+        transcripts: sessions.map((s) => s.path),
+      });
+    },
+    { loadingValue: { made: [], added: [] } },
   );
 
   let unlisten: UnlistenFn | undefined;
@@ -66,7 +61,7 @@ export default function ArtifactsPanel(props: { chatId: string; root: string; ac
         const root = e.payload.root;
         if (root && !isUnderPath(root, props.root) && !isUnderPath(props.root, root)) return;
         clearTimeout(timer);
-        timer = setTimeout(() => void refresh(), 150);
+        timer = setTimeout(() => void refresh(list), 150);
       });
     })();
   });
@@ -123,35 +118,49 @@ export default function ArtifactsPanel(props: { chatId: string; root: string; ac
     <div class={styles.panel} data-artifacts>
       <div class={styles.head}>
         <span class={styles.title}>Artifacts</span>
-        <span class={styles.count}>{total()}</span>
+        <Errored fallback={null}>
+          <span class={styles.count}>{total()}</span>
+        </Errored>
       </div>
-      <Show
-        when={total() > 0}
-        fallback={
+      <Errored
+        fallback={(err, reset) => (
           <div class={styles.empty}>
-            <span class={styles.emptyIcon}>
-              <Icon icon={File} />
-            </span>
-            <p class={styles.emptyTitle}>Nothing here yet</p>
-            <p class={styles.emptyText}>Files this chat writes, and files you drop into it, show up here.</p>
+            <p class={styles.emptyTitle}>The artifacts could not be listed</p>
+            <p class={styles.emptyText}>{String(err())}</p>
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
           </div>
-        }
+        )}
       >
-        <div class={styles.scroll}>
-          {group(
-            "Made in this chat",
-            () => list().made,
-            madeOpen,
-            () => setMadeOpen((v) => !v),
-          )}
-          {group(
-            "Added by you",
-            () => list().added,
-            addedOpen,
-            () => setAddedOpen((v) => !v),
-          )}
-        </div>
-      </Show>
+        <Show
+          when={total() > 0}
+          fallback={
+            <div class={styles.empty}>
+              <span class={styles.emptyIcon}>
+                <Icon icon={File} />
+              </span>
+              <p class={styles.emptyTitle}>Nothing here yet</p>
+              <p class={styles.emptyText}>Files this chat writes, and files you drop into it, show up here.</p>
+            </div>
+          }
+        >
+          <div class={styles.scroll}>
+            {group(
+              "Made in this chat",
+              () => list().made,
+              madeOpen,
+              () => setMadeOpen((v) => !v),
+            )}
+            {group(
+              "Added by you",
+              () => list().added,
+              addedOpen,
+              () => setAddedOpen((v) => !v),
+            )}
+          </div>
+        </Show>
+      </Errored>
     </div>
   );
 }

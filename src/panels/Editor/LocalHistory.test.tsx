@@ -16,12 +16,13 @@ const bridge: {
   entries: { ts: number; blob: string; size: number }[];
   diff: string;
   restoreFails: string | null;
-} = { calls: [], entries: [], diff: "", restoreFails: null };
+  list: (() => Promise<unknown>) | null;
+} = { calls: [], entries: [], diff: "", restoreFails: null, list: null };
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "local_history_list") return Promise.resolve(bridge.entries);
+    if (cmd === "local_history_list") return bridge.list ? bridge.list() : Promise.resolve(bridge.entries);
     if (cmd === "local_history_diff") return Promise.resolve(bridge.diff);
     if (cmd === "local_history_restore") {
       return bridge.restoreFails ? Promise.reject(new Error(bridge.restoreFails)) : Promise.resolve(null);
@@ -46,7 +47,14 @@ beforeEach(() => {
   bridge.entries = [];
   bridge.diff = "";
   bridge.restoreFails = null;
+  bridge.list = null;
 });
+
+function hold() {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise((yes) => (resolve = yes));
+  return { promise, resolve };
+}
 
 describe("the list", () => {
   it("asks for this file's versions by absolute path", async () => {
@@ -157,6 +165,51 @@ describe("restoring one", () => {
     }
     expect(toasts[0]).toContain("no longer stored");
     expect(screen.getAllByText("Restore")).toHaveLength(2);
+  });
+});
+
+describe("reading the list", () => {
+  it("says it is reading until the versions land, rather than that none were saved", async () => {
+    const read = hold();
+    bridge.list = () => read.promise;
+    mount();
+    expect(await screen.findByText("Reading the saved versions...")).toBeTruthy();
+    expect(screen.queryByText(/No saved versions yet/)).toBeNull();
+
+    read.resolve([entry(2000, "bbb")]);
+    expect(await screen.findByText("last save")).toBeTruthy();
+    expect(screen.queryByText("Reading the saved versions...")).toBeNull();
+  });
+
+  it("keeps the rows up, with Restore off, while a restore reads the list again", async () => {
+    bridge.entries = [entry(2000, "bbb"), entry(1000, "aaa")];
+    mount();
+    await waitFor(() => expect(screen.getAllByText("Restore")).toHaveLength(2));
+
+    const again = hold();
+    bridge.list = () => again.promise;
+    fireEvent.click(screen.getAllByText("Restore")[1]);
+    await waitFor(() => expect(argsFor("local_history_list")).toHaveLength(2));
+    expect(screen.queryByText("Reading the saved versions...")).toBeNull();
+    const buttons = screen.getAllByText("Restore").map((el) => el.closest("button")!);
+    expect(buttons).toHaveLength(2);
+    expect(buttons.every((b) => b.disabled)).toBe(true);
+
+    again.resolve([entry(3000, "ccc"), entry(2000, "bbb"), entry(1000, "aaa")]);
+    await waitFor(() => expect(screen.getAllByText("Restore")).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByText("Restore")[0].closest("button")!.disabled).toBe(false));
+  });
+
+  it("says why the versions could not be read, and tries again", async () => {
+    bridge.list = () => Promise.reject("history store is locked");
+    mount();
+    expect(await screen.findByText(/history store is locked/)).toBeTruthy();
+    expect(screen.queryByText(/No saved versions yet/)).toBeNull();
+
+    bridge.list = null;
+    bridge.entries = [entry(2000, "bbb")];
+    fireEvent.click(screen.getByText("Try again"));
+    expect(await screen.findByText("last save")).toBeTruthy();
   });
 });
 

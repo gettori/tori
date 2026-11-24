@@ -78,6 +78,8 @@ let stashRows: {
   committed_at: number;
 }[] = [];
 let stashCreated = true;
+let stashReply: (() => Promise<unknown>) | null = null;
+let statReply: () => Promise<unknown> = () => Promise.resolve(null);
 let stashFails = false;
 let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
 // The "Open PR" button's three paths turn on these three answers, so each test
@@ -162,7 +164,9 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([]);
       case "git_stash_list":
         calls.stashList += 1;
-        return Promise.resolve(stashRows);
+        return stashReply ? stashReply() : Promise.resolve(stashRows);
+      case "git_worktree_stat":
+        return statReply();
       case "git_stash_push":
         stashArgs.push({ cmd, args });
         return Promise.resolve(stashCreated);
@@ -358,6 +362,8 @@ beforeEach(async () => {
   stashRows = [];
   stashCreated = true;
   stashFails = false;
+  stashReply = null;
+  statReply = () => Promise.resolve(null);
   live = [];
   originUrl = null;
   defaultBase = null;
@@ -1914,5 +1920,109 @@ describe("what Pull, Pull (Rebase) and Push will do", () => {
 
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: "Force Push" })).toBeNull();
+  });
+});
+
+function hold() {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise((yes) => (resolve = yes));
+  return { promise, resolve };
+}
+
+describe("the tab's total", () => {
+  const chip = () => document.querySelector("[data-changes-total]")?.textContent ?? null;
+
+  it("shows no total until the first count lands", async () => {
+    const first = hold();
+    statReply = () => first.promise;
+    await mountPanel();
+    expect(chip()).toBeNull();
+
+    first.resolve({ files: 2, insertions: 5, deletions: 1 });
+    await waitFor(() => expect(chip()).toContain("2 files"));
+  });
+
+  it("keeps the last numbers while a status change is counted again", async () => {
+    statReply = () => Promise.resolve({ files: 2, insertions: 5, deletions: 1 });
+    await mountPanel();
+    await waitFor(() => expect(chip()).toContain("2 files"));
+
+    const again = hold();
+    statReply = () => again.promise;
+    statusRows = [UNSTAGED, { status: "??", path: "src/b.ts", staged: false, unstaged: true }];
+    await refreshStatus("/proj");
+    await waitFor(() => expect(screen.getByTitle("src/b.ts")).toBeTruthy());
+    expect(chip()).toContain("2 files");
+
+    again.resolve({ files: 3, insertions: 9, deletions: 1 });
+    await waitFor(() => expect(chip()).toContain("3 files"));
+  });
+
+  it("says the count failed in the chip's place and leaves the panel up", async () => {
+    statReply = () => Promise.reject("not a git repository");
+    await mountPanel();
+    await waitFor(() => expect(chip()).toBe("Changes could not be counted: not a git repository"));
+    expect(screen.getByTitle("src/a.ts")).toBeTruthy();
+  });
+});
+
+describe("the stash list", () => {
+  const ENTRY = {
+    selector: "stash@{0}",
+    sha: "c0ffee0000000000000000000000000000000000",
+    committed_at: 1_700_000_000,
+    message: "half-done refactor",
+    branch: "main",
+    relative_date: "2 hours ago",
+  };
+  const stashTab = () => screen.getByRole("tab", { name: /^Stashes/ });
+
+  it("says it is reading the stashes until the list lands, with no count on the tab", async () => {
+    const first = hold();
+    stashReply = () => first.promise;
+    await mountPanel();
+    await showStashes();
+    expect(await screen.findByText("Reading the stashes...")).toBeTruthy();
+    expect(screen.queryByText("Nothing stashed.")).toBeNull();
+    expect(stashTab().textContent).toBe("Stashes");
+
+    first.resolve([ENTRY]);
+    expect(await screen.findByText("half-done refactor")).toBeTruthy();
+    expect(stashTab().textContent).toBe("Stashes1");
+  });
+
+  it("keeps the rows and the count while a working tree change reads the list again", async () => {
+    stashRows = [ENTRY];
+    await mountPanel();
+    await showStashes();
+    await screen.findByText("half-done refactor");
+    const before = calls.stashList;
+
+    const again = hold();
+    stashReply = () => again.promise;
+    for (const fire of handlers["fs://changed"]) fire({ payload: { root: "/proj", paths: ["/proj/src/a.ts"] } });
+    await waitFor(() => expect(calls.stashList).toBe(before + 1));
+    expect(screen.getByText("half-done refactor")).toBeTruthy();
+    expect(screen.queryByText("Reading the stashes...")).toBeNull();
+    expect(stashTab().textContent).toBe("Stashes1");
+
+    again.resolve([{ ...ENTRY, sha: "b".repeat(40), selector: "stash@{0}", message: "from a terminal" }, ENTRY]);
+    expect(await screen.findByText("from a terminal")).toBeTruthy();
+    expect(stashTab().textContent).toBe("Stashes2");
+  });
+
+  it("says the list could not be read instead of nothing stashed, and tries again", async () => {
+    stashReply = () => Promise.reject("bad reflog");
+    await mountPanel();
+    await showStashes();
+    expect(await screen.findByText(/The stash list could not be read: bad reflog/)).toBeTruthy();
+    expect(screen.queryByText("Nothing stashed.")).toBeNull();
+    expect(stashTab().textContent).toBe("Stashes");
+    expect(screen.getByTitle("src/a.ts")).toBeTruthy();
+
+    stashReply = null;
+    stashRows = [ENTRY];
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("half-done refactor")).toBeTruthy();
   });
 });

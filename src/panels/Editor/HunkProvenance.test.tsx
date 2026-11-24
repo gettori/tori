@@ -93,3 +93,38 @@ describe("what the panel says about a hunk", () => {
     expect(screen.queryByText(/turn 4/)).toBeNull();
   });
 });
+
+describe("the read behind the panel", () => {
+  const panel = (read: Parameters<typeof HunkProvenance>[0]["read"]) =>
+    render(() => <HunkProvenance file="src/a.ts" hunk={HUNK} read={read} />);
+
+  it("says it is reading until the claims land, then names the writer", async () => {
+    let land!: (value: ClaimRange[]) => void;
+    panel(() => new Promise((yes) => (land = yes)));
+    expect(await screen.findByText("Reading the sessions that ran here...")).toBeTruthy();
+
+    land([
+      {
+        start: 2,
+        count: 1,
+        claim: {
+          tier: "none",
+          reason: "overlapping",
+          sessions: [SESSION, { ...SESSION, id: "sess-2", title: "write tests" }],
+        },
+      },
+    ]);
+    expect(await screen.findByText(/so Tori names none of them/)).toBeTruthy();
+    expect(screen.queryByText("Reading the sessions that ran here...")).toBeNull();
+  });
+
+  it("says what went wrong when the read fails outright", async () => {
+    panel(() => Promise.reject("checkpoint store locked"));
+    expect(await screen.findByText(/could not work out who wrote this hunk: checkpoint store locked/)).toBeTruthy();
+  });
+
+  it("says what went wrong when the read answers with a failure", async () => {
+    panel(() => Promise.resolve({ error: "no checkpoints" }));
+    expect(await screen.findByText(/could not work out who wrote this hunk: no checkpoints/)).toBeTruthy();
+  });
+});
