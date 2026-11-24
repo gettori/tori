@@ -200,27 +200,29 @@ function Levers(props: {
           </select>
         </label>
       </Show>
-      <For each={props.config.filter((o) => !o.disabled)}>
-        {(option) =>
-          option.kind === "select" ? (
-            <label class={shell.chip}>
-              {option.choices.find((c) => c.value === option.current)?.label ?? option.name}
-              <select value={option.current} onChange={(e) => void setOption(option.id, e.currentTarget.value)}>
-                <For each={option.choices}>{(c) => <option value={c.value}>{c.label}</option>}</For>
-              </select>
-            </label>
-          ) : (
-            <button
-              type="button"
-              class={shell.chip}
-              aria-pressed={option.value ? "true" : "false"}
-              data-permissive={option.value}
-              onClick={() => void setOption(option.id, !option.value)}
-            >
-              {option.name}
-            </button>
-          )
-        }
+      <For each={props.config}>
+        {(option) => (
+          <Show when={!option.disabled}>
+            {option.kind === "select" ? (
+              <label class={shell.chip}>
+                {option.choices.find((c) => c.value === option.current)?.label ?? option.name}
+                <select value={option.current} onChange={(e) => void setOption(option.id, e.currentTarget.value)}>
+                  <For each={option.choices}>{(c) => <option value={c.value}>{c.label}</option>}</For>
+                </select>
+              </label>
+            ) : (
+              <button
+                type="button"
+                class={shell.chip}
+                aria-pressed={option.value ? "true" : "false"}
+                data-permissive={option.value}
+                onClick={() => void setOption(option.id, !option.value)}
+              >
+                {option.name}
+              </button>
+            )}
+          </Show>
+        )}
       </For>
     </>
   );
