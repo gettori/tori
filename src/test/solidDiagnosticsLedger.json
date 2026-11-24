@@ -147,7 +147,7 @@
     "STRICT_READ_UNTRACKED": 146
   },
   "src/panels/Chat/resumedPick.test.tsx": {
-    "STRICT_READ_UNTRACKED": 59
+    "STRICT_READ_UNTRACKED": 74
   },
   "src/panels/Chat/SessionInfo.test.tsx": {
     "STRICT_READ_UNTRACKED": 10
