@@ -81,7 +81,7 @@ export default function OverflowTabBar<T>(props: {
       const cm = getComputedStyle(countSample);
       count = countSample.offsetWidth + parseFloat(cm.marginLeft) + parseFloat(cm.marginRight);
     }
-    const endWidth = end() && endEl ? endEl.offsetWidth + (parseFloat(cs.columnGap) || 0) : 0;
+    const endWidth = untrack(end) && endEl ? endEl.offsetWidth + (parseFloat(cs.columnGap) || 0) : 0;
     const reserves: Reserves = {
       padding: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight),
       trailing: (trailingEl?.offsetWidth ?? 0) + endWidth,

@@ -6,7 +6,7 @@
 import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
 import { isUnderPath } from "../../utils/pathScope";
 import { openFile, opensInDefaultApp } from "../../utils/pathActions";
-import { folderOwner, unitOwning } from "../../utils/sessionActivity";
+import { folderOwner, forgeUnits, unitOwning } from "../../utils/sessionActivity";
 import { topics } from "../../utils/topicStore";
 import { rootOf, topicRoots } from "../../utils/topics";
 
@@ -24,6 +24,18 @@ export function placeOf(path: string, cwd: string): FilePlace {
   if (!unit) return { kind: "here" };
   const project = folderOwner(unit.folderPath)?.projectName ?? base(unit.projectPath);
   return { kind: "worktree", folder: unit.folderPath, label: `${project} / ${unit.branch ?? base(unit.folderPath)}` };
+}
+
+/** Everything `placeOf` reads that can load after a path is first placed. */
+export function placeKey(): string {
+  const roots = topics().flatMap((t) => topicRoots(t));
+  const units = forgeUnits().map((u) => [
+    u.folderPath,
+    u.projectPath,
+    u.branch,
+    folderOwner(u.folderPath)?.projectName,
+  ]);
+  return JSON.stringify([roots, units]);
 }
 
 /** Open `path` where it lives. A file in another worktree selects that worktree

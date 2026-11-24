@@ -155,6 +155,15 @@ describe("opening on hover", () => {
     // Freshness once for the card, rather than a source and a timestamp per row.
     expect(text).toContain("0s ago");
   });
+
+  it("keeps counting the stamp while the card stays open", async () => {
+    render(() => <UsageStrip />);
+    await hoverOpen();
+    expect(card()!.textContent).toContain("0s ago");
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(card()!.textContent).toContain("5s ago");
+  });
 });
 
 // The chips decide what the titlebar carries, and only that. The card is the

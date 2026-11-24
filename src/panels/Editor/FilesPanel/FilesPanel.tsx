@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import {
   Check,
   ChevronDown,
@@ -109,7 +109,7 @@ export default function FilesPanel(props: {
 
   function pick(key: string) {
     setPicked(key);
-    const m = memberOf(key);
+    const m = untrack(() => memberOf(key));
     if (m?.root) props.onActiveRoot?.(m.root);
   }
 

@@ -10,7 +10,7 @@
 //
 // Deduped on the store's persisted fired set rather than a local one, because a
 // notice repeated after every restart is the failure that set exists to prevent.
-import { createEffect, createRoot, runWithOwner } from "solid-js";
+import { createEffect, createRoot, runWithOwner, untrack } from "solid-js";
 import { findAdapter } from "./agents";
 import { asTabProfile, profileLabel } from "./agentHealth";
 import { agentEnabled } from "./agentEnabled";
@@ -86,7 +86,7 @@ export function watchQuotaNotifications() {
   runWithOwner(null, () =>
     createRoot(() => {
       createEffect(accountsWithReadings, () => {
-        for (const n of takeQuotaNotifications()) void notifyQuota(n.title, n.body);
+        for (const n of untrack(takeQuotaNotifications)) void notifyQuota(n.title, n.body);
       });
     }),
   );

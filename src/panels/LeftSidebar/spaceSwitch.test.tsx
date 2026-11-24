@@ -113,6 +113,23 @@ describe("switching spaces", () => {
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/proj", "p:side/lab"]));
   });
 
+  it("keeps a project row in step with the space it was switched into", async () => {
+    const shared = { name: "shared", path: "/root/shared", branchUnits: [unit("shared-branch", "/root/shared/b")] };
+    config.spaces[0].projects.push(shared);
+    config.spaces[1].projects.push(shared);
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:side/shared"]));
+    try {
+      mount();
+      await screen.findByText("shared");
+      expect(screen.queryByText("shared-branch")).toBeNull();
+      clickSpace("side");
+      await waitFor(() => expect(screen.getByText("shared-branch")).toBeTruthy());
+    } finally {
+      config.spaces[0].projects.pop();
+      config.spaces[1].projects.pop();
+    }
+  });
+
   it("comes back to the unit that space was left on", async () => {
     const { sel } = mount();
     await waitFor(() => expect(screen.getByText("wave-3")).toBeTruthy());

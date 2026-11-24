@@ -18,7 +18,7 @@
 // a folder the user never opened loses its ghost protection before they ever
 // see it. `checkHistorical` is the deliberate call, made only where the
 // Historical section is about to render.
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { SessionHome } from "./sessionStatus";
 
@@ -119,7 +119,7 @@ const inFlight = new Set<string>();
  *  `inclusive` lists each with every session nested under it. */
 export async function trackFolders(folders: readonly string[], opts?: { inclusive?: boolean }) {
   if (opts?.inclusive) for (const f of folders) inclusive.add(f);
-  const have = sessions();
+  const have = untrack(sessions);
   const missing = [...new Set(folders)].filter((f) => f && !(f in have) && !inFlight.has(f));
   if (missing.length === 0) return;
   for (const f of missing) inFlight.add(f);

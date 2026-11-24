@@ -473,7 +473,7 @@ export default function ReviewPanel(props: {
   // needs them too); origin and the PR base branch stay here, since nothing
   // outside the "Open PR" button has ever asked for them.
   async function refreshHeader() {
-    const root = viewedRoot();
+    const root = untrack(viewedRoot);
     if (!root) {
       setOrigin(null);
       setBaseBranch(null);
@@ -500,7 +500,7 @@ export default function ReviewPanel(props: {
   // after a revert, and a commit made in a background member from a terminal
   // has no other way in (`.git` is watcher-filtered).
   async function refreshAll() {
-    await Promise.all([...sections().map((s) => refreshGit(s.root)), refreshHeader(), loadStashes()]);
+    await Promise.all([...untrack(sections).map((s) => refreshGit(s.root)), refreshHeader(), loadStashes()]);
   }
 
   function toastError(e: unknown) {
@@ -1710,7 +1710,7 @@ export default function ReviewPanel(props: {
         <div class={styles.opBar}>
           <span class={styles.opName}>
             {OP_WORD[op()]} in progress
-            <Show when={conflictedFiles(viewedRoot()).length}>{(n) => ` (${plural(n(), "conflict")})`}</Show>
+            <Show when={conflictedFiles(viewedRoot()).length}>{(n) => <>{` (${plural(n(), "conflict")})`}</>}</Show>
           </span>
           <span class={styles.spacer} />
           <Button

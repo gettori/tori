@@ -315,7 +315,7 @@ function AppShell() {
     resetDock(initial.showDock);
     resetPaneLayoutModel();
     resetTabPlacement();
-    ensureShellsWorkspace();
+    untrack(ensureShellsWorkspace);
   });
   // Inside App's own root, so both memos are disposed with it (the module-level
   // concern documented in unifiedTabs.ts); a repeated test mount installs fresh.
@@ -666,13 +666,15 @@ function AppShell() {
     try {
       localStorage.setItem(
         LS_LAYOUT,
-        JSON.stringify({
-          sidebar: sidebar(),
-          dock: dock(),
-          showSidebar: showSidebar(),
-          showFiletree: showFiletree(),
-          showDock: dockOpen(),
-        }),
+        JSON.stringify(
+          untrack(() => ({
+            sidebar: sidebar(),
+            dock: dock(),
+            showSidebar: showSidebar(),
+            showFiletree: showFiletree(),
+            showDock: dockOpen(),
+          })),
+        ),
       );
     } catch {
       // ignore

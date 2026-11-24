@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { Check, ChevronDown, Circle, LoaderCircle } from "../../components/Icon/icons";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { PlanItem } from "../../utils/chatTypes";
@@ -54,7 +54,7 @@ export default function PlanCard(props: {
   const activeAt = createMemo(() => props.items.findIndex((i) => i.status === "inProgress"));
 
   function edges() {
-    const el = list();
+    const el = untrack(list);
     if (!el) return;
     setAbove(el.scrollTop > 0);
     setBelow(el.scrollTop + el.clientHeight < el.scrollHeight - 1);

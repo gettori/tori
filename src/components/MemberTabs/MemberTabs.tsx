@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { For, Show, untrack } from "solid-js";
 import { Tabs } from "../Tab/Tabs";
 import Tab from "../Tab/Tab";
 import ProjectIcon from "../Icon/ProjectIcon";
@@ -27,7 +27,7 @@ export default function MemberTabs(props: {
     <Tabs.Root
       value={props.activeKey ?? undefined}
       onChange={(key) => {
-        const m = props.members.find((x) => x.key === key);
+        const m = untrack(() => props.members.find((x) => x.key === key));
         if (m) props.onPick(m);
       }}
     >

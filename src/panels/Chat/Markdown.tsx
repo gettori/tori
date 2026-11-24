@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { traceWork } from "../../utils/perfTrace";
 import { emitWith, NAVIGATE, type NavTarget } from "../../utils/events";
-import { openPlaced, placeOf, type FilePlace } from "./filePlace";
+import { openPlaced, placeKey, placeOf, type FilePlace } from "./filePlace";
 import { linkTarget, pathTarget, pathWords } from "./links";
 import { LINEWISE, PROSE } from "./chatMarked";
 import CodeBlock from "./CodeBlock";
@@ -79,16 +79,28 @@ function linkPaths(root: HTMLElement, cwd: string) {
   }
 }
 
+function markPlace(el: HTMLElement, place: FilePlace) {
+  if (place.kind === "worktree") {
+    el.dataset.folder = place.folder;
+    el.dataset.label = place.label;
+    el.title = `Open in ${place.label}`;
+  } else {
+    delete el.dataset.folder;
+    delete el.dataset.label;
+    el.title = "Open file";
+  }
+}
+
 function markPath(el: HTMLElement, target: Named) {
   el.dataset.path = target.path;
   if (target.line) el.dataset.line = String(target.line);
-  if (target.place.kind === "worktree") {
-    el.dataset.folder = target.place.folder;
-    el.dataset.label = target.place.label;
-    el.title = `Open in ${target.place.label}`;
-  } else {
-    el.title = "Open file";
-  }
+  markPlace(el, target.place);
+}
+
+/** Where a path is placed moves as worktrees and Topics load, so the links
+ *  already made are placed again. */
+function replace(root: HTMLElement, cwd: string) {
+  for (const el of root.querySelectorAll<HTMLElement>("[data-path]")) markPlace(el, placeOf(el.dataset.path!, cwd));
 }
 
 /** The place `markPath` wrote onto an element. */
@@ -228,12 +240,18 @@ export default function Markdown(props: { text: string; cwd: string; breaks?: bo
           <Match when={seg().kind === "prose" && seg()}>
             {(s) => {
               let prose!: HTMLDivElement;
+              const placed = createMemo(placeKey);
               createEffect(
                 () => {
                   s();
+                  placed();
                   return untrack(() => props.cwd);
                 },
-                (cwd) => linkPaths(prose, cwd),
+                (cwd) =>
+                  untrack(() => {
+                    linkPaths(prose, cwd);
+                    replace(prose, cwd);
+                  }),
               );
               return (
                 // The handler sits on the prose block rather than a wrapper: the

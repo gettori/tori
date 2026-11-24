@@ -142,7 +142,7 @@ export default function SyncChip(props: { root: string | null }) {
           key && root
             ? await invoke<ConflictOp>("git_conflict_op", { projectPath: root }).catch(() => "none" as const)
             : "none";
-        if (root === props.root) setOp(now in OP_WORD ? now : "none");
+        if (root === untrack(() => props.root)) setOp(now in OP_WORD ? now : "none");
       })();
     },
   );

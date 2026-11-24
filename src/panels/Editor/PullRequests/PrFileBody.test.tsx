@@ -182,6 +182,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 const { default: PrDiffView } = await import("./PrDiffView");
+const { writeSideBySide } = await import("../../../utils/sideBySide");
 const { notePr, prEntry } = await import("../../../utils/prReviewStore");
 const { anchorLabel } = await import("../../../utils/pendingReview");
 const { prDiffTabId, parseSyntheticId } = await import("../../../utils/syntheticTabs");
@@ -297,6 +298,23 @@ describe("a pull request file's diff", () => {
       start: 4,
       end: 39,
     });
+  });
+
+  it("lays an expanded gap out as the diff's layout changes", async () => {
+    bridge.files = [file({ path: "src/edit.ts", patch: TWO_HUNKS })];
+    bridge.slice = ["line four", "line five"];
+    writeSideBySide(false);
+
+    openFile("src/edit.ts");
+    await waitFor(() => expect(screen.queryByText(/36 unchanged lines/)).toBeTruthy());
+    fireEvent.click(screen.getByText(/36 unchanged lines/));
+    await waitFor(() => expect(screen.getAllByText("line four")).toHaveLength(1));
+
+    writeSideBySide(true);
+    await waitFor(() => expect(screen.getAllByText("line four")).toHaveLength(2));
+
+    writeSideBySide(false);
+    await waitFor(() => expect(screen.getAllByText("line four")).toHaveLength(1));
   });
 
   it("fetches the head once, however many gaps are opened", async () => {
