@@ -1,5 +1,17 @@
-import { For, Show, Switch, Match, createEffect, createMemo, createSignal } from "solid-js";
-import { createFetchState } from "../../lib/fetchState";
+import {
+  Errored,
+  For,
+  Loading,
+  Show,
+  Switch,
+  Match,
+  createDeferred,
+  createEffect,
+  createMemo,
+  createSignal,
+  isPending,
+  refresh,
+} from "solid-js";
 import { ChevronRight, EyeOff, KeyRound } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { parseDiffHunks } from "../../utils/diffHunks";
@@ -129,25 +141,25 @@ export default function ToolCallCard(props: {
 
   // Fetched only once the user opens the revert surface, never on every card: a
   // diff is a `git diff` per file, and a turn can make dozens of calls.
-  const [diffs, { refetch }] = createFetchState(
-    () => (showTree() && settled() && isEditCall(props.card) ? props.card.toolUseId : null),
-    async (toolUseId) =>
-      await chatCall<ToolDiff[]>("chat_tool_diff", {
-        sessionId: props.sessionId,
-        toolUseId,
-        cwd: props.cwd,
-      }).catch(() => [] as ToolDiff[]),
+  const diffs = createMemo<ToolDiff[] | null>(() =>
+    showTree() && settled() && isEditCall(props.card)
+      ? chatCall<ToolDiff[]>("chat_tool_diff", {
+          sessionId: props.sessionId,
+          toolUseId: props.card.toolUseId,
+          cwd: props.cwd,
+        })
+      : null,
   );
 
   // Only once the user asks, and only while the card is open: an output over
   // the cap is large by definition, and a turn can make dozens of calls.
-  const [fullOutput] = createFetchState(
-    () => (open() && wantFull() ? props.card.toolUseId : null),
-    async (toolUseId) =>
-      await chatCall<string | null>("chat_tool_output", {
-        sessionId: props.sessionId,
-        toolUseId,
-      }).catch(() => null),
+  const fullOutput = createDeferred<string | null>(() =>
+    open() && wantFull()
+      ? chatCall<string | null>("chat_tool_output", {
+          sessionId: props.sessionId,
+          toolUseId: props.card.toolUseId,
+        })
+      : null,
   );
 
   function toggleOpen() {
@@ -175,7 +187,8 @@ export default function ToolCallCard(props: {
         hunkIndex: index,
         fingerprint: hunkFingerprint(header, lines),
       });
-      if (done) void refetch();
+      // A failed re-read shows through the comparison's own Errored.
+      if (done) await refresh(diffs).catch(() => {});
     } finally {
       setReverting(null);
     }
@@ -304,66 +317,77 @@ export default function ToolCallCard(props: {
                 </button>
               }
             >
-              <Show when={!diffs.loading} fallback={<div class={styles.toolNote}>Reading what changed...</div>}>
-                <For
-                  each={diffs()}
-                  fallback={
-                    <div class={styles.toolNote}>
-                      No before-state was captured for this call, so there is nothing to compare against. That is normal
-                      for a conversation reopened from history.
-                    </div>
-                  }
-                >
-                  {(d) => (
-                    <div class={styles.toolDiff}>
-                      <button type="button" class={styles.toolPath} onClick={() => openPath(d.path)}>
-                        {d.path}
-                        <Show when={d.created}>
-                          <span class={styles.toolBadge}>new</span>
-                        </Show>
-                      </button>
-                      <Show
-                        when={d.diff}
-                        fallback={
-                          <div class={styles.toolNote}>
-                            No before-state was captured for this call, so there is nothing to diff against. Open the
-                            file to see it as it is now.
-                          </div>
-                        }
-                      >
-                        {(text) => (
-                          <Show
-                            when={parseDiffHunks(text()).length}
-                            fallback={<div class={styles.toolNote}>The file is unchanged.</div>}
-                          >
-                            <DiffView
-                              hunks={unifiedHunks(text())}
-                              lang={langOfPath(d.path)}
-                              path={d.path}
-                              onOpen={openPath}
-                              action={(_, index) => (
-                                <Tooltip
-                                  as="button"
-                                  type="button"
-                                  class={styles.hunkRevert}
-                                  label="Undo this hunk in the working tree"
-                                  disabled={reverting() !== null}
-                                  onClick={() => {
-                                    const hunk = parseDiffHunks(text())[index];
-                                    void revertHunk(d.path, index, hunk.header, hunk.lines);
-                                  }}
-                                >
-                                  {reverting() === `${d.path}:${index}` ? "Reverting..." : "Revert"}
-                                </Tooltip>
-                              )}
-                            />
+              <Errored
+                fallback={(err, reset) => (
+                  <div class={styles.toolNote}>
+                    The file on disk could not be compared: {String(err())}{" "}
+                    <button type="button" class={styles.toolMore} onClick={() => reset()}>
+                      Try again
+                    </button>
+                  </div>
+                )}
+              >
+                <Loading fallback={<div class={styles.toolNote}>Reading what changed...</div>}>
+                  <For
+                    each={diffs() ?? []}
+                    fallback={
+                      <div class={styles.toolNote}>
+                        No before-state was captured for this call, so there is nothing to compare against. That is
+                        normal for a conversation reopened from history.
+                      </div>
+                    }
+                  >
+                    {(d) => (
+                      <div class={styles.toolDiff}>
+                        <button type="button" class={styles.toolPath} onClick={() => openPath(d.path)}>
+                          {d.path}
+                          <Show when={d.created}>
+                            <span class={styles.toolBadge}>new</span>
                           </Show>
-                        )}
-                      </Show>
-                    </div>
-                  )}
-                </For>
-              </Show>
+                        </button>
+                        <Show
+                          when={d.diff}
+                          fallback={
+                            <div class={styles.toolNote}>
+                              No before-state was captured for this call, so there is nothing to diff against. Open the
+                              file to see it as it is now.
+                            </div>
+                          }
+                        >
+                          {(text) => (
+                            <Show
+                              when={parseDiffHunks(text()).length}
+                              fallback={<div class={styles.toolNote}>The file is unchanged.</div>}
+                            >
+                              <DiffView
+                                hunks={unifiedHunks(text())}
+                                lang={langOfPath(d.path)}
+                                path={d.path}
+                                onOpen={openPath}
+                                action={(_, index) => (
+                                  <Tooltip
+                                    as="button"
+                                    type="button"
+                                    class={styles.hunkRevert}
+                                    label="Undo this hunk in the working tree"
+                                    disabled={reverting() !== null}
+                                    onClick={() => {
+                                      const hunk = parseDiffHunks(text())[index];
+                                      void revertHunk(d.path, index, hunk.header, hunk.lines);
+                                    }}
+                                  >
+                                    {reverting() === `${d.path}:${index}` ? "Reverting..." : "Revert"}
+                                  </Tooltip>
+                                )}
+                              />
+                            </Show>
+                          )}
+                        </Show>
+                      </div>
+                    )}
+                  </For>
+                </Loading>
+              </Errored>
             </Show>
           </Show>
 
@@ -372,7 +396,19 @@ export default function ToolCallCard(props: {
               the only place the reason is, so it always shows. */}
           <Show when={renderer() === "edit" && props.card.state === "ok" ? null : props.card.output}>
             {(output) => (
-              <>
+              <Errored
+                fallback={(err, reset) => (
+                  <>
+                    <ToolOutput card={props.card} renderer={renderer()} text={output()} onOpen={openPath} />
+                    <span class={styles.toolNote}>
+                      The rest of this output could not be read: {String(err())}{" "}
+                      <button type="button" class={styles.toolMore} onClick={() => reset()}>
+                        Try again
+                      </button>
+                    </span>
+                  </>
+                )}
+              >
                 <ToolOutput card={props.card} renderer={renderer()} text={fullOutput() ?? output()} onOpen={openPath} />
                 {/* Absent unless there is more to show, so a card whose output
                     fitted looks exactly as it did before. */}
@@ -383,7 +419,7 @@ export default function ToolCallCard(props: {
                         Show full output
                       </button>
                     </Match>
-                    <Match when={fullOutput.loading}>
+                    <Match when={isPending(() => fullOutput())}>
                       <span class={styles.toolNote}>Loading...</span>
                     </Match>
                     {/* The backend keeps a bounded number of these, so an old
@@ -394,7 +430,7 @@ export default function ToolCallCard(props: {
                     </Match>
                   </Switch>
                 </Show>
-              </>
+              </Errored>
             )}
           </Show>
         </div>
