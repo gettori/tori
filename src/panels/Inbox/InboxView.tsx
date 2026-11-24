@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createSignal, onSettled } from "solid-js";
+import { For, Show, createEffect, createSignal, onSettled, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   ArrowRight,
@@ -562,7 +562,7 @@ const firstTab = (): InboxTab => {
 };
 
 export default function InboxView(props: { landing?: (el: HTMLElement) => void }) {
-  const [tab, setTab] = createSignal<InboxTab>(askedTab() ?? firstTab());
+  const [tab, setTab] = createSignal<InboxTab>(untrack(() => askedTab() ?? firstTab()));
   createEffect(askedTab, (asked) => {
     if (!asked) return;
     setTab(asked);
@@ -587,7 +587,7 @@ export default function InboxView(props: { landing?: (el: HTMLElement) => void }
             {(view) => (
               <button
                 type="button"
-                ref={(el) => view.id === tab() && props.landing?.(el)}
+                ref={(el) => view.id === untrack(tab) && props.landing?.(el)}
                 class={[`${s.railItem} ${styles.railItem}`, { [s.railItemActive]: tab() === view.id }]}
                 aria-current={tab() === view.id ? "page" : undefined}
                 onClick={() => setTab(view.id)}

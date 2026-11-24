@@ -1,4 +1,14 @@
-import { createEffect, createMemo, createSignal, createUniqueId, For, onCleanup, Show, onSettled } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createUniqueId,
+  For,
+  onCleanup,
+  Show,
+  onSettled,
+  untrack,
+} from "solid-js";
 import { type JSX, Portal } from "@solidjs/web";
 import { Check, ChevronsUpDown } from "../Icon/icons";
 import { createTypeahead } from "../../lib/keyboard";
@@ -98,7 +108,7 @@ export default function Select(props: {
     return owner;
   });
   const valueTab = () => (selected() ? (tabOf().get(selected()!) ?? 0) : 0);
-  const [tab, setTab] = createSignal(valueTab());
+  const [tab, setTab] = createSignal(untrack(valueTab));
   const offTab = (entry: SelectOption | SelectGroup) => props.tabs != null && tabOf().get(entry) !== tab();
   const isDisabled = (option: SelectOption) => !!option.disabled || offTab(option);
   const enabled = () =>

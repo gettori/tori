@@ -4,7 +4,7 @@
 // Fed its UI inputs by App rather than importing the panels, the same shape as
 // `forgeStatus.ts`: whoever knows a fact passes it in.
 
-import { createEffect } from "solid-js";
+import { createEffect, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { settings } from "../panels/Settings/settingsStore";
 import { pushToast } from "../components/Toasts/Toasts";
@@ -111,7 +111,7 @@ export function startWorktreeCleanup(inputs: CleanupInputs): () => void {
   // a second sweep racing the first to the same removals. A second trigger
   // queued behind the first widens it to a full sweep, which covers both.
   const run = async (work: () => Promise<void>) => {
-    if (!enabled()) return;
+    if (!untrack(enabled)) return;
     if (running) {
       rerun = rerun === null ? work : full;
       return;

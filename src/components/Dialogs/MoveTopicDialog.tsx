@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { Ban, House } from "../Icon/icons";
@@ -66,7 +66,7 @@ export default function MoveTopicDialog(props: {
   onCancel: () => void;
 }) {
   const current = () => props.topic.space ?? "";
-  const [target, setTarget] = createSignal(current());
+  const [target, setTarget] = createSignal(untrack(current));
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 

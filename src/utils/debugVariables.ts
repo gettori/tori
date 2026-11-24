@@ -10,7 +10,7 @@
 // changing the selection drops the whole tree rather than reconciling it: the
 // references it was built from belong to the frame that is gone.
 
-import { createEffect, createRoot, createSignal } from "solid-js";
+import { createEffect, createRoot, createSignal, untrack } from "solid-js";
 
 import { debugSession } from "./dapSessions";
 import { currentFrame, selectedFrame } from "./debugStack";
@@ -401,5 +401,5 @@ async function loadScopes(): Promise<void> {
 // is already paused loads that frame's scopes rather than waiting for the next
 // selection ([[lesson_the_handshake_succeeded_and_the_feature_is_silent]]).
 createRoot(() => {
-  createEffect(selectedFrame, () => void loadScopes());
+  createEffect(selectedFrame, () => void untrack(loadScopes));
 });

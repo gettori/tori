@@ -1149,7 +1149,7 @@ export default function LeftSidebar(props: {
   }
   createEffect(
     () => [props.liveTabs, sessions()] as const,
-    () => void refreshCheckpointTicks(),
+    () => void untrack(refreshCheckpointTicks),
   );
 
   // Detached sessions (no live tab) cap at the hollow running dot - working/
@@ -3583,7 +3583,7 @@ export default function LeftSidebar(props: {
   // Shared by the flat worktree/branch list and by the attempts inside a group,
   // which are the same node one indent deeper.
   function unitNode(
-    g: Group,
+    g: () => Group,
     p: Project,
     u: BranchUnit,
     attempt?: AttemptRecord,
@@ -3593,7 +3593,7 @@ export default function LeftSidebar(props: {
     // One rollup for the row: the glyph's pulse and the status chip are two
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits([u]);
-    const branchLine = () => branchLineFor(g.name);
+    const branchLine = () => branchLineFor(g().name);
     const sync = () => syncFor(u.folderPath, u.branch);
     const spent = () =>
       u.branch && showSpend() ? spendFor({ kind: "branch", project: p.path, branch: u.branch }) : null;
@@ -3682,11 +3682,11 @@ export default function LeftSidebar(props: {
         picked={pickedIn(p).includes(unitKey(u))}
         nested={attempt != null || layer}
         look={finishedLook(finished())}
-        menu={attempt ? attemptMenu(g, p, u, attempt) : [...groupPickMenu(p, u), ...unitMenu(g, p, u)]}
+        menu={attempt ? attemptMenu(g(), p, u, attempt) : [...groupPickMenu(p, u), ...unitMenu(g(), p, u)]}
         onClick={(e) => {
           if (pickClick(p, u, e)) return;
           setPicked(null);
-          selectUnit(g, p, u);
+          selectUnit(g(), p, u);
         }}
         onDragStart={(e) => startAbsDrag(e, u.folderPath)}
         rowProps={drag}
@@ -3778,9 +3778,9 @@ export default function LeftSidebar(props: {
   // `hidden` is an accessor, not an array: the row is created once and its label,
   // glyph and badge track the disclosure from the inside, so toggling never has
   // to recreate the node.
-  function moreNode(g: Group, p: Project, hidden: () => BranchUnit[]) {
-    const key = mkey(g, p);
-    const open = () => expanded().has(key);
+  function moreNode(g: () => Group, p: Project, hidden: () => BranchUnit[]) {
+    const key = () => mkey(g(), p);
+    const open = () => expanded().has(key());
     // `end`: a hidden branch has no row of its own to report on, so this one
     // carries the rollup for all of them - the same rule that puts a collapsed
     // project's rollup on its project row. Without it a running agent on the
@@ -3789,7 +3789,7 @@ export default function LeftSidebar(props: {
       <MoreRow
         label={open() ? "Show less" : moreLabel(hidden().length, ["branch", "branches"])}
         open={open()}
-        onClick={() => toggle(key)}
+        onClick={() => toggle(key())}
         end={statusBubble(() => (open() ? null : bubbleForUnits(hidden())))}
       />
     );
@@ -3813,9 +3813,9 @@ export default function LeftSidebar(props: {
   // One fan-out group: the goal as the header, its attempts nested beneath.
   // Grouping is the whole point - three attempts at one question are one thing
   // in the tree, not three unrelated worktrees sitting next to `main`.
-  function attemptGroupNode(g: Group, p: Project, grp: AttemptGroup<BranchUnit>, drag?: SidebarDragProps) {
-    const key = gkey(g, p, grp.groupId);
-    const open = () => expanded().has(key);
+  function attemptGroupNode(g: () => Group, p: Project, grp: AttemptGroup<BranchUnit>, drag?: SidebarDragProps) {
+    const key = () => gkey(g(), p, grp.groupId);
+    const open = () => expanded().has(key());
     const units = () => grp.members.map((m) => m.unit);
     // Same rollup rule as a project row: everything under a closed group, and
     // nothing under an open one, whose attempt rows each carry their own.
@@ -3825,7 +3825,7 @@ export default function LeftSidebar(props: {
         rowProps={drag}
         open={open()}
         onClick={() => {
-          toggle(key);
+          toggle(key());
           // The attempts under it start collapsed, so nothing else would load
           // their sessions and the group would roll up an empty set.
           if (open()) for (const u of units()) void fetchSessions(u.folderPath);
@@ -3841,11 +3841,16 @@ export default function LeftSidebar(props: {
 
   // Looked up by number on every read, because the poll answers anew each tick
   // and a group object kept here would go stale.
-  function stackGroupNode(g: Group, p: Project, grp: { get: () => StackGroup | undefined }, drag?: SidebarDragProps) {
+  function stackGroupNode(
+    g: () => Group,
+    p: Project,
+    grp: { get: () => StackGroup | undefined },
+    drag?: SidebarDragProps,
+  ) {
     return (
       <Show when={grp.get()}>
         {(s) => {
-          const key = () => skey(g, p, s().stack.number);
+          const key = () => skey(g(), p, s().stack.number);
           const open = () => !expanded().has(key());
           return (
             <GroupRow
@@ -4232,7 +4237,7 @@ export default function LeftSidebar(props: {
       for (const { branch, repos } of watching) {
         for (const repoPath of repos) {
           const k = `${repoPath}\n${branch}`;
-          if (topicBranches()[k] || probing.has(k)) continue;
+          if (untrack(topicBranches)[k] || probing.has(k)) continue;
           probing.add(k);
           void invoke<{ local: boolean; remote: boolean }>("probe_topic_branch", { repoPath, branch })
             .then((p) => p.local || p.remote)
@@ -4478,9 +4483,9 @@ export default function LeftSidebar(props: {
     />
   );
 
-  function projectNode(g: Group, p: Project, rowDrag: SidebarDragProps) {
-    const colourful = () => cardColoursFor(g.name) === "colourful";
-    const popen = () => expanded().has(pkey(g, p));
+  function projectNode(group: () => Group, p: Project, rowDrag: SidebarDragProps) {
+    const colourful = () => cardColoursFor(group().name) === "colourful";
+    const popen = () => expanded().has(pkey(group(), p));
     const missing = () => p.availability === "missing";
     // A non-git folder has no branch node, and now no session rows
     // either: its project row *is* the branch-unit, a leaf that selects
@@ -4526,7 +4531,7 @@ export default function LeftSidebar(props: {
     ];
     const base = () => defaultBranchOf(p.path);
     const isGroupEntry = (e: Entry) => typeof e === "string" && e.startsWith("group:");
-    const lanes = laneConfigFor(() => g.name);
+    const lanes = laneConfigFor(() => group().name);
     const liveLane = (u: BranchUnit): LaneId | null | "pending" => {
       if (u.branch !== null && u.branch === base()) return null;
       const child = unitChild(p, u);
@@ -4553,7 +4558,7 @@ export default function LeftSidebar(props: {
     };
     // The selected unit survives the cap in its own place: a highlight you
     // cannot see is worse than a longer list.
-    const showAll = () => expanded().has(mkey(g, p));
+    const showAll = () => expanded().has(mkey(group(), p));
     const sections = createMemo(() =>
       arrange(entries(), {
         keysOf: (e) => unitsOf(e).map(unitKey),
@@ -4698,7 +4703,9 @@ export default function LeftSidebar(props: {
         get index() {
           return index();
         },
-        paths: unitsOf(e).map((u) => u.folderPath),
+        get paths() {
+          return unitsOf(e).map((u) => u.folderPath);
+        },
         groupable: typeof e === "object" || (typeof e === "string" && e.startsWith("group:")),
       });
     function groupCardNode(name: string, index: () => number) {
@@ -4762,7 +4769,7 @@ export default function LeftSidebar(props: {
           <For each={members()}>
             {(u, i) =>
               unitNode(
-                g,
+                group,
                 p,
                 u,
                 undefined,
@@ -4783,15 +4790,15 @@ export default function LeftSidebar(props: {
     }
     const entryNode = (e: Entry, at: { index: () => number }, sec: string) =>
       typeof e === "number" ? (
-        stackGroupNode(g, p, { get: () => stackOf(e) }, dragFor(e, at.index, sec))
+        stackGroupNode(group, p, { get: () => stackOf(e) }, dragFor(e, at.index, sec))
       ) : isGroupEntry(e) ? (
         groupCardNode((e as string).slice(6), at.index)
       ) : typeof e === "string" ? (
         <Show when={attemptOf(e.slice(8))} keyed>
-          {(grp) => attemptGroupNode(g, p, grp, dragFor(e, at.index, sec))}
+          {(grp) => attemptGroupNode(group, p, grp, dragFor(e, at.index, sec))}
         </Show>
       ) : (
-        unitNode(g, p, e, undefined, false, dragFor(e, at.index, sec))
+        unitNode(group, p, e, undefined, false, dragFor(e, at.index, sec))
       );
     // Show the control only when it has something to say. Open, that is
     // "the list is longer than the cap"; closed, "something is actually
@@ -4808,15 +4815,15 @@ export default function LeftSidebar(props: {
         open={popen()}
         editing={projectShown(p.path)}
         attached={
-          g.name === GLOBAL_KEY
+          group().name === GLOBAL_KEY
             ? { parent: shortHome(parentOf(p.path), home()), full: shortHome(p.path, home()) }
             : undefined
         }
         missing={missing()}
-        menu={projectMenu(g, p)}
+        menu={projectMenu(group(), p)}
         onClick={() => {
-          if (missing() || !plainDir()) toggle(pkey(g, p));
-          else selectUnit(g, p, folderUnit());
+          if (missing() || !plainDir()) toggle(pkey(group(), p));
+          else selectUnit(group(), p, folderUnit());
         }}
         rowProps={rowDrag}
         end={
@@ -4893,7 +4900,7 @@ export default function LeftSidebar(props: {
           >
             {(e, i) => entryNode(e, { index: i }, "main")}
           </For>
-          <Show when={truncated()}>{moreNode(g, p, () => shown().hidden)}</Show>
+          <Show when={truncated()}>{moreNode(group, p, () => shown().hidden)}</Show>
           <For each={openLanes()}>
             {(id) => (
               <LaneCard
@@ -5103,7 +5110,7 @@ export default function LeftSidebar(props: {
               />
               <Show when={!globalProjectsCollapsed()}>
                 <For each={globalFold.shown()} fallback={<EmptyRow>no matches in {GLOBAL_NAME}</EmptyRow>}>
-                  {(p, i) => projectNode(globalAsSpace(), p, globalFold.dragFor(p, { index: i }))}
+                  {(p, i) => projectNode(globalAsSpace, p, globalFold.dragFor(p, { index: i }))}
                 </For>
                 {globalFold.row()}
               </Show>
@@ -5181,7 +5188,7 @@ export default function LeftSidebar(props: {
             />
             <Show when={!spaceProjectsCollapsed()}>
               <For each={spaceFold.shown()}>
-                {(p, i) => projectNode(activeSpace()!, p, spaceFold.dragFor(p, { index: i }))}
+                {(p, i) => projectNode(() => activeSpace()!, p, spaceFold.dragFor(p, { index: i }))}
               </For>
               {spaceFold.row()}
             </Show>

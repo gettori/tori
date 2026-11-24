@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, onSettled, For, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onSettled, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type FsChanged, type ToastEvent } from "../../utils/events";
@@ -176,7 +176,7 @@ export default function TodoPanel(props: {
       // A tag that is no longer configured must not go on filtering the list
       // from a chip that is no longer on screen.
       setSelectedTags(new Set<string>());
-      void scan();
+      void untrack(scan);
     },
   );
 

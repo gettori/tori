@@ -87,7 +87,7 @@ export default function WorktreesSection(props: { workspace: string }) {
   createEffect(
     () => props.workspace,
     () => {
-      void load();
+      void untrack(load);
     },
   );
 

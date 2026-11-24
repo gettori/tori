@@ -86,6 +86,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { EditorView } from "@codemirror/view";
 import DiffView from "./DiffView";
 import { writeDiffEditorLayout } from "../../utils/diffLayout";
+import { writeSideBySide } from "../../utils/sideBySide";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { pathCrumbs } from "./breadcrumbTrail";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
@@ -429,5 +430,39 @@ describe("held hunk comments", () => {
     expect(send.disabled).toBe(true);
     fireEvent.pointerEnter(send.closest("[data-tooltip-hover-surface]")!);
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toBe("Select a session first"));
+  });
+});
+
+describe("an expanded gap", () => {
+  afterEach(() => writeSideBySide(false));
+
+  it("follows the side-by-side layout without being closed", async () => {
+    diffText = [
+      "diff --git a/src/a.ts b/src/a.ts",
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,3 +1,3 @@",
+      " one",
+      "-two",
+      "+TWO",
+      " three",
+      "@@ -10,3 +10,3 @@",
+      " ten",
+      "-eleven",
+      "+ELEVEN",
+      " twelve",
+      "",
+    ].join("\n");
+    fileLines = ["four", "five", "six", "seven", "eight", "nine"];
+    writeSideBySide(false);
+    await mountDiff();
+    fireEvent.click(screen.getByText(/6 unchanged lines/));
+    await waitFor(() => expect(screen.getAllByText("four")).toHaveLength(1));
+
+    writeSideBySide(true);
+    await waitFor(() => expect(screen.getAllByText("four")).toHaveLength(2));
+
+    writeSideBySide(false);
+    await waitFor(() => expect(screen.getAllByText("four")).toHaveLength(1));
   });
 });

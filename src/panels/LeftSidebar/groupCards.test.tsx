@@ -302,6 +302,23 @@ describe("custom groups", () => {
     await waitFor(() => expect(labels()).toEqual(["main", "b", "a", "G1", "c"]));
   });
 
+  it("drags only the layers a stack still holds after one is grouped away", async () => {
+    bridge.stacked = true;
+    bridge.branches = ["main", "a", "schema", "api", "ui"];
+    mount();
+    await screen.findByText("Stack");
+    fireEvent.click(rowOf("a"), { metaKey: true });
+    fireEvent.click(rowOf("api"), { metaKey: true });
+    emit(GROUP_BRANCHES);
+    flush();
+    const data: Record<string, string> = {};
+    const stack = screen.getByText("Stack").closest("[draggable]") as HTMLElement;
+    const ev = createEvent.dragStart(stack);
+    Object.defineProperty(ev, "dataTransfer", { value: { setData: (t: string, v: string) => (data[t] = v) } });
+    fireEvent(stack, ev);
+    expect(data["text/plain"]).toBe(`${GH}/ui\n${GH}/schema`);
+  });
+
   it("reorders one group past another", async () => {
     bridge.branches = ["main", "a", "b"];
     bridge.groups = [

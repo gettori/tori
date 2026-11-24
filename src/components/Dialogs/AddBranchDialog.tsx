@@ -190,7 +190,7 @@ export default function AddBranchDialog(props: {
   const [ahead, setAhead] = createSignal(false);
 
   function loadAssigned() {
-    if (assigned() !== null || !props.issues) return;
+    if (untrack(assigned) !== null || !props.issues) return;
     props.issues
       .assigned()
       .then((list) => {

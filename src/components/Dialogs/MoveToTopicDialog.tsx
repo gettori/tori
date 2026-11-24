@@ -59,7 +59,7 @@ export default function MoveToTopicDialog(props: {
       .sort(byName);
   const offered = () => [...own(), ...global()];
 
-  const [tab, setTab] = createSignal<Tab>(offered().length > 0 ? "existing" : "new");
+  const [tab, setTab] = createSignal<Tab>(untrack(() => (offered().length > 0 ? "existing" : "new")));
   const [where, setWhere] = createSignal<Where>(untrack(() => (props.space ? "space" : "global")));
   const [refusal, setRefusal] = createSignal<string | null>(null);
   const [checked, setChecked] = createSignal(false);

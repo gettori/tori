@@ -401,7 +401,7 @@ export default function ConflictView(props: {
   // discover that pressing it is what reveals the rest.
   createEffect(conflicts, (list) => {
     if (!list.length) return;
-    const id = currentId();
+    const id = untrack(currentId);
     if (id && list.some((r) => r.id === id)) return;
     setCurrentId(list[0].id);
   });
@@ -429,7 +429,7 @@ export default function ConflictView(props: {
     // Except when this tab is what resolved it: re-reading then would ask the
     // backend for stages we just removed and answer with its refusal, which
     // reads as a failure rather than as the success it followed.
-    if (done() && !now) return;
+    if (untrack(done) && !now) return;
     void load(props.workspace, props.file);
   });
 
@@ -531,7 +531,7 @@ export default function ConflictView(props: {
   const optionsFor = (id: string) => choiceOptions(names(), bothFor().get(id) ?? ["both"]);
 
   const sideDetail = (side: PaneSide) => {
-    const ref = side === "base" ? null : sides()?.[side];
+    const ref = side === "base" ? null : untrack(sides)?.[side];
     return ref ? [ref.name, ref.short].filter(Boolean).join(" ") : null;
   };
   const paneDecor = (
@@ -543,7 +543,7 @@ export default function ConflictView(props: {
   ): Extension => [
     EditorView.decorations.of(regionDecorations(rs, side, doc, picked)),
     EditorView.decorations.of(
-      sideActionDecorations(rs, side, doc, picked, skipped, sideName(side, names()), actOnSide),
+      sideActionDecorations(rs, side, doc, picked, skipped, sideName(side, untrack(names)), actOnSide),
     ),
   ];
   const slots = resultField((id) => untrack(() => optionsFor(id)), {
@@ -690,16 +690,16 @@ export default function ConflictView(props: {
       // Read untracked on purpose, which is the opposite of what `op` needs
       // here: a rebuild is for a different set of documents, and accepting a
       // side is not that. The effect below repaints instead.
-      const picked = choices();
-      const skipped = ignored();
-      const ext = syntax() ?? [];
+      const picked = untrack(choices);
+      const skipped = untrack(ignored);
+      const ext = untrack(syntax) ?? [];
       const leftDoc = docFor(showing.left);
       const rightDoc = docFor(showing.right);
       merge = new MergeView({
         a: {
           doc: leftDoc,
           extensions: paneExtensions(
-            sideName(showing.left, names()),
+            sideName(showing.left, untrack(names)),
             sideDetail(showing.left),
             decoLeft,
             paneDecor(rs, showing.left, leftDoc, picked, skipped),
@@ -711,7 +711,7 @@ export default function ConflictView(props: {
         b: {
           doc: rightDoc,
           extensions: paneExtensions(
-            sideName(showing.right, names()),
+            sideName(showing.right, untrack(names)),
             sideDetail(showing.right),
             decoRight,
             paneDecor(rs, showing.right, rightDoc, picked, skipped),
@@ -745,7 +745,7 @@ export default function ConflictView(props: {
           // it needs the name the other two got for the same reason.
           EditorView.contentAttributes.of({ "aria-label": "Result" }),
           paneTheme,
-          syntaxResult.of(syntax() ?? []),
+          syntaxResult.of(untrack(syntax) ?? []),
           slots,
           aligner.extension,
           // The field is where every choice lands, typing over one included, so
@@ -805,13 +805,13 @@ export default function ConflictView(props: {
     () => [choices(), ignored()] as const,
     ([picked, skipped]) => {
       if (!merge) return;
-      const rs = regions();
+      const rs = untrack(regions);
       // Which document a pane holds is the pair's answer, not a fixed one: with
       // the base on the left, painting it as "ours" would colour the wrong
       // lines and call a region accepted that nobody accepted.
       for (const [view, side, deco] of [
-        [merge.a, pair().left, decoLeft],
-        [merge.b, pair().right, decoRight],
+        [merge.a, untrack(pair).left, decoLeft],
+        [merge.b, untrack(pair).right, decoRight],
       ] as const) {
         view.dispatch({
           effects: deco.reconfigure(paneDecor(rs, side, view.state.doc, picked, skipped)),
@@ -825,8 +825,9 @@ export default function ConflictView(props: {
   // so every route to a region lands the same way.
   createEffect(currentRegion, (r) => {
     if (!r || !merge) return;
-    reveal(merge.a, r[pair().left].from);
-    reveal(merge.b, r[pair().right].from);
+    const showing = untrack(pair);
+    reveal(merge.a, r[showing.left].from);
+    reveal(merge.b, r[showing.right].from);
   });
 
   return (

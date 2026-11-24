@@ -19,6 +19,7 @@ vi.mock("../../utils/mermaidEngine", () => ({
 }));
 import { copyText } from "../../utils/clipboard";
 import { invoke } from "@tauri-apps/api/core";
+import { noteForgeUnits, resetSessionActivityForTests } from "../../utils/sessionActivity";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 const FENCED = "intro paragraph\n\n```ts\nconst x = 1;\n```\n\noutro paragraph";
@@ -241,5 +242,32 @@ describe("links in prose are routed, never followed", () => {
     off();
     expect(opens).toEqual([]);
     expect(vi.mocked(invoke)).toHaveBeenCalledWith("plugin:opener|open_url", { url: "https://example.com/a" });
+  });
+});
+
+describe("a path placed before the worktrees load", () => {
+  it("is placed in its worktree once the units arrive", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => (cmd === "file_exists" ? true : undefined));
+    const { container } = render(() => <Markdown text={"see `/other/wt/a.ts`"} cwd="/repo" />);
+    const code = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>("code[data-path]");
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    expect(code.dataset.folder).toBeUndefined();
+    noteForgeUnits([
+      {
+        kind: "worktree",
+        branch: "wt",
+        isCurrent: false,
+        folderPath: "/other/wt",
+        projectPath: "/other",
+        attention: false,
+      },
+    ]);
+    flush();
+    expect(code.dataset.folder).toBe("/other/wt");
+    resetSessionActivityForTests();
+    vi.mocked(invoke).mockImplementation(async () => undefined);
   });
 });
