@@ -711,18 +711,17 @@ export default function ChatView(props: {
   // sidebar selection, so the two never disagree about this session. Refreshed
   // when a turn completes rather than polled: a turn is exactly what moves these
   // numbers, and the transcript is only written as one lands.
-  const [detail, setDetail] = createSignal<SessionDetail | null>(null);
-  function loadDetail() {
-    void invoke<SessionDetail | null>("chat_session_detail", {
-      sessionId: props.sessionId,
-      agentId: props.agentId,
-    })
-      .then(setDetail)
-      .catch(() => {});
-  }
-  createEffect(
-    () => state.turnsCompleted,
-    () => loadDetail(),
+  // A failed scan keeps the last figures: they feed the model picker and the
+  // spend ceiling, and a boundary there would take the composer down with it.
+  const detail = createDeferred<SessionDetail | null>(
+    (was) => {
+      void state.turnsCompleted;
+      return invoke<SessionDetail | null>("chat_session_detail", {
+        sessionId: props.sessionId,
+        agentId: props.agentId,
+      }).catch(() => was ?? null);
+    },
+    { loadingValue: null },
   );
   // A refused claim means no child was started, so nothing may be typed at it.
   // Narrowed so the banners below read their own fields without casting.
