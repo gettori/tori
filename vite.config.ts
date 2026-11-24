@@ -137,6 +137,8 @@ export default defineConfig(async ({ command }) => ({
         {
           customReactiveFunctions: [
             "afterPaint",
+            "byKey",
+            "flagsOf",
             "debounce",
             "listen",
             "omit",

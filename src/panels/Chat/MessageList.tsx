@@ -12,6 +12,7 @@ import {
   onSettled,
   untrack,
 } from "solid-js";
+import { byKey } from "../../lib/byKey";
 import type { JSX } from "@solidjs/web";
 import {
   Brain,
@@ -340,7 +341,7 @@ export default function MessageList(props: {
   /** Read a reply aloud, given the element its text renders into. Absent where
    *  there is no speech, which leaves replies without the button. */
   onRead?: (body: HTMLElement, itemId: string) => void;
-  readingBlock?: (itemId: string) => number | undefined;
+  reading?: { itemId: string; block: number } | null;
   replyAction?: (item: TextItem) => JSX.Element | undefined;
   /** Whether the agent opened this turn for itself, which a background
    *  subagent's finishing makes it do. Such a turn answers no prompt, so it
@@ -383,6 +384,11 @@ export default function MessageList(props: {
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
+  const readingBlocks = byKey(() => {
+    const now = props.reading;
+    return new Map(now ? [[now.itemId, now.block]] : []);
+  });
+  const readingBlock = (itemId: string) => readingBlocks[itemId];
   const stampsPrompts = () => props.timestamps === "prompts" || props.timestamps === "both";
   const stampsReplies = () => props.timestamps === "replies" || props.timestamps === "both";
   // One time per reply, on its last block: a turn's text is split by every
@@ -543,6 +549,7 @@ export default function MessageList(props: {
     }
     return openers;
   });
+  const openerOf = byKey(turnOpeners);
 
   // The prompt that started each turn, so "rewind to here" can sit on the
   // message the reader would point at when they say "here" rather than in a
@@ -566,6 +573,7 @@ export default function MessageList(props: {
     }
     return map;
   });
+  const promptTurnOf = byKey(promptTurns);
 
   // Which turns announce their model: only the ones that changed it. Naming the
   // model on every turn is the same repetition the byline was, and the fact
@@ -581,6 +589,7 @@ export default function MessageList(props: {
     }
     return lines;
   });
+  const modelLineOf = byKey(modelLines);
 
   // The rows the turn marks are folded from: the window, plus the rest of the
   // turn it opens in. A mark hangs on a turn's head, and only a shown turn has
@@ -600,6 +609,7 @@ export default function MessageList(props: {
   // Said at the head of the turn, not only on the card that made the read: a
   // card can sit folded inside a run of calls nobody opens.
   const secrets = createMemo(() => (props.showSecrets === false ? new Map() : turnSecrets(marked())));
+  const secretOf = byKey(secrets);
   const secretRows = createMemo(() => (props.showSecrets === false ? new Map() : turnSecretRows(marked())));
 
   // The call "Show call" asked for. Its card opens, and so does a shut run
@@ -683,19 +693,18 @@ export default function MessageList(props: {
     );
   };
   const blindEdits = createMemo(() => (props.showBlindEdits === false ? new Map() : turnBlindEdits(marked())));
+  const blindEditOf = byKey(blindEdits);
 
   // Zero height: it exists to carry the turn id, not to take up room. The
   // negative bottom margin cancels the flex gap it would otherwise open.
   const TurnAnchor = (p: { itemId: string; off?: boolean }) => (
-    <Show when={!p.off && turnOpeners().get(p.itemId)}>
+    <Show when={!p.off && openerOf[p.itemId]}>
       {(id) => (
         <>
           <div class={styles.turnAnchor} data-turn-id={id()} />
-          <Show when={modelLines().get(p.itemId)}>{(label) => <div class={styles.turnModel}>{label()}</div>}</Show>
-          <Show when={secrets().get(id())}>
-            {(hit) => <SecretMark hit={hit()} rows={secretRows().get(id()) ?? []} />}
-          </Show>
-          <Show when={blindEdits().get(id())}>
+          <Show when={modelLineOf[p.itemId]}>{(label) => <div class={styles.turnModel}>{label()}</div>}</Show>
+          <Show when={secretOf[id()]}>{(hit) => <SecretMark hit={hit()} rows={secretRows().get(id()) ?? []} />}</Show>
+          <Show when={blindEditOf[id()]}>
             {(paths) => (
               <Tooltip<HTMLSpanElement> as="span" tabindex={0} class={styles.turnBlindEdit} label={paths().join("\n")}>
                 <Icon icon={EyeOff} size={12} />
@@ -726,7 +735,7 @@ export default function MessageList(props: {
   // started, which is exactly what "go back to here" has to mean for the undo
   // to include that turn's edits.
   const rewindTsForPrompt = (userItemId: string) => {
-    const turnId = promptTurns().get(userItemId);
+    const turnId = promptTurnOf[userItemId];
     return turnId ? (props.rewindTsFor?.(turnId) ?? null) : null;
   };
 
@@ -962,7 +971,7 @@ export default function MessageList(props: {
                   text={it().text}
                   cwd={props.cwd}
                   onRead={props.onRead}
-                  readingBlock={props.readingBlock}
+                  readingBlock={readingBlock}
                   action={props.replyAction?.(it())}
                   at={replyAt(it())}
                 />
@@ -976,7 +985,7 @@ export default function MessageList(props: {
                     text={it().text}
                     cwd={props.cwd}
                     onRead={props.onRead}
-                    readingBlock={props.readingBlock}
+                    readingBlock={readingBlock}
                     action={props.replyAction?.(it())}
                     at={replyAt(it())}
                   />

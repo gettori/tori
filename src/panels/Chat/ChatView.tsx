@@ -257,7 +257,7 @@ import { BLOCKED_REASON, sendWithProbeGate, type SendResult } from "../../utils/
 import { REWIND_BANNER, REWIND_CAVEAT, rewindSeed } from "./rewind";
 import { CaptainsCall, ReplyMark } from "../../components/Autopilot/ShellParts";
 import { LOCAL_SPEECH } from "../../utils/localSpeech";
-import { offerLastReply, read, readSelection, readingBlockOf, warm } from "../../utils/speech";
+import { offerLastReply, read, readSelection, readingIn, warm } from "../../utils/speech";
 import { lastReply, speakableChunks } from "./speakable";
 import styles from "./Chat.module.css";
 
@@ -2849,7 +2849,7 @@ export default function ChatView(props: {
               ? (body, itemId) => void read(speakableChunks(body), `${props.sessionId}:${itemId}`)
               : undefined
           }
-          readingBlock={(itemId) => readingBlockOf(`${props.sessionId}:${itemId}`)}
+          reading={readingIn(props.sessionId)}
           replyMark={props.cockpit ? ReplyMark : undefined}
           replyAction={props.sideOf ? sendableReply : undefined}
           collapseWork={settings.chatDefaults.collapseWork}

@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { fireEvent, render, screen } from "../../../test/harness";
-import { renderCost, renderDrift, rerunBudget } from "../../../test/perfCounters";
+import { renderCost, renderDrift, rerunBudget, rowsChurned } from "../../../test/perfCounters";
 
 vi.mock("solid-js", async (original) => {
   const { countingSolid } = await import("../../../test/perfCounters");
@@ -65,7 +65,7 @@ it("holds the render budget for one fs change in an expanded directory", async (
   fireEvent.click(await screen.findByText("src"));
   await screen.findByText("a.ts");
 
-  const { cost, artifact } = await renderCost(container, async () => {
+  const { cost, artifact, lists } = await renderCost(container, async () => {
     bridge.dirs[`${ROOT}/src`] = [...bridge.dirs[`${ROOT}/src`], entry(`${ROOT}/src`, "c.ts")];
     for (const listener of bridge.listeners["fs://changed"] ?? []) {
       listener({ payload: { root: ROOT, paths: [`${ROOT}/src/c.ts`] } });
@@ -74,6 +74,7 @@ it("holds the render budget for one fs change in an expanded directory", async (
   });
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(rowsChurned(lists)).toEqual([{ store: false, made: 1, disposed: 0 }]);
   expect(artifact).toStayWithinRerunBudget(rerunBudget("file_tree.fs_changed"));
   expect(renderDrift("file_tree.fs_changed", cost), JSON.stringify(cost)).toEqual([]);
 });
@@ -96,9 +97,10 @@ it("holds the render budget for moving the active file", async () => {
   if (!screen.queryByText("a.ts")) fireEvent.click(await screen.findByText("src"));
   await screen.findByText("b.ts");
 
-  const { cost, artifact } = await renderCost(container, () => setActive(`${ROOT}/src/b.ts`));
+  const { cost, artifact, lists } = await renderCost(container, () => setActive(`${ROOT}/src/b.ts`));
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(rowsChurned(lists)).toEqual([]);
   expect(artifact).toStayWithinRerunBudget(rerunBudget("file_tree.selection"));
   expect(renderDrift("file_tree.selection", cost), JSON.stringify(cost)).toEqual([]);
 });

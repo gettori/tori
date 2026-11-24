@@ -1,10 +1,10 @@
 import { expect, it, vi } from "vite-plus/test";
 import { createMemo, createSignal, createStore } from "solid-js";
 import { render } from "../../test/harness";
-import { renderCost, renderDrift, rerunBudget } from "../../test/perfCounters";
+import { renderCost, renderDrift, rerunBudget, rowsChurned } from "../../test/perfCounters";
 import type { ChatEvent } from "../../utils/chatTypes";
 import MessageList from "./MessageList";
-import { applyEvent, initialChat, pushUserTurn, visibleItems, type ChatState } from "./chatStore";
+import { applyEvent, initialChat, pushUserTurn, visibleItems, type ChatItem, type ChatState } from "./chatStore";
 
 vi.mock("solid-js", async (original) => {
   const { countingSolid } = await import("../../test/perfCounters");
@@ -78,7 +78,7 @@ function mountList(state: ChatState, readingFrom?: string) {
         collapseWork={false}
         laneOpenedBy={() => null}
         onOpenLane={() => {}}
-        readingBlock={(id) => (id === reading() ? 0 : undefined)}
+        reading={reading() === undefined ? null : { itemId: reading()!, block: 0 }}
       />
     );
   });
@@ -89,7 +89,7 @@ it("holds the render budget for one tool frame into a long transcript", async ()
   const [state, setState] = seededChat();
   const { container } = mountList(state);
 
-  const { cost, artifact } = await renderCost(container, () =>
+  const { cost, artifact, lists } = await renderCost(container, () =>
     setState((s) => {
       applyEvent(
         s,
@@ -108,6 +108,8 @@ it("holds the render budget for one tool frame into a long transcript", async ()
   );
 
   expect(cost.mutations).toBeGreaterThan(0);
+  const transcript = lists.filter((list) => list.length > 1 && (list.first as ChatItem | undefined)?.kind);
+  expect(rowsChurned(transcript)).toEqual([{ store: false, made: 1, disposed: 1 }]);
   expect(artifact).toStayWithinRerunBudget(rerunBudget("chat.tool_frame"));
   expect(renderDrift("chat.tool_frame", cost), JSON.stringify(cost)).toEqual([]);
 });
@@ -118,9 +120,10 @@ it("holds the render budget for moving the read aloud row", async () => {
   const [from, to] = replies.slice(-2).map((item) => item.id);
   const { container, setReading } = mountList(state, from);
 
-  const { cost, artifact } = await renderCost(container, () => setReading(to));
+  const { cost, artifact, lists } = await renderCost(container, () => setReading(to));
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(rowsChurned(lists)).toEqual([]);
   expect(artifact).toStayWithinRerunBudget(rerunBudget("chat.selection"));
   expect(renderDrift("chat.selection", cost), JSON.stringify(cost)).toEqual([]);
 });
