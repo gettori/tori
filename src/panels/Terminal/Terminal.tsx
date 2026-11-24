@@ -1,4 +1,15 @@
-import { createSignal, createEffect, createMemo, onCleanup, onSettled, untrack, For, Show } from "solid-js";
+import {
+  action,
+  createOptimistic,
+  createSignal,
+  createEffect,
+  createMemo,
+  onCleanup,
+  onSettled,
+  untrack,
+  For,
+  Show,
+} from "solid-js";
 import { Portal } from "@solidjs/web";
 import type { DaemonStatus } from "../../utils/daemonStatus";
 import { invoke } from "@tauri-apps/api/core";
@@ -1115,15 +1126,22 @@ export default function Terminal(props: {
   // Chat children a crashed Tori left running. The backend refuses to reclaim
   // their session ids until they are gone, so without this the refusal would be
   // silent: the session simply would not open, with nothing saying why.
-  const [orphans, setOrphans] = createSignal<ChatOrphan[]>([]);
-  async function endOrphan(o: ChatOrphan) {
-    setOrphans(orphans().filter((x) => x.sessionId !== o.sessionId));
-    await invoke("chat_terminate_orphan", {
-      sessionId: o.sessionId,
-      childPid: o.childPid,
-      agentId: o.agent,
-    }).catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
-  }
+  const [listedOrphans, setListedOrphans] = createSignal<ChatOrphan[]>([]);
+  const [orphans, setOrphans] = createOptimistic(() => listedOrphans());
+  const endOrphans = action(function* (list: ChatOrphan[]) {
+    const asked = new Set(list.map((o) => o.sessionId));
+    setOrphans((prev) => prev.filter((x) => !asked.has(x.sessionId)));
+    const ended = new Set<string>();
+    for (const o of list) {
+      try {
+        yield invoke("chat_terminate_orphan", { sessionId: o.sessionId, childPid: o.childPid, agentId: o.agent });
+        ended.add(o.sessionId);
+      } catch (e) {
+        emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+      }
+    }
+    setListedOrphans((prev) => prev.filter((x) => !ended.has(x.sessionId)));
+  });
 
   // A PTY agent tab whose session id was already claimed. Held per tab rather
   // than globally: two refused tabs are two separate offers, and the banner has
@@ -1294,7 +1312,7 @@ export default function Terminal(props: {
     // would reach nobody and an orphan would block its session id in silence.
     // The backend parks the result; this is the frontend saying it is ready.
     const reaped = await invoke<Reaped[]>("chat_orphans").catch(() => [] as Reaped[]);
-    setOrphans(reaped.filter((o): o is ChatOrphan => o.type === "orphan"));
+    setListedOrphans(reaped.filter((o): o is ChatOrphan => o.type === "orphan"));
     // The same startup pass the listing itself belongs to, and after the reap:
     // an orphan the backend has just ended is not something to report as
     // stranded. Not awaited, so a slow listing does not hold up the rest.
@@ -3140,10 +3158,10 @@ export default function Terminal(props: {
             {orphans().length} chat session{orphans().length > 1 ? "s" : ""} survived a crash and{" "}
             {orphans().length > 1 ? "are" : "is"} still running
           </span>
-          <Button variant="primary" size="sm" onClick={() => void Promise.all(orphans().map(endOrphan))}>
+          <Button variant="primary" size="sm" onClick={() => void endOrphans(orphans())}>
             End {orphans().length > 1 ? "them" : "it"}
           </Button>
-          <Button size="sm" onClick={() => setOrphans([])}>
+          <Button size="sm" onClick={() => setListedOrphans([])}>
             Leave running
           </Button>
         </div>

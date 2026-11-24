@@ -1,4 +1,16 @@
-import { Errored, For, Loading, Show, Switch, Match, createMemo, createSignal, refresh } from "solid-js";
+import {
+  Errored,
+  For,
+  Loading,
+  Show,
+  Switch,
+  Match,
+  createMemo,
+  createSignal,
+  refresh,
+  action,
+  createOptimistic,
+} from "solid-js";
 import Button from "../../../../components/Button/Button";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
@@ -31,16 +43,19 @@ type FormatterHealth = PackMeta & {
 function FormatterCard(props: { formatter: FormatterHealth }) {
   const f = () => props.formatter;
   // Kept here because `formatter_health` is not asked again after a save.
-  const [turnedOff, setTurnedOff] = createSignal<boolean | null>(null);
-  const off = () => turnedOff() ?? f().disabled;
+  const [saved, setSaved] = createSignal<boolean | null>(null);
+  const [off, setOff] = createOptimistic(() => saved() ?? f().disabled);
 
-  const use = (on: boolean) => {
-    setTurnedOff(!on);
-    setFormatterDisabled(f().id, !on).catch((e) => {
-      setTurnedOff(null);
+  const use = action(function* (on: boolean) {
+    setOff(!on);
+    try {
+      yield setFormatterDisabled(f().id, !on);
+    } catch (e) {
       emitWith<ToastEvent>(TOAST, { message: `Could not turn ${on ? "on" : "off"} ${f().label}: ${String(e)}` });
-    });
-  };
+      return;
+    }
+    setSaved(!on);
+  });
 
   return (
     <div class={styles.toolCard}>
