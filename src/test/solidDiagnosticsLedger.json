@@ -547,6 +547,9 @@
   "src/test/solidProbe5118.test.tsx": {
     "ASYNC_OUTSIDE_LOADING_BOUNDARY": 1
   },
+  "src/test/solidProbe5120.test.tsx": {
+    "HUGE_FAN_IN": 4
+  },
   "src/utils/remoteSync.test.tsx": {
     "STRICT_READ_UNTRACKED": 30
   },
