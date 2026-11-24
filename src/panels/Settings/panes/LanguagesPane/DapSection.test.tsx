@@ -5,11 +5,25 @@ import type { DapHealth } from "./DapSection";
 let health: DapHealth[] = [];
 let calls: [string, unknown][] = [];
 let askedForErrors = false;
+let reply: (() => Promise<unknown>) | null = null;
 const lspError = { kind: "lsp", file: "/cfg/packs/lsp/typescript.toml", message: "bundled id", fix: null };
+
+type Handler = (e: { payload: unknown }) => void;
+let handlers: { name: string; fn: Handler }[] = [];
+const emit = (name: string, payload: unknown) =>
+  handlers.filter((h) => h.name === name).forEach((h) => h.fn({ payload }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, fn: Handler) => {
+    const entry = { name, fn };
+    handlers.push(entry);
+    return Promise.resolve(() => (handlers = handlers.filter((h) => h !== entry)));
+  },
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
     calls.push([cmd, args]);
+    if (cmd === "dap_health" && reply) return reply();
     if (cmd !== "packs_load_errors") return Promise.resolve(cmd === "dap_health" ? health : null);
     askedForErrors = true;
     return Promise.resolve([lspError]);
@@ -48,6 +62,7 @@ beforeEach(() => {
   cleanup();
   health = [];
   calls = [];
+  reply = null;
 });
 
 describe("DapSection", () => {
@@ -88,5 +103,52 @@ describe("DapSection", () => {
     await Promise.resolve();
     expect(screen.queryByText("Needs fixing")).toBeNull();
     expect(screen.queryByText(lspError.file)).toBeNull();
+  });
+});
+
+describe("the debuggers health read", () => {
+  function hold() {
+    let resolve!: (value: unknown) => void;
+    const promise = new Promise((yes) => (resolve = yes));
+    return { promise, resolve };
+  }
+  const asked = () => calls.filter(([cmd]) => cmd === "dap_health").length;
+
+  it("says it is checking until the answer lands", async () => {
+    const first = hold();
+    reply = () => first.promise;
+    render(() => <DapSection />);
+    expect(await screen.findByText("Checking which debuggers are installed...")).toBeTruthy();
+
+    first.resolve([delve()]);
+    expect(await screen.findByText("Go (Delve)")).toBeTruthy();
+    expect(screen.queryByText("Checking which debuggers are installed...")).toBeNull();
+  });
+
+  it("keeps the cards while a pack change asks again", async () => {
+    health = [delve()];
+    render(() => <DapSection />);
+    await screen.findByText("Go (Delve)");
+
+    const second = hold();
+    reply = () => second.promise;
+    emit("packs:changed", "dap");
+    await waitFor(() => expect(asked()).toBe(2));
+    expect(screen.getByText("Go (Delve)")).toBeTruthy();
+    expect(screen.queryByText("Checking which debuggers are installed...")).toBeNull();
+
+    second.resolve([...[delve()], { ...delve(), id: "mine", label: "Mine" }]);
+    expect(await screen.findByText("Mine")).toBeTruthy();
+  });
+
+  it("says the check failed instead of listing nothing, and tries again", async () => {
+    reply = () => Promise.reject("probe died");
+    render(() => <DapSection />);
+    expect(await screen.findByText(/Could not check debuggers: probe died/)).toBeTruthy();
+
+    reply = null;
+    health = [delve()];
+    fireEvent.click(screen.getByText("Try again"));
+    expect(await screen.findByText("Go (Delve)")).toBeTruthy();
   });
 });

@@ -37,7 +37,7 @@ describe("the execution policy", () => {
 
   it("shows the built-in deny list, saves an edit whole, and a reset goes back to built-in", async () => {
     render(() => <UnattendedLists shown={() => true} query="" />);
-    const deny = screen.getByLabelText("Never run unattended") as HTMLTextAreaElement;
+    const deny = (await screen.findByLabelText("Never run unattended")) as HTMLTextAreaElement;
     await vi.waitFor(() => expect(deny.value).toBe("aws\nkubectl"));
 
     fireEvent.change(deny, { target: { value: "aws\n\n  flyctl  \n" } });
@@ -48,6 +48,39 @@ describe("the execution policy", () => {
     pointerClick(screen.getByRole("button", { name: "Reset to defaults" }));
     await macrotask();
     expect(settings.unattended?.deny).toBeNull();
+    expect(deny.value).toBe("aws\nkubectl");
+  });
+});
+
+describe("the unattended lists' built-in defaults", () => {
+  const answer = (defaults: () => Promise<unknown>) => {
+    const base = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+      cmd === "unattended_defaults" ? defaults() : base(cmd, args),
+    );
+  };
+
+  it("says it is reading instead of showing an empty list, then shows the defaults", async () => {
+    let land!: (value: unknown) => void;
+    answer(() => new Promise((yes) => (land = yes)));
+    render(() => <UnattendedLists shown={() => true} query="" />);
+    expect(await screen.findAllByText("Reading the default list...")).toHaveLength(2);
+    expect(screen.queryByLabelText("Never run unattended")).toBeNull();
+
+    land(BUILT_IN);
+    const deny = (await screen.findByLabelText("Never run unattended")) as HTMLTextAreaElement;
+    expect(deny.value).toBe("aws\nkubectl");
+  });
+
+  it("says the defaults could not be read, and tries again", async () => {
+    let fail = true;
+    answer(async () => (fail ? Promise.reject("defaults missing") : BUILT_IN));
+    render(() => <UnattendedLists shown={() => true} query="" />);
+    expect(await screen.findAllByText(/The default list could not be read: defaults missing/)).toHaveLength(2);
+
+    fail = false;
+    fireEvent.click(screen.getAllByText("Try again")[0]);
+    const deny = (await screen.findByLabelText("Never run unattended")) as HTMLTextAreaElement;
     expect(deny.value).toBe("aws\nkubectl");
   });
 });
