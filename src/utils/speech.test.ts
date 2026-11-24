@@ -30,7 +30,7 @@ vi.mock("../panels/Settings/settingsStore", () => ({ settings: speechSettings, s
 const emitWith = vi.fn();
 vi.mock("./events", () => ({ TOAST: "toast", emitWith: (...a: unknown[]) => emitWith(...a) }));
 
-const { changeRate, preview, read, readSelection, readingBlockOf, stop, reading } = await import("./speech");
+const { changeRate, preview, read, readSelection, readingIn, stop, reading } = await import("./speech");
 
 type Speak = { chunks: string[]; rate: number; voice: string | null };
 const fire = (kind: string, read: number, chunk?: number, error?: string) => {
@@ -68,16 +68,16 @@ describe("speech", () => {
         { text: "one", block: 0 },
         { text: "two", block: 1 },
       ],
-      "r1",
+      "r:1",
     );
     const id = await lastId();
-    expect(reading()).toEqual({ source: "r1", block: 0 });
+    expect(reading()).toEqual({ source: "r:1", block: 0 });
     fire("start", id, 0);
     fire("finish", id, 0);
     fire("start", id, 1);
-    expect(reading()).toEqual({ source: "r1", block: 1 });
-    expect(readingBlockOf("r1")).toBe(1);
-    expect(readingBlockOf("r2")).toBeUndefined();
+    expect(reading()).toEqual({ source: "r:1", block: 1 });
+    expect(readingIn("r")).toEqual({ itemId: "1", block: 1 });
+    expect(readingIn("q")).toBeNull();
     fire("finish", id, 1);
     expect(reading()).toBeNull();
   });

@@ -59,7 +59,7 @@
     "name": "renders.chat.tool_frame.memos",
     "runtime": "webview",
     "unit": "count",
-    "budget": 58,
+    "budget": 29,
     "reason": "memos for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
@@ -73,36 +73,36 @@
     "name": "renders.chat.tool_frame.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 164,
-    "reason": "reruns for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
+    "budget": 24,
+    "reason": "reruns for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run. The per row turn flags (opener, model line, secret, blind edit, prompt) are projections, so a recount wakes only the rows whose flag changed"
   },
   {
     "name": "renders.chat.selection.mutations",
     "runtime": "webview",
     "unit": "count",
     "budget": 2,
-    "reason": "mutations for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has"
+    "reason": "mutations for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has, held in a projection so only the two rows whose flag moved wake"
   },
   {
     "name": "renders.chat.selection.memos",
     "runtime": "webview",
     "unit": "count",
-    "budget": 0,
-    "reason": "memos for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+    "budget": 1,
+    "reason": "memos for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has, held in a projection so only the two rows whose flag moved wake. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.chat.selection.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 30,
-    "reason": "effects for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
+    "budget": 2,
+    "reason": "effects for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has, held in a projection so only the two rows whose flag moved wake. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.chat.selection.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 30,
-    "reason": "reruns for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
+    "budget": 3,
+    "reason": "reruns for moving the read aloud row between the last two replies of a 201 turn transcript, the one per row flag MessageList has, held in a projection so only the two rows whose flag moved wake. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
   },
   {
     "name": "renders.sidebar.branch_status.mutations",
@@ -164,21 +164,21 @@
     "name": "renders.file_tree.fs_changed.mutations",
     "runtime": "webview",
     "unit": "count",
-    "budget": 5,
+    "budget": 1,
     "reason": "mutations for one fs://changed adding a file to an expanded directory"
   },
   {
     "name": "renders.file_tree.fs_changed.memos",
     "runtime": "webview",
     "unit": "count",
-    "budget": 22,
+    "budget": 8,
     "reason": "memos for one fs://changed adding a file to an expanded directory. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.file_tree.fs_changed.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 41,
+    "budget": 15,
     "reason": "effects for one fs://changed adding a file to an expanded directory. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
@@ -186,7 +186,7 @@
     "runtime": "webview",
     "unit": "count",
     "budget": 5,
-    "reason": "reruns for one file added to an expanded directory, through the fs changed event and a mounted FileTree. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
+    "reason": "reruns for one file added to an expanded directory, through the fs changed event and a mounted FileTree. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run. A fresh listing keeps the row objects it did not change, so the list makes the one new row and keeps the rest"
   },
   {
     "name": "renders.file_tree.selection.mutations",
@@ -206,15 +206,15 @@
     "name": "renders.file_tree.selection.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 8,
+    "budget": 5,
     "reason": "effects for moving the active file between two rows of an expanded directory in a mounted FileTree. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.file_tree.selection.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 10,
-    "reason": "reruns for moving the active file between two rows of an expanded directory in a mounted FileTree. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
+    "budget": 9,
+    "reason": "reruns for moving the active file between two rows of an expanded directory in a mounted FileTree. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run. The active, selected and reveal flags are projections keyed by path, so only the rows the change touches wake"
   },
   {
     "name": "renders.editor.tab_switch.mutations",
@@ -241,8 +241,8 @@
     "name": "renders.editor.tab_switch.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 33,
-    "reason": "reruns for one switch back to an open editor tab. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
+    "budget": 35,
+    "reason": "reruns for one switch back to an open editor tab. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run. Two of them are the file tree computing its active and reveal flags by path, which saves a re-run per row in a tree that draws the files it moves between"
   },
   {
     "name": "renders.editor.gap_open.mutations",

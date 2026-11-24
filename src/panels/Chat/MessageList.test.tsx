@@ -72,7 +72,7 @@ function list(
     agentTurn?: (turnId: string) => boolean;
     onRewind?: (promptTs: number) => void;
     onRead?: (body: HTMLElement, itemId: string) => void;
-    readingBlock?: (itemId: string) => number | undefined;
+    reading?: { itemId: string; block: number } | null;
     collapseWork?: boolean;
     showSecrets?: boolean;
     showBlindEdits?: boolean;
@@ -1237,7 +1237,7 @@ describe("the block being read aloud", () => {
     });
     const [block, setBlock] = createSignal<number | undefined>(0);
     const { container } = render(() => (
-      <ListView items={state.items} readingBlock={(id) => (id === "t1" ? block() : undefined)} />
+      <ListView items={state.items} reading={block() === undefined ? null : { itemId: "t1", block: block()! }} />
     ));
     expect(lit(container)).toEqual(["First part."]);
     setBlock(1);
