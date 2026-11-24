@@ -1,11 +1,13 @@
 ---
 summary: context menu wrappers use display contents, dropdown wrappers need a real box since floating-ui measures its rect
-status: current
-updated: 2026-08-15
+status: stale
+updated: 2026-11-21
 source: Menu onto Kobalte DropdownMenu and ContextMenu, phases 3 to 6 (personal/tori, branch `103-menu`, gettori/tori#103); `src/components/Menu/Dropdown.tsx`, `src/panels/Chat/Picker.tsx`, `src/panels/Terminal/Terminal.tsx`, `src/components/OverflowTabBar.tsx`, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/panels/Editor/Editor.tsx`; commits `7c610cb`, `a0913d9`, `3e0ddc4`
 ---
 
 # Wrapping a control that already belongs to something else
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 A Tori control can belong to exactly one primitive. `Tooltip`, `ContextMenu` and `Dropdown` all render *as* their control (that is [[concept_tooltip_trigger_is_the_control]]: a Solid JSX element is already-constructed DOM, and nothing can inject a trigger's handlers into it afterwards), so a button that is already a tooltip's cannot also be a menu's. The second primitive has to go *around* it.
 

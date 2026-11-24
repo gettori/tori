@@ -1,11 +1,13 @@
 ---
 summary: Storybook runs the Kobalte wrappers on the app's real tokens with no pin, no viteFinal and docgen off
-status: current
-updated: 2026-11-17
+status: stale
+updated: 2026-11-21
 source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96, part of #93); `.storybook/main.ts`, `.storybook/preview.tsx`; gettori/tori#96 comment 5259157006; the kitchen sink from plan \"Visual polish pass with a Storybook kitchen sink\" (branch ui-rework), src/dev/KitchenSink.stories.tsx, src/dev/stubHost.ts:9, commits 844ac739 to f3fce4b5"
 ---
 
 # The Storybook workshop
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 **Location:** `.storybook/` (key files: `main.ts`, `preview.tsx`, `preview.css`), `src/components/Button/Button.stories.tsx`
 
@@ -58,6 +60,14 @@ The check that missed it was this plan's own: it compared `pnpm list vite vite-p
 - **One host stub for the page.** `mockIPC` replaces the whole host, so two sections each stubbing it would silently unplug the first. `stubHost(handlers)` (`src/dev/stubHost.ts:9`) installs one handler that asks each fixture in turn; a fixture answers the commands it owns and `undefined` otherwise. It also calls `mockWindows("main")` and passes `shouldMockEvents`, which any harness that calls `listen` needs.
 - **Harnesses live in `__fixtures__` modules**, exporting their `HostHandler` and a pane (`src/panels/Chat/__fixtures__/` for the composer, transcript and prompts, `src/panels/LeftSidebar/__fixtures__/sidebar.tsx`), so a component's own story and the kitchen sink share one harness. A check 1 exemption moves with its harness.
 - **The root is its own scroller** (`position: fixed; inset: 0; overflow-y: auto`): `App.css` locks `html`, `body` and `#root` with `overflow: hidden`, which suits a window and leaves a long story unscrollable. Changing `preview.css` instead would touch every story.
+
+## On Solid 2
+
+This replaces decision 1 above. `storybook-solidjs-vite` is 10.7.4 and selects `renderer/solid-next` from the installed Solid major. The plugin guard in decision 2 still holds, because `@solidjs/vite-plugin` names itself `solid`.
+
+- **JSX in `args`** goes through `lazyArg` (`.storybook/lazyArg.ts`), see [[gotcha_solid_2_use_context_throws_without_an_owner]].
+- **Seeding module state while rendering** goes through `seedStores` (`.storybook/seedStores.ts`) or `runWithOwner(null, ...)`. `seedStores` also skips the live flush, which would run the half mounted story early and leave it blank.
+- **Known gaps:** the 4 UsageStrip stories are blank because no agent is enabled here, and 6 Omnibox stories log an uncaught `listen` error because they have no event mock.
 
 ## Connections
 

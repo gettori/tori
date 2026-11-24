@@ -1,11 +1,13 @@
 ---
 summary: tooltip only animates in, never out, since Kobalte never wraps tooltip content in presence so there is no closing frame
-status: current
-updated: 2026-08-16
+status: stale
+updated: 2026-11-21
 source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130, part of #93); `src/components/Tooltip/Tooltip.tsx`, `Tooltip.module.css`, `src/lib/tooltip.ts`; originally built by plan \"Tooltip primitive and the `title=` sweep\" (branch `102-tooltip-primitive`, issue #102); commits c996ca9, 9826e7e"
 ---
 
 # `Tooltip`: the one tooltip surface
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 Kobalte's tooltip behind Tori's chrome, on [[component_lib_boundary]]. This page is the **recipe and the composition**: what the surface is made of and what its values are. The rule the whole design turns on - the trigger has to *be* the control, so `as` names a host to render rather than accepting a built one - lives in [[concept_tooltip_trigger_is_the_control]], along with the generic props, the no-label fast path, and `whenDisabled`.
 

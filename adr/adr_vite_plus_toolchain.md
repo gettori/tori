@@ -1,7 +1,7 @@
 ---
 summary: full Vite+ (Oxfmt, Oxlint, vp test) at 120 columns, tsc kept for types, clippy and Oxlint on deny, hooks from Vite+
 status: current
-updated: 2026-10-06
+updated: 2026-11-17
 source: plan "Tooling: one check everywhere, Vite+, formatters and linters"; PRs #257 (Vite 8, Vite+, reformat), #258 (blame ignore), #259 (clippy), #260 (oxlint), branch vite-hooks; vite.config.ts:101, vite.config.ts:125
 ---
 
@@ -24,7 +24,7 @@ Vite+ 1.0 for dev, build, test, format, lint and hooks. Oxfmt and rustfmt at 120
 - `vp migrate` also reformatted every file it touched at 80 columns and added Vitest 4 compat flags. Both were dropped; the suite passes on Vitest 5 defaults.
 - Oxfmt skips Markdown, TOML, generated, vendored and captured files (`vite.config.ts:101`), see [[gotcha_oxfmt_reflows_markdown_into_a_different_meaning]] and [[gotcha_golden_files_are_compared_byte_for_byte_so_no_formatter_may_touch_them]].
 - Three Oxlint rules are configured with their reason in `vite.config.ts:125`: `no-unassigned-vars` off (Solid refs), `unicorn/no-useless-spread` off (listener snapshots), `no-unused-vars` ignoring a leading underscore.
-- A branch cut before the reformat crosses it with `scripts/reformat-branch.sh`.
+- A branch cut before the reformat crossed it with `scripts/reformat-branch.sh`, removed on 2026-11-17 once no such branch was left.
 - Vite 8 compiles with Oxc, see [[gotcha_oxc_honours_jsx_preserve_so_a_unit_test_importing_tsx_fails_to_parse]].
 
 ## Related

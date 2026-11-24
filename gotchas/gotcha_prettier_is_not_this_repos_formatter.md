@@ -1,7 +1,7 @@
 ---
 summary: superseded by #257; the tree is formatted, so run vp fmt (Oxfmt) and cargo fmt, never prettier
 status: stale
-updated: 2026-10-06
+updated: 2026-11-17
 source: plan "Tooling: one check everywhere, Vite+, formatters and linters", Phase 4, PR #257; commit "Format the tree with Oxfmt and rustfmt"; vite.config.ts fmt block; rustfmt.toml
 ---
 
@@ -9,7 +9,7 @@ source: plan "Tooling: one check everywhere, Vite+, formatters and linters", Pha
 
 Superseded once #257 is on your branch. The tree is now formatted with Oxfmt (`vp fmt`, 120 columns, the `fmt` block in `vite.config.ts`) and rustfmt (`rustfmt.toml`, 120). Format with those, so a touched file stays clean. Prettier is still not the formatter, and its output does not match Oxfmt's.
 
-On a branch cut before #257 the old rule holds: no formatter, edit by hand. Move it across with `scripts/reformat-branch.sh`.
+On a branch cut before #257 the old rule holds: no formatter, edit by hand. `scripts/reformat-branch.sh` moved such branches across and was removed on 2026-11-17, once none was left.
 
 ## Related
 

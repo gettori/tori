@@ -2,7 +2,7 @@
 summary: Tori owns its primitives on native dialog, manual popovers and CSS anchor positioning; one JS layer stack owns dismissal and focus
 status: current
 updated: 2026-11-21
-source: solid-2-stage-a-own-primitives plan, phase webview-spike; gettori/tickets#106; epic gettori/tickets#105
+source: solid-2-stage-a-own-primitives plan, phase webview-spike; gettori/tickets#106; epic gettori/tickets#105; commits 48640c58 to f2895a16
 ---
 
 # Tori owns its primitives, built on native layers
@@ -33,10 +33,24 @@ Measured on 2026-11-21 in a WKWebView on macOS 27.2.1 and in Android System WebV
 - Minimum macOS rises from 13.4 to 26. Builds already shipped have no OS check in the updater, so an older Mac takes the update and fails to launch. Accepted.
 - Tori now owns Combobox typeahead, the listbox keyboard model and the dismissal stack, the work the old ADR called undifferentiated. The `src/components` APIs, stories and axe tests are the contract that keeps it honest.
 - Own primitives keep emitting the state attributes the CSS selects on (`data-expanded`, `data-closed` and the rest).
-- Not verified on macOS 26 itself.
+- Icons left `lucide-solid` for pinned `lucide` data through [[component_icons]], and the test library left for `src/test/harness.ts`.
+- Not verified on macOS 26 itself, in the Mac app, or for touch and long press. Browser comparisons against main ran in Playwright WebKit and Chromium.
+
+## What differs from the old behaviour
+
+Kept on purpose:
+
+- Toasts sit above a dialog and take clicks there. They used to sit dimmed under the scrim.
+- `LayoutToggles` no longer reacts to Escape, Shift+Arrow or Cmd+A, an accident of multiple selection.
+- Tab in an open Select keeps focus in the list.
+- A Switch no longer fires `onChange` when a store reload moves `checked`.
+- `modal` is gone from `Dropdown` and `ContextMenu`. Only a Storybook control used it.
+- The focus trap is the browser's. jsdom has no inertness, so its tests were replaced and only a browser check covers it.
 
 ## Related
 
+- [[component_layer]], the stack this decision built
+- [[component_keyboard_helpers]], roving focus and typeahead
 - [[adr_headless_primitives]], the decision this replaces
 - [[component_lib_boundary]], the seam that made the swap an edit to wrappers
 - [[adr_stack_choice]], Solid as the framework

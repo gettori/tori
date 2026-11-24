@@ -1,11 +1,13 @@
 ---
 summary: rebuilds the notification stack on Kobalte's Toast keeping both old write APIs, focus hotkey is a command row now
-status: current
-updated: 2026-08-15
+status: stale
+updated: 2026-11-21
 source: "plan \"Toasts onto Kobalte Toast\" (personal/tori, branch `105-toasts`, issue #105, part of #93); previous hand-rolled stack owned by `LeftSidebar.tsx`; commit c6b0e7b is the parent"
 ---
 
 # Toasts
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 **Location:** `src/components/Toasts/Toasts.tsx` (key files: `Toasts.module.css`, `Toasts.test.tsx`, `Toasts.characterization.test.tsx`, `Toasts.stories.tsx`, `src/lib/toast.ts`)
 

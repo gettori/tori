@@ -1,11 +1,13 @@
 ---
 summary: kobalte's controlled Tabs.Root force selects the first key and fires onChange itself when its held value names no item
-status: current
-updated: 2026-08-16
+status: stale
+updated: 2026-11-21
 source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/OverflowTabBar.tsx`, `node_modules/@kobalte/core/dist/chunk/7DPKSDZL.js`; close-keystroke half: plan \"Revive tab selection, and make an unnamed segment a type error\" (branch `116-optional-accessible`); `src/utils/tabGesture.ts`"
 ---
 
 # Kobalte's tab root force-selects the first key and calls `onChange` doing it
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 Do NOT assume a controlled `Tabs.Root` only reports what the user did. Its selection state is built with `disallowEmptySelection: true` and an effect that, whenever the value it holds names no item in the rendered collection, sets the selection to `collection.getFirstKey()` - which routes through the controllable signal and **fires `onChange`**. Neither is configurable. So closing the active tab, which leaves the strip pointed at a gone key for one render before the panel picks a successor, hands you an `onChange` naming the leftmost tab: not a blank selection, a different file opened behind the user. Separate the two by the **gesture**, not by the state - a heal runs from an effect with nothing but a render behind it - and note that a state-based guard also swallows a genuine click on a strip that has nothing selected yet. In `OverflowTabBar` a capture-phase listener records whether the event landed on a `[role="tab"]`; the close button lands correctly because it is a *sibling* of the trigger, so a click on it has no tab above it. Also pass `""` rather than `undefined` for "nothing active": Kobalte reads `undefined` as uncontrolled and takes the selection over permanently.
 

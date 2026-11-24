@@ -1,11 +1,13 @@
 ---
 summary: RadioGroup passes Kobalte the empty string for no selection, never undefined, since undefined flips it uncontrolled
-status: current
-updated: 2026-08-22
+status: stale
+updated: 2026-11-21
 source: plan "Answer AskUserQuestion inside the chat panel" (phase 1), branch `chat-transcription`; issue gettori/tori#109's rejection, reversed for new surface; commit `6933de0`
 ---
 
 # RadioGroup and CheckboxGroup
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 **Location:** `src/lib/radio-group.ts`, `src/components/RadioGroup/`, `src/components/CheckboxGroup/`
 

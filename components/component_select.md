@@ -1,11 +1,13 @@
 ---
 summary: replaces the native select, whose OS popover ignored every theme, with a string wrapper over Kobalte's object listbox
-status: current
-updated: 2026-08-15
+status: stale
+updated: 2026-11-21
 source: "plan \"Select wrapper and native select migration\" (personal/tori, branch `106-select`, issue #106, part of #93); `src/components/Select/Select.tsx`, `src/lib/select.ts`"
 ---
 
 # `Select`: the one picker
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 **Location:** `src/components/Select/` (key files: `Select.tsx`, `Select.module.css`, `Select.test.tsx`, `Select.stories.tsx`), `src/lib/select.ts`
 

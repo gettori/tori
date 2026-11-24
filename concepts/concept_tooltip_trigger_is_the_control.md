@@ -1,11 +1,13 @@
 ---
 summary: Kobalte puts tooltip behavior on the trigger, so Tooltip renders the control instead of wrapping one, title banned
-status: current
-updated: 2026-08-15
+status: stale
+updated: 2026-11-21
 source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102, part of #93); `src/components/Tooltip/Tooltip.tsx`, `src/components/Dialog/surface.ts`, `src/lib/tooltip.ts`, `src/test/interactiveTitle.test.ts`; commits c996ca9, 9826e7e, 51771df, a23d8f4, dbfa12a; extended by plan \"Dedupe icon and swatch grids into one IconGrid\" (branch `109-dedupe-icon-and-swatch-grids`, issue #109); commit cd09a5e; PR #138"
 ---
 
 # The tooltip trigger is the control
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 A native `title` is a mouse-only tooltip: it never appears for a keyboard user, it is not exposed as a description by every screen reader, and it cannot be styled. #102 replaced all 134 interactive ones with a Kobalte-backed `Tooltip` and then made the native attribute a **type error** on `Button`, `IconButton`, `Tab` and `Tooltip` itself. The single decision the whole design turns on is in the title: Kobalte puts every tooltip behaviour on the trigger *element*, so the trigger has to be the control, which is why `Tooltip` renders the control rather than accepting one.
 

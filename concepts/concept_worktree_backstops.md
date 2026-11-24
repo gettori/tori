@@ -1,8 +1,8 @@
 ---
 summary: pre destruction snapshots are owned by a worktree identity minted at creation, so a same named worktree inherits none
 status: current
-updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 3 (commit e4c3872), wired to discard in Phase 4 (commit b42b494); `src-tauri/src/backstop.rs`, `src/panels/Editor/CheckpointTimeline.tsx`"
+updated: 2026-11-17
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 3 (commit e4c3872), wired to discard in Phase 4 (commit b42b494); `src-tauri/src/backstop.rs`, `src/panels/Editor/CheckpointTimeline.tsx`; one-file restore removed in PR #368; sweep wired into worktree removal on branch `backstop-prune-wiring`"
 ---
 
 # Backstops: undo snapshots owned by a worktree identity
@@ -17,9 +17,9 @@ Before Tori destroys uncommitted work it takes a **backstop**: a snapshot of the
 - **The worktree id is minted from creation time plus pid** and stored in the sidecar. Nothing derives it from the worktree's *name*.
 - **Snapshotting never touches the user's index**, using the scratch-index + `write-tree` pattern checkpoints already use.
 - **The timestamp is monotonic past the newest record**, not merely free of collisions.
-- **HEAD is checked asymmetrically.** A whole-tree restore across a moved HEAD refuses outright; a single-file restore refuses by default but takes `force`, mirroring `checkpoint_revert_file`.
+- **HEAD is checked on a whole-tree restore**, which refuses outright across a moved HEAD and points at the backup's per-file diffs instead.
 - **Restoring consults `revertGuard`**, like every other unscoped worktree rewrite, and reports its touched paths through the `onReverted` channel so open buffers reconcile.
-- **Retention prunes beyond a bound**, and `git worktree remove` takes the sidecar with it.
+- **Retention prunes beyond a bound**, `git worktree remove` takes the sidecar with it, and every removal then sweeps the refs no remaining sidecar claims, unless some worktree cannot be read.
 
 ## Why it's this way
 
@@ -27,9 +27,7 @@ Before Tori destroys uncommitted work it takes a **backstop**: a snapshot of the
 
 **The monotonic timestamp fixed a real bug the retention test caught, not a hypothetical one.** The stamp started as "bump past any colliding record". But retention prunes the *oldest* ts, so that rule handed the freed low slot to the next backstop, which retention then dropped again as the oldest the instant it was written. The snapshot the user is about to need most was the one silently going away.
 
-**The asymmetric HEAD check is a deliberate deviation** from "restore refuses when HEAD does not match". A symmetric hard refusal would have killed the primary discard recovery path the moment the user committed anything else, which is exactly when they most want a file back.
-
-**Known and accepted:** `backstops.json` is read-modify-write with no lock, so two windows on one worktree discarding simultaneously would lose a record while its ref survives (swept later by `backstop_prune`). Judged not worth a lock file for a user-click-driven action.
+**Known and accepted:** `backstops.json` is read-modify-write with no lock, so two windows on one worktree discarding simultaneously would lose a record while its ref survives. The ref goes when that worktree is removed, with the sweep every removal runs. Judged not worth a lock file for a user-click-driven action.
 
 ## Related
 

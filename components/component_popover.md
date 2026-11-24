@@ -1,11 +1,13 @@
 ---
 summary: Popover stays mounted while open under a Show, so Kobalte never sees open to closed and onCloseAutoFocus is dead code
-status: current
-updated: 2026-08-15
+status: stale
+updated: 2026-11-21
 source: "plan \"Popover onto Kobalte Popover\" (personal/tori, branch `104-popover`, issue #104, part of #93); previous hand-rolled surface: branch `navigation`; commit 1235880"
 ---
 
 # Popover
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 **Location:** `src/components/Popover/Popover.tsx` (key files: `Popover.module.css`, `Popover.test.tsx`, `Popover.stories.tsx`, `src/lib/popover.ts`)
 

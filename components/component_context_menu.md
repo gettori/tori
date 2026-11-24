@@ -1,11 +1,13 @@
 ---
 summary: sidebar context menu now rides Kobalte, preloading git origin since a synchronous menu build cannot await it
-status: current
-updated: 2026-08-15
+status: stale
+updated: 2026-11-21
 source: Sidebar as Project Manager; Sidebar Context-Menu Redesign; Delete Group; Combine group create actions into one New dialog (personal/tori, branch code-mirror-6); commits afb4cc0, 03849c5, 17a334a, dac1093, e704411, fef06e6
 ---
 
 # Sidebar context menu
+
+> Stale: Kobalte left in gettori/tickets#106, so this describes the old implementation. See [[adr_own_primitives_on_native_layers]].
 
 **Location:** the primitive is now `src/components/Menu/ContextMenu.tsx` (wiring: `src/panels/LeftSidebar/LeftSidebar.tsx`; modals: `src/components/ConfirmDeleteSpace.tsx`, `src/components/NewProjectDialog.tsx`)
 
