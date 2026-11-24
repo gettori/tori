@@ -69,6 +69,7 @@ lives in the webview, so a change to it does not move this row.
 
 ## Related
 
+- [[concept_solid_2_conventions]] - the Solid 2 rules the render and rerun rows hold the app to
 - [[component_perf_trace_harness]] - the release build instrument this gates beside
 - [[lesson_a_gate_that_cannot_fail_is_not_a_gate]] - why every row has a negative control
 - [[lesson_a_gate_only_sees_the_configuration_the_test_builds]] - why the measurers call the shipped functions and mount real panels

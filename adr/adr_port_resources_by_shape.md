@@ -9,7 +9,7 @@ source: plan "Solid 2 stage C: the switch to Solid 2.0" (personal/tori, branch `
 
 ## Superseded
 
-Superseded on 2026-11-24 by gettori/tickets#109, which deleted `createFetchState`. Fetches now follow the fetch rule, see [[concept_fetch_rule]]: a first load shows a `<Loading>` fallback, a subject change uses `<Loading on>`, a re-ask with the same subject is held with `isPending`, and a poll or `refresh` re-ask is silent. A rejection shows through `<Errored>` instead of being caught inside the fetch. The record below is the stage C decision as it stood.
+Superseded on 2026-11-24 by gettori/tickets#109, which deleted `createFetchState`. Fetches now follow the fetch rule, see [[concept_solid_2_conventions]]: a first load shows a `<Loading>` fallback, a subject change uses `<Loading on>`, a re-ask with the same subject is held with `isPending`, and a poll or `refresh` re-ask is silent. A rejection shows through `<Errored>` instead of being caught inside the fetch. The record below is the stage C decision as it stood.
 
 ## Context
 
@@ -39,4 +39,5 @@ Several shapes live side by side until #109 moves them to the full 2.0 async mod
 
 ## Related
 
+- [[concept_solid_2_conventions]]: the fetch rule and the rest of the Solid 2 conventions that replaced this
 - [[adr_live_state_for_module_signals]]: the other 1.9 preserving decision in the same switch
