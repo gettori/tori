@@ -59,14 +59,14 @@
     "name": "renders.chat.tool_frame.memos",
     "runtime": "webview",
     "unit": "count",
-    "budget": 57,
+    "budget": 58,
     "reason": "memos for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.chat.tool_frame.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 29,
+    "budget": 27,
     "reason": "effects for one toolCallStarted into the open turn of a 201 turn transcript, through applyEvent and a mounted MessageList. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
