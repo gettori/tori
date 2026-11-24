@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, Errored, Loading, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import {
   bufferTextOf,
@@ -9,7 +9,6 @@ import {
   previewAnchorOf,
   boxAt,
 } from "../../utils/liveBuffer";
-import { createFetchState } from "../../lib/fetchState";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import MarkdownDocument from "./MarkdownDocument";
 import styles from "./MarkdownPreview.module.css";
@@ -29,21 +28,7 @@ function dirOf(path: string): string {
  *  different document from the one just typed into. Disk is the fallback for a
  *  tab with no buffer at all, which is every restored tab nobody has clicked. */
 export default function MarkdownPreview(props: { path: string }) {
-  const live = () => bufferTextOf(props.path);
-  const [disk] = createFetchState(
-    // Null while a buffer holds this file, which is the source's own way
-    // of saying there is nothing to fetch: the read is skipped rather than
-    // raced with the answer we already have.
-    () => (live() === undefined ? props.path : null),
-    (path: string) => invoke<string>("fs_read_file", { path }),
-  );
-  const text = () => {
-    const open = live();
-    if (open !== undefined) return open;
-    // A failed read reaches the pane's crashed card, as a rejected resource read did.
-    if (disk.error !== undefined) throw disk.error;
-    return disk();
-  };
+  const text = createMemo(() => bufferTextOf(props.path) ?? invoke<string>("fs_read_file", { path: props.path }));
 
   const [renderedFor, setRenderedFor] = createSignal<string | null>(null);
 
@@ -129,18 +114,21 @@ export default function MarkdownPreview(props: { path: string }) {
         });
       }}
     >
-      <Show when={text() === undefined && disk.loading}>
-        <div class="tree-empty">Loading…</div>
-      </Show>
-      <Show when={text() !== undefined}>
-        <MarkdownDocument
-          text={text()!}
-          base={dirOf(props.path)}
-          source={props.path}
-          ref={(el) => (body = el)}
-          onRendered={setRenderedFor}
-        />
-      </Show>
+      <Errored fallback={(err) => <div class="tree-empty">This file could not be read: {String(err())}</div>}>
+        <Loading on={props.path} fallback={<div class="tree-empty">Loading…</div>}>
+          {/* Read here, under the boundary: MarkdownDocument lexes in an effect,
+              which would wait on a pending read without showing the fallback. */}
+          <Show when={text() !== undefined}>
+            <MarkdownDocument
+              text={text()}
+              base={dirOf(props.path)}
+              source={props.path}
+              ref={(el) => (body = el)}
+              onRendered={setRenderedFor}
+            />
+          </Show>
+        </Loading>
+      </Errored>
     </OverlayScroll>
   );
 }

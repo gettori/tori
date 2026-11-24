@@ -1,4 +1,16 @@
-import { createSignal, createEffect, onSettled, onCleanup, untrack, For, Show } from "solid-js";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  onSettled,
+  onCleanup,
+  refresh,
+  untrack,
+  Errored,
+  For,
+  Loading,
+  Show,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, OPEN_IN_EDITOR, type FsChanged, type LiveTab } from "../../utils/events";
@@ -13,6 +25,7 @@ import HeldComments from "./HeldComments";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./SessionPanel.module.css";
 import Switch from "../../components/Switch/Switch";
+import Button from "../../components/Button/Button";
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
@@ -56,29 +69,17 @@ export default function SessionPanel(props: {
   liveTabs: LiveTab[];
   heldKey: string;
 }) {
-  const [files, setFiles] = createSignal<TouchedFile[]>([]);
+  const files = createMemo(() =>
+    props.path ? invoke<TouchedFile[]>("session_touched_files", { path: props.path, agent: props.agent }) : [],
+  );
   const [showReads, setShowReads] = createSignal(false);
   const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
   const [diffs, setDiffs] = createSignal<Record<string, string>>({});
   const [collisions, setCollisions] = createSignal<Record<string, number>>({});
   // Guards against an out-of-order response: rapidly switching the selected
-  // session while on the Session tab must not let a slower fetch for the
-  // previously-selected session overwrite the newly-selected one's data
-  // (the same race phase 2's loadTouchedCount fix addressed in LeftSidebar).
+  // session while on the Session tab must not let a slower collisions read for
+  // the previously-selected session overwrite the newly-selected one's badges.
   let requestFor: string | null = null;
-
-  async function refreshTouched(path = props.path, agent = props.agent) {
-    requestFor = path;
-    if (!path) {
-      setFiles([]);
-      return;
-    }
-    const files = await invoke<TouchedFile[]>("session_touched_files", { path, agent }).catch(
-      () => [] as TouchedFile[],
-    );
-    if (requestFor !== path) return;
-    setFiles(files);
-  }
 
   // Bounded to sessions with a live tab under this folder (the same
   // list_sessions + liveTabs join the sidebar's countRunningAgents uses), so
@@ -179,10 +180,10 @@ export default function SessionPanel(props: {
 
   createEffect(
     () => ({ path: props.path, agent: props.agent, collisions: untrack(collisionArgs) }),
-    ({ path, agent, collisions }) => {
+    ({ path, collisions }) => {
+      requestFor = path;
       setExpanded(new Set<string>());
       setDiffs({});
-      void refreshTouched(path, agent);
       void refreshCollisions(collisions);
     },
   );
@@ -205,7 +206,7 @@ export default function SessionPanel(props: {
         for (const p of expanded()) void loadDiff(p);
       });
       unlistenSessions = await listen("sessions://changed", () => {
-        void refreshTouched();
+        void refresh(files);
         void refreshCollisions();
       });
     })();
@@ -220,7 +221,7 @@ export default function SessionPanel(props: {
   const outsideProject = () => visible().filter((f) => !props.cwd || !isUnderPath(f.path, props.cwd));
 
   function row(f: TouchedFile) {
-    const collision = collisions()[f.path] ?? 0;
+    const collision = () => collisions()[f.path] ?? 0;
     return (
       <div>
         <div class={styles.touchRow} onClick={() => toggleDiff(f.path)} title={f.path}>
@@ -236,12 +237,12 @@ export default function SessionPanel(props: {
           >
             {displayPath(f.path)}
           </span>
-          <Show when={collision > 0}>
+          <Show when={collision() > 0}>
             <span
               class={styles.collisionBadge}
-              title={`Also touched by ${collision} other running session${collision === 1 ? "" : "s"}`}
+              title={`Also touched by ${collision()} other running session${collision() === 1 ? "" : "s"}`}
             >
-              {collision + 1}
+              {collision() + 1}
             </span>
           </Show>
         </div>
@@ -301,23 +302,45 @@ export default function SessionPanel(props: {
         />
       </div>
       <div class={styles.touchList}>
-        <Show
-          when={visible().length}
-          fallback={
+        <Errored
+          fallback={(err, reset) => (
             <div class="tree-empty">
               <p>
-                Nothing edited yet. Files this session creates or changes show up here.
-                {!showReads() && " Turn on Show reads to include files it only looked at."}
+                The files this session touched could not be read: {String(err())}{" "}
+                <Button size="xs" variant="ghost" onClick={() => reset()}>
+                  Try again
+                </Button>
               </p>
             </div>
-          }
+          )}
         >
-          <For each={inProject()}>{(f) => row(f)}</For>
-          <Show when={outsideProject().length}>
-            <div class={styles.bucketHeader}>Outside project</div>
-            <For each={outsideProject()}>{(f) => row(f)}</For>
-          </Show>
-        </Show>
+          <Loading
+            on={props.path}
+            fallback={
+              <div class="tree-empty">
+                <p>Reading what this session touched...</p>
+              </div>
+            }
+          >
+            <Show
+              when={visible().length}
+              fallback={
+                <div class="tree-empty">
+                  <p>
+                    Nothing edited yet. Files this session creates or changes show up here.
+                    {!showReads() && " Turn on Show reads to include files it only looked at."}
+                  </p>
+                </div>
+              }
+            >
+              <For each={inProject()}>{(f) => row(f)}</For>
+              <Show when={outsideProject().length}>
+                <div class={styles.bucketHeader}>Outside project</div>
+                <For each={outsideProject()}>{(f) => row(f)}</For>
+              </Show>
+            </Show>
+          </Loading>
+        </Errored>
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
-import { createEffect, createMemo, createSignal, onCleanup, onSettled, For, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, onSettled, refresh, Errored, For, Loading, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { Globe, MousePointerClick, Play } from "../../../components/Icon/icons";
 import Icon from "../../../components/Icon/Icon";
+import Button from "../../../components/Button/Button";
 import Chevron from "../../../components/Chevron/Chevron";
 import ContextMenu from "../../../components/Menu/ContextMenu";
 import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
@@ -60,47 +61,28 @@ function groupByFile(tasks: Task[]): Group[] {
 /** What this workspace can be told to do, one group per defining file, like
  *  VS Code's NPM Scripts view. A click runs; the menu also jumps to the line. */
 export default function ScriptsSection(props: { root: string | null }) {
-  const [tasks, setTasks] = createSignal<Task[]>([]);
-  const [error, setError] = createSignal<string | null>(null);
-  const [apps, setApps] = createSignal<WebApp[]>([]);
   const [shut, setShut] = createSignal<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
-  // Bumped per read so a slow fs-refresh cannot overwrite a newer one.
-  let scanGen = 0;
 
-  async function scan(root = props.root) {
-    const gen = ++scanGen;
-    if (!root) {
-      setTasks([]);
-      return;
-    }
-    try {
-      const found = await loadTasks(
-        root,
-        (path) => invoke<DirEntry[]>("fs_read_dir", { path }),
-        (path) => invoke<string>("fs_read_file", { path }),
-        () => invoke<string[]>("list_project_files", { projectPath: root }),
-      );
-      // An app Tori cannot read only goes without the plugin hint; its scripts still show.
-      const web = await invoke<WebApp[]>("web_setup", { root }).catch(() => [] as WebApp[]);
-      if (gen !== scanGen) return;
-      setTasks(found);
-      setApps(web ?? []);
-      setError(null);
-    } catch (e) {
-      // Said rather than swallowed: an empty list would read as "this project
-      // defines no tasks", which is a claim about the project, not the read.
-      if (gen !== scanGen) return;
-      setTasks([]);
-      setError(String(e));
-    }
-  }
+  // A failed read is said rather than swallowed: an empty list would read as
+  // "this project defines no tasks", which is a claim about the project.
+  const scanned = createMemo(async (): Promise<{ tasks: Task[]; apps: WebApp[] }> => {
+    const root = props.root;
+    if (!root) return { tasks: [], apps: [] };
+    const tasks = await loadTasks(
+      root,
+      (path) => invoke<DirEntry[]>("fs_read_dir", { path }),
+      (path) => invoke<string>("fs_read_file", { path }),
+      () => invoke<string[]>("list_project_files", { projectPath: root }),
+    );
+    // An app Tori cannot read only goes without the plugin hint; its scripts still show.
+    const apps = await invoke<WebApp[]>("web_setup", { root }).catch(() => [] as WebApp[]);
+    return { tasks, apps: apps ?? [] };
+  });
+  const tasks = () => scanned().tasks;
+  const apps = () => scanned().apps;
 
-  const debouncedScan = debounce(() => void scan(), FS_CHANGE_DEBOUNCE_MS);
-  createEffect(
-    () => props.root,
-    (root) => void scan(root),
-  );
+  const debouncedScan = debounce(() => void refresh(scanned), FS_CHANGE_DEBOUNCE_MS);
 
   const mark = (id: string, on: boolean) =>
     setBusy((prev) => {
@@ -208,76 +190,87 @@ export default function ScriptsSection(props: { root: string | null }) {
           </ContextMenu>
         )}
       </For>
-      <Show when={!error()} fallback={<div class={tree.empty}>{error()}</div>}>
-        <Show
-          when={tasks().length}
-          fallback={<div class={tree.empty}>No scripts here. Tori reads package.json, Makefile and justfile.</div>}
-        >
-          <For each={groupByFile(tasks())}>
-            {(g) => (
-              <>
-                <ContextMenu
-                  items={[{ label: `Open ${g.file}`, onClick: () => open(g.file) }]}
-                  class={tree.treeRow}
-                  style={{ "padding-left": "8px" }}
-                  onClick={() => toggle(g.file)}
-                >
-                  <Chevron open={!shut().has(g.file)} />
-                  <FileIcon name={g.file.slice(g.file.lastIndexOf("/") + 1)} />
-                  <span class={tree.treeName}>{g.file}</span>
-                </ContextMenu>
-                <Show when={!shut().has(g.file)}>
-                  <For each={g.tasks}>
-                    {(t) => (
-                      <ContextMenu
-                        items={[
-                          ...(running(t)
-                            ? [
-                                { label: "Show terminal", onClick: () => runOrShow(t) },
-                                { label: "Run again", onClick: () => run(t) },
-                              ]
-                            : [{ label: "Run", onClick: () => run(t) }]),
-                          { label: `Open in ${g.file}`, onClick: () => open(g.file, t.line) },
-                        ]}
-                        class={tree.treeRow}
-                        style={{ "padding-left": "20px" }}
-                        onClick={() => runOrShow(t)}
-                      >
-                        <span
-                          class={[styles.play, { [styles.running]: !!running(t) }]}
-                          title={running(t) ? "Running" : undefined}
+      <Errored
+        fallback={(err, reset) => (
+          <div class={tree.empty}>
+            {String(err())}{" "}
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
+          </div>
+        )}
+      >
+        <Loading on={props.root} fallback={<div class={tree.empty}>Reading the scripts...</div>}>
+          <Show
+            when={tasks().length}
+            fallback={<div class={tree.empty}>No scripts here. Tori reads package.json, Makefile and justfile.</div>}
+          >
+            <For each={groupByFile(tasks())}>
+              {(g) => (
+                <>
+                  <ContextMenu
+                    items={[{ label: `Open ${g.file}`, onClick: () => open(g.file) }]}
+                    class={tree.treeRow}
+                    style={{ "padding-left": "8px" }}
+                    onClick={() => toggle(g.file)}
+                  >
+                    <Chevron open={!shut().has(g.file)} />
+                    <FileIcon name={g.file.slice(g.file.lastIndexOf("/") + 1)} />
+                    <span class={tree.treeName}>{g.file}</span>
+                  </ContextMenu>
+                  <Show when={!shut().has(g.file)}>
+                    <For each={g.tasks}>
+                      {(t) => (
+                        <ContextMenu
+                          items={[
+                            ...(running(t)
+                              ? [
+                                  { label: "Show terminal", onClick: () => runOrShow(t) },
+                                  { label: "Run again", onClick: () => run(t) },
+                                ]
+                              : [{ label: "Run", onClick: () => run(t) }]),
+                            { label: `Open in ${g.file}`, onClick: () => open(g.file, t.line) },
+                          ]}
+                          class={tree.treeRow}
+                          style={{ "padding-left": "20px" }}
+                          onClick={() => runOrShow(t)}
                         >
-                          <Icon icon={Play} />
-                        </span>
-                        <span class={tree.treeName}>{t.name}</span>
-                        <span class={styles.command}>{t.command}</span>
-                      </ContextMenu>
-                    )}
-                  </For>
-                  <Show when={pluginHint(g.file)}>
-                    {(app) => (
-                      <ContextMenu
-                        items={[
-                          { label: "Copy plugin setup", onClick: () => copySetup(app()) },
-                          { label: `Open ${appFile(app())}`, onClick: () => open(appFile(app())) },
-                        ]}
-                        class={tree.treeRow}
-                        style={{ "padding-left": "20px" }}
-                        data-plugin-hint={app().dir}
-                        onClick={() => copySetup(app())}
-                      >
-                        <Icon icon={MousePointerClick} />
-                        <span class={tree.treeName}>Browser file and line</span>
-                        <span class={styles.command}>{`Copy code-inspector-plugin setup for ${app().config}`}</span>
-                      </ContextMenu>
-                    )}
+                          <span
+                            class={[styles.play, { [styles.running]: !!running(t) }]}
+                            title={running(t) ? "Running" : undefined}
+                          >
+                            <Icon icon={Play} />
+                          </span>
+                          <span class={tree.treeName}>{t.name}</span>
+                          <span class={styles.command}>{t.command}</span>
+                        </ContextMenu>
+                      )}
+                    </For>
+                    <Show when={pluginHint(g.file)}>
+                      {(app) => (
+                        <ContextMenu
+                          items={[
+                            { label: "Copy plugin setup", onClick: () => copySetup(app()) },
+                            { label: `Open ${appFile(app())}`, onClick: () => open(appFile(app())) },
+                          ]}
+                          class={tree.treeRow}
+                          style={{ "padding-left": "20px" }}
+                          data-plugin-hint={app().dir}
+                          onClick={() => copySetup(app())}
+                        >
+                          <Icon icon={MousePointerClick} />
+                          <span class={tree.treeName}>Browser file and line</span>
+                          <span class={styles.command}>{`Copy code-inspector-plugin setup for ${app().config}`}</span>
+                        </ContextMenu>
+                      )}
+                    </Show>
                   </Show>
-                </Show>
-              </>
-            )}
-          </For>
-        </Show>
-      </Show>
+                </>
+              )}
+            </For>
+          </Show>
+        </Loading>
+      </Errored>
     </OverlayScroll>
   );
 }
