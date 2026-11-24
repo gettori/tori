@@ -1,5 +1,4 @@
-import { For, Show, createMemo, createSignal, untrack } from "solid-js";
-import { createFetchState } from "../../lib/fetchState";
+import { Errored, For, Show, createDeferred, createMemo, createSignal, refresh, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import type { ChatAccount, McpServer } from "../../utils/chatTypes";
@@ -123,14 +122,14 @@ export default function SessionInfo(props: {
 
   // Only fetched once the panel is open: this reads two files off disk, and a
   // collapsed panel has nothing to show for them.
-  const [configured, { mutate }] = createFetchState(
-    () => (open() && props.cwd ? props.cwd : null),
-    (cwd) =>
-      invoke<McpEntry[]>("chat_mcp_list", {
-        cwd,
-        agentId: props.agentId ?? "claude",
-        profile: props.profile ?? null,
-      }),
+  const configured = createDeferred<McpEntry[] | null>(() =>
+    open() && props.cwd
+      ? invoke<McpEntry[]>("chat_mcp_list", {
+          cwd: props.cwd,
+          agentId: props.agentId ?? "claude",
+          profile: props.profile ?? null,
+        })
+      : null,
   );
 
   /** Split the typed command on whitespace: the first word is the program, the
@@ -144,44 +143,42 @@ export default function SessionInfo(props: {
     }
     setError(null);
     try {
-      const next = await invoke<McpEntry[]>("chat_mcp_add", {
+      await invoke<McpEntry[]>("chat_mcp_add", {
         cwd: props.cwd,
         name: name().trim(),
         config: { command: program, args },
         agentId: props.agentId ?? "claude",
         profile: props.profile ?? null,
       });
-      mutate(next);
-      setName("");
-      setCommand("");
-      setAdding(false);
     } catch (err) {
       setError(String(err));
+      return;
     }
+    // The write landed. A failed re-read shows through the section's Errored,
+    // not as a failed write.
+    await refresh(configured).catch(() => {});
+    setName("");
+    setCommand("");
+    setAdding(false);
   }
 
   async function removeServer(serverName: string) {
     setError(null);
     try {
-      mutate(
-        await invoke<McpEntry[]>("chat_mcp_remove", {
-          cwd: props.cwd,
-          name: serverName,
-          agentId: props.agentId ?? "claude",
-          profile: props.profile ?? null,
-        }),
-      );
+      await invoke<McpEntry[]>("chat_mcp_remove", {
+        cwd: props.cwd,
+        name: serverName,
+        agentId: props.agentId ?? "claude",
+        profile: props.profile ?? null,
+      });
     } catch (err) {
       setError(String(err));
+      return;
     }
+    await refresh(configured).catch(() => {});
   }
   const needAuth = createMemo(() => props.mcpServers.filter((s) => s.status === NEEDS_AUTH));
   const down = createMemo(() => props.mcpServers.filter((s) => isBroken(s.status) && s.status !== NEEDS_AUTH));
-  const configOf = (name: string) => configured()?.find((e) => e.name === name);
-  // Declared in a config file but never loaded: pending approval, disabled, or new since the session started.
-  const unloaded = createMemo(() =>
-    (configured() ?? []).filter((e) => !props.mcpServers.some((s) => s.name === e.name)),
-  );
   const connected = () => props.mcpServers.filter((s) => !isBroken(s.status)).length;
   const groups = createMemo(() => skillGroups(props.skills));
   // A session with a cwd is never "empty": even with nothing loaded, the panel
@@ -199,13 +196,129 @@ export default function SessionInfo(props: {
       props.plugins.length === 0,
   );
 
-  const remove = (name: string) => (
-    <Show when={configOf(name)?.scope === "project"}>
+  const remove = (config: () => McpEntry[] | null, name: string) => (
+    <Show when={config()?.find((e) => e.name === name)?.scope === "project"}>
       <Button size="xs" variant="ghost" class={styles.detailsRemove} onClick={() => void removeServer(name)}>
         Remove
       </Button>
     </Show>
   );
+
+  // The section is drawn from the config the panel read, so a failed read can
+  // still draw it with the live servers alone and the reason beside them.
+  const mcpSection = (config: () => McpEntry[] | null, failure?: JSX.Element) => {
+    // Declared in a config file but never loaded: pending approval, disabled, or new since the session started.
+    const unloaded = createMemo(() => (config() ?? []).filter((e) => !props.mcpServers.some((s) => s.name === e.name)));
+    return (
+      <section class={styles.detailsSection}>
+        <div class={styles.detailsHeading}>
+          <span>MCP servers</span>
+          <Show when={props.mcpServers.length + unloaded().length}>
+            {(total) => (
+              <span class={styles.detailsCount}>
+                {connected()} of {total()} connected
+              </span>
+            )}
+          </Show>
+        </div>
+        <For each={props.mcpServers}>
+          {(s) => (
+            <div class={styles.detailsServer}>
+              <div class={styles.detailsRow}>
+                <span
+                  class={[
+                    styles.detailsDot,
+                    {
+                      [styles.detailsDotOk]: !isBroken(s.status),
+                      [styles.detailsDotWarn]: s.status === NEEDS_AUTH,
+                      [styles.detailsDotBad]: isBroken(s.status) && s.status !== NEEDS_AUTH,
+                    },
+                  ]}
+                  aria-hidden="true"
+                />
+                <span class={styles.detailsName}>{s.name}</span>
+                {remove(config, s.name)}
+                {/* A server that declares no tool count must not read as
+                            zero tools, and one with 0 must still say so, so the
+                            guard is on null rather than on truthiness. */}
+                <Show
+                  when={!isBroken(s.status)}
+                  fallback={
+                    <Show
+                      when={s.status === NEEDS_AUTH}
+                      fallback={<span class={styles.sessionInfoBad}>{s.status}</span>}
+                    >
+                      <span class={styles.detailsPill}>Needs sign-in</span>
+                    </Show>
+                  }
+                >
+                  <span class={styles.detailsMuted}>{s.toolCount !== null ? `${s.toolCount} tools` : "Connected"}</span>
+                </Show>
+              </div>
+              <Show when={s.error}>{(e) => <div class={styles.detailsError}>{e()}</div>}</Show>
+            </div>
+          )}
+        </For>
+        <For each={unloaded()}>
+          {(e) => (
+            <div class={styles.detailsRow}>
+              <span class={styles.detailsDot} aria-hidden="true" />
+              <span class={styles.detailsName}>{e.name}</span>
+              {remove(config, e.name)}
+              {/* Only a `.mcp.json` server can be pending, and it is not
+                          connected to until approved. Tori deliberately does not
+                          force-enable it: the approval lives in Claude's own
+                          state file, which we never write. */}
+              <span class={{ [styles.sessionInfoWarn]: e.approval !== "approved" }}>
+                {e.approval === "pending"
+                  ? "pending approval (run `claude` to approve)"
+                  : e.approval === "disabled"
+                    ? "disabled"
+                    : e.scope}
+              </span>
+            </div>
+          )}
+        </For>
+        {failure}
+        <Show when={props.cwd}>
+          <Show when={error()}>{(msg) => <div class={styles.detailsError}>{msg()}</div>}</Show>
+          <Show
+            when={adding()}
+            fallback={
+              <button type="button" class={styles.detailsAdd} onClick={() => setAdding(true)}>
+                <Icon icon={Plus} />
+                <span class={styles.detailsName}>Add server</span>
+                <Tooltip
+                  as="span"
+                  class={styles.detailsCount}
+                  label="Written to this project's .mcp.json, the same file `claude mcp add --scope project` uses."
+                >
+                  .mcp.json
+                </Tooltip>
+              </button>
+            }
+          >
+            <form class={styles.detailsForm} onSubmit={addServer}>
+              <input placeholder="name" value={name()} onInput={(ev) => setName(ev.currentTarget.value)} />
+              <input
+                placeholder="npx -y @scope/server"
+                value={command()}
+                onInput={(ev) => setCommand(ev.currentTarget.value)}
+              />
+              <div class={styles.detailsFormActions}>
+                <Button size="xs" variant="ghost" onClick={() => (setAdding(false), setError(null))}>
+                  Cancel
+                </Button>
+                <Button size="xs" type="submit">
+                  Save
+                </Button>
+              </div>
+            </form>
+          </Show>
+        </Show>
+      </section>
+    );
+  };
 
   return (
     <Show when={!empty()}>
@@ -257,114 +370,21 @@ export default function SessionInfo(props: {
             </Show>
 
             <Show when={props.mcpServers.length || props.cwd}>
-              <section class={styles.detailsSection}>
-                <div class={styles.detailsHeading}>
-                  <span>MCP servers</span>
-                  <Show when={props.mcpServers.length + unloaded().length}>
-                    {(total) => (
-                      <span class={styles.detailsCount}>
-                        {connected()} of {total()} connected
-                      </span>
-                    )}
-                  </Show>
-                </div>
-                <For each={props.mcpServers}>
-                  {(s) => (
-                    <div class={styles.detailsServer}>
-                      <div class={styles.detailsRow}>
-                        <span
-                          class={[
-                            styles.detailsDot,
-                            {
-                              [styles.detailsDotOk]: !isBroken(s.status),
-                              [styles.detailsDotWarn]: s.status === NEEDS_AUTH,
-                              [styles.detailsDotBad]: isBroken(s.status) && s.status !== NEEDS_AUTH,
-                            },
-                          ]}
-                          aria-hidden="true"
-                        />
-                        <span class={styles.detailsName}>{s.name}</span>
-                        {remove(s.name)}
-                        {/* A server that declares no tool count must not read as
-                            zero tools, and one with 0 must still say so, so the
-                            guard is on null rather than on truthiness. */}
-                        <Show
-                          when={!isBroken(s.status)}
-                          fallback={
-                            <Show
-                              when={s.status === NEEDS_AUTH}
-                              fallback={<span class={styles.sessionInfoBad}>{s.status}</span>}
-                            >
-                              <span class={styles.detailsPill}>Needs sign-in</span>
-                            </Show>
-                          }
-                        >
-                          <span class={styles.detailsMuted}>
-                            {s.toolCount !== null ? `${s.toolCount} tools` : "Connected"}
-                          </span>
-                        </Show>
-                      </div>
-                      <Show when={s.error}>{(e) => <div class={styles.detailsError}>{e()}</div>}</Show>
-                    </div>
-                  )}
-                </For>
-                <For each={unloaded()}>
-                  {(e) => (
-                    <div class={styles.detailsRow}>
-                      <span class={styles.detailsDot} aria-hidden="true" />
-                      <span class={styles.detailsName}>{e.name}</span>
-                      {remove(e.name)}
-                      {/* Only a `.mcp.json` server can be pending, and it is not
-                          connected to until approved. Tori deliberately does not
-                          force-enable it: the approval lives in Claude's own
-                          state file, which we never write. */}
-                      <span class={{ [styles.sessionInfoWarn]: e.approval !== "approved" }}>
-                        {e.approval === "pending"
-                          ? "pending approval (run `claude` to approve)"
-                          : e.approval === "disabled"
-                            ? "disabled"
-                            : e.scope}
-                      </span>
-                    </div>
-                  )}
-                </For>
-                <Show when={props.cwd}>
-                  <Show when={error()}>{(msg) => <div class={styles.detailsError}>{msg()}</div>}</Show>
-                  <Show
-                    when={adding()}
-                    fallback={
-                      <button type="button" class={styles.detailsAdd} onClick={() => setAdding(true)}>
-                        <Icon icon={Plus} />
-                        <span class={styles.detailsName}>Add server</span>
-                        <Tooltip
-                          as="span"
-                          class={styles.detailsCount}
-                          label="Written to this project's .mcp.json, the same file `claude mcp add --scope project` uses."
-                        >
-                          .mcp.json
-                        </Tooltip>
-                      </button>
-                    }
-                  >
-                    <form class={styles.detailsForm} onSubmit={addServer}>
-                      <input placeholder="name" value={name()} onInput={(ev) => setName(ev.currentTarget.value)} />
-                      <input
-                        placeholder="npx -y @scope/server"
-                        value={command()}
-                        onInput={(ev) => setCommand(ev.currentTarget.value)}
-                      />
-                      <div class={styles.detailsFormActions}>
-                        <Button size="xs" variant="ghost" onClick={() => (setAdding(false), setError(null))}>
-                          Cancel
-                        </Button>
-                        <Button size="xs" type="submit">
-                          Save
-                        </Button>
-                      </div>
-                    </form>
-                  </Show>
-                </Show>
-              </section>
+              <Errored
+                fallback={(err, reset) =>
+                  mcpSection(
+                    () => null,
+                    <div class={styles.detailsError}>
+                      The MCP config files could not be read: {String(err())}{" "}
+                      <Button size="xs" variant="ghost" onClick={() => reset()}>
+                        Try again
+                      </Button>
+                    </div>,
+                  )
+                }
+              >
+                {mcpSection(configured)}
+              </Errored>
             </Show>
 
             <Show when={props.skills.length}>
