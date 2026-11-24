@@ -1,28 +1,46 @@
-import { createSignal, onSettled } from "solid-js";
+import { Show, action, createOptimistic, createSignal, onSettled } from "solid-js";
 import { GROUPS_KEY, LOG_KEY, SHOTS_KEY } from "../tab";
 import { ConnectionRow, Icon, Row, ShortcutRow } from "./rows";
 
 function Switch(props: { key: string; labelledBy: string }) {
-  const [on, setOn] = createSignal(true);
+  const [stored, setStored] = createSignal(true);
   onSettled(() => {
-    void chrome.storage.local.get(props.key).then((stored) => setOn(stored[props.key] !== false));
+    void chrome.storage.local.get(props.key).then((got) => setStored(got[props.key] !== false));
   });
-  const toggle = () => {
+  const [on, setOn] = createOptimistic(() => stored());
+  const [failed, setFailed] = createSignal<string | null>(null);
+  const toggle = action(function* () {
     const next = !on();
     setOn(next);
-    void chrome.storage.local.set({ [props.key]: next });
-  };
+    try {
+      yield chrome.storage.local.set({ [props.key]: next });
+    } catch (e) {
+      setFailed(`Not saved: ${String(e)}`);
+      return;
+    }
+    setFailed(null);
+    setStored(next);
+  });
   return (
-    <button
-      type="button"
-      role="switch"
-      class="switch"
-      aria-checked={on() ? "true" : "false"}
-      aria-labelledby={props.labelledBy}
-      onClick={toggle}
-    >
-      <span class="knob" />
-    </button>
+    <>
+      <Show when={failed()}>
+        {(why) => (
+          <span class="unset" role="alert">
+            {why()}
+          </span>
+        )}
+      </Show>
+      <button
+        type="button"
+        role="switch"
+        class="switch"
+        aria-checked={on() ? "true" : "false"}
+        aria-labelledby={props.labelledBy}
+        onClick={() => void toggle()}
+      >
+        <span class="knob" />
+      </button>
+    </>
   );
 }
 
