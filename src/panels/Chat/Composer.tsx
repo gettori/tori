@@ -992,7 +992,7 @@ export default function Composer(props: {
   createEffect(placeholderText, (placeholder) => field?.setPlaceholder(placeholder));
   createEffect(
     () => props.skills,
-    (names) => field?.setSkills(names ?? []),
+    (names) => untrack(() => field?.setSkills(names ?? [])),
     { defer: true },
   );
   createEffect(
@@ -1180,10 +1180,11 @@ export default function Composer(props: {
                   attached()
                     .map((b) => tokenOf(b) ?? tileName(b))
                     .join(" ");
-                const row = drag.rowProps(q.id);
+                const id = untrack(() => q.id);
+                const row = drag.rowProps(id);
                 return (
                   <div
-                    ref={popIfNew(`queue:${q.id}`)}
+                    ref={popIfNew(`queue:${id}`)}
                     class={[
                       styles.queueItem,
                       {
@@ -1233,7 +1234,7 @@ export default function Composer(props: {
                     >
                       <For each={attached()}>
                         {(b) => {
-                          const src = thumbSrc(b);
+                          const src = untrack(() => thumbSrc(b));
                           return src ? (
                             <img class={styles.queueThumb} src={src} alt="" />
                           ) : (

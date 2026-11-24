@@ -2710,7 +2710,7 @@ export default function CodeEditor(props: {
   // palette can flip it without any setting moving.
   createEffect(
     () => [...Object.values(editorDefaults()), props.softWrap],
-    () => syncEditorPrefs(),
+    () => untrack(syncEditorPrefs),
     { defer: true },
   );
   // Its own effect rather than a line in the one above: this one reaches every
@@ -2718,7 +2718,7 @@ export default function CodeEditor(props: {
   // for nothing.
   createEffect(
     () => editorDefaults().wordCompletion,
-    () => syncFallbackCompletion(),
+    () => untrack(syncFallbackCompletion),
     { defer: true },
   );
   // Its own effect for the same reason, and one more: switching this on is what
@@ -2726,18 +2726,18 @@ export default function CodeEditor(props: {
   // whitespace toggle rather than folded into the list above.
   createEffect(
     () => editorDefaults().codeLens,
-    () => syncCodeLens(),
+    () => untrack(syncCodeLens),
     { defer: true },
   );
   createEffect(
     () => [editorDefaults().tabSize, editorDefaults().insertSpaces],
-    () => syncIndent(),
+    () => untrack(syncIndent),
     { defer: true },
   );
   // Toggling vim from Settings takes effect where the caret already is, with
   // the file's text and undo history untouched: a compartment reconfigure, not
   // a rebuild.
-  createEffect(vimModeOn, () => syncVim(), { defer: true });
+  createEffect(vimModeOn, () => untrack(syncVim), { defer: true });
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the

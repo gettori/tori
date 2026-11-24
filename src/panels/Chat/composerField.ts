@@ -6,7 +6,7 @@
 // markdown and code highlighting are in `composerFieldRich.ts`, which loads
 // behind a dynamic import and is slotted in when it arrives. Until then the
 // field is a plain editable box, which is all a first keystroke needs.
-import { createRoot, runWithOwner, type Owner } from "solid-js";
+import { createRoot, runWithOwner, untrack, type Owner } from "solid-js";
 import { insert, registerDelegatedRoot, unregisterDelegatedRoot, type JSX } from "@solidjs/web";
 import {
   Annotation,
@@ -98,7 +98,7 @@ export type ComposerField = {
 /** The session's skills by name, for the rich layer to colour a `/skill` named
  *  mid-sentence the way it colours a command at the start. */
 export const skillNames = Facet.define<readonly string[], readonly string[]>({
-  combine: (values) => values.flat(),
+  combine: (values) => untrack(() => values.flat()),
 });
 
 /** Marks a transaction as the composer's own, so it is not reported back as

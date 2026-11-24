@@ -98,7 +98,8 @@ function appended(was: readonly TranscriptRow[], now: readonly TranscriptRow[]):
 // card), and a wrapper would break the list's gap and the anchor's margin.
 function rise(view: JSX.Element): JSX.Element {
   const nodes = children(() => view);
-  for (const node of nodes.toArray()) if (node instanceof HTMLElement) enterOnce(node, patterns.enterRise);
+  for (const node of untrack(() => nodes.toArray()))
+    if (node instanceof HTMLElement) enterOnce(node, patterns.enterRise);
   return <>{nodes()}</>;
 }
 
@@ -409,7 +410,8 @@ export default function MessageList(props: {
     (first) => {
       if (!keep || !scroller || first === keep.first) return;
       const was = keep.first;
-      if (shown().some((it) => it.id === was)) scroller.scrollTop = scroller.scrollHeight - keep.fromBottom;
+      if (untrack(() => shown().some((it) => it.id === was)))
+        scroller.scrollTop = scroller.scrollHeight - keep.fromBottom;
       keep = null;
     },
     { defer: true },
@@ -465,7 +467,7 @@ export default function MessageList(props: {
   createEffect(
     () => shown()[0]?.id,
     () => {
-      if (!loading()) return;
+      if (!untrack(loading)) return;
       clearTimeout(giveUp);
       setLoading(false);
       lookAgain();
@@ -820,7 +822,7 @@ export default function MessageList(props: {
   createEffect(
     () => [shown().length, shown()[shown().length - 1]?.id, tailLength(), untrack(() => props.active)] as const,
     ([, , , active]) => {
-      if (!stuck() || !scroller || active === false) return;
+      if (!untrack(stuck) || !scroller || active === false) return;
       pin();
     },
   );
@@ -1189,8 +1191,8 @@ export default function MessageList(props: {
       </Show>
       <For each={rows()}>
         {(row) => {
-          const view = row.kind === "run" ? <WorkCard run={row} /> : <Row item={row} />;
-          return arrivals().fresh.has(row) ? rise(view) : view;
+          const view = untrack(() => (row.kind === "run" ? <WorkCard run={row} /> : <Row item={row} />));
+          return untrack(() => arrivals().fresh.has(row)) ? rise(view) : view;
         }}
       </For>
       <Show when={props.streaming}>

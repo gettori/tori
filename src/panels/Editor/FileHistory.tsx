@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, For, Show } from "solid-js";
+import { createSignal, createMemo, createEffect, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitStateFor, type LogEntry } from "../../utils/gitActions";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
@@ -84,7 +84,7 @@ export default function FileHistory(props: { workspace: string; file: string }) 
   // checkout. A file save re-reads the *status* only, and leaves this alone.
   createEffect(
     () => [props.workspace, props.file, branch(), aheadBehind()] as const,
-    () => void load(false),
+    () => void untrack(() => load(false)),
   );
 
   function openCommit(sha: string) {

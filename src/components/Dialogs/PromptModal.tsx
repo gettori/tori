@@ -1,4 +1,4 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -25,7 +25,7 @@ export default function PromptModal(props: {
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = createSignal(props.initial ?? "");
+  const [value, setValue] = createSignal(untrack(() => props.initial ?? ""));
   let input: HTMLInputElement | undefined;
 
   function onKeyDown(e: KeyboardEvent) {

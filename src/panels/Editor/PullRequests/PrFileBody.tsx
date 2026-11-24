@@ -24,7 +24,7 @@
 // four-thousand-row diff, and `keyboard: "roving"` answers that directly by
 // giving the hunk one.
 
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../../utils/diffHunks";
 import { buildRows, hunkGaps, type DiffRow, type Gap } from "../../../utils/diffView";
@@ -183,16 +183,14 @@ export default function PrFileBody(props: {
         }
       >
         <For each={gapLines(props.root, props.pr.number, key) ?? []}>
-          {(text) =>
-            props.twoColumn ? (
+          {(text) => (
+            <Show when={props.twoColumn} fallback={<div class={diffRowClasses.line}>{text || " "}</div>}>
               <div class={diffRowClasses.sideRow}>
                 <div class={diffRowClasses.line}>{text || " "}</div>
                 <div class={diffRowClasses.line}>{text || " "}</div>
               </div>
-            ) : (
-              <div class={diffRowClasses.line}>{text || " "}</div>
-            )
-          }
+            </Show>
+          )}
         </For>
       </Show>
     );
@@ -301,7 +299,7 @@ export default function PrFileBody(props: {
       if (why !== "noText") return;
       void (async () => {
         try {
-          await ensurePrHead(props.root, props.pr.number, props.pr.headSha);
+          await untrack(() => ensurePrHead(props.root, props.pr.number, props.pr.headSha));
           const got = await invoke<{ head: number | null; base: number | null }>("git_blob_sizes", {
             projectPath: props.root,
             head: props.pr.headSha,
@@ -378,7 +376,14 @@ export default function PrFileBody(props: {
       </Show>
 
       <Show when={!skip()}>
-        <For each={gaps().filter((g) => g.afterHunk === -1)}>{(gap) => gapRow(gap, `${props.file.path}:-1`)}</For>
+        <For each={gaps().filter((g) => g.afterHunk === -1)}>
+          {(gap) =>
+            gapRow(
+              gap,
+              untrack(() => `${props.file.path}:-1`),
+            )
+          }
+        </For>
         <For each={hunks()}>
           {(hunk, hi) => {
             // Both memoised, and for different reasons. `buildRows` does the
@@ -522,7 +527,12 @@ export default function PrFileBody(props: {
                   )}
                 </Show>
                 <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                  {(gap) => gapRow(gap, `${props.file.path}:${hi()}`)}
+                  {(gap) =>
+                    gapRow(
+                      gap,
+                      untrack(() => `${props.file.path}:${hi()}`),
+                    )
+                  }
                 </For>
               </div>
             );

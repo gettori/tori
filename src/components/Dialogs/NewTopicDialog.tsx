@@ -135,7 +135,7 @@ export default function NewTopicDialog(props: {
   function probeStale(b = branch(), repos = withWorktree()) {
     if (!b) return;
     for (const repoPath of repos) {
-      const have = probes().get(repoPath);
+      const have = untrack(probes).get(repoPath);
       if (have?.branch !== b) probe(repoPath, b);
     }
   }

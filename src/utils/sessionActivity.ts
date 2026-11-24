@@ -61,7 +61,7 @@ export type ForgeUnit = {
 
 const [liveTabs, setLiveTabs] = createSignal<readonly LiveTab[]>([]);
 const [folderOwners, setFolderOwners] = createSignal<Record<string, FolderOwner>>({});
-const [forgeUnits, setForgeUnits] = createSignal<readonly ForgeUnit[]>([]);
+export const [forgeUnits, setForgeUnits] = createSignal<readonly ForgeUnit[]>([]);
 
 /** The tab set, from whoever owns it (App, through the sidebar). */
 export function noteLiveTabs(tabs: readonly LiveTab[]) {

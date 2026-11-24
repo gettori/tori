@@ -32,513 +32,66 @@
       "WIDE_SCOPE_DEPS": 4
     }
   },
-  "src/appDragDrop.test.tsx": {
-    "STRICT_READ_UNTRACKED": 894
-  },
-  "src/appOnePane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 337
-  },
-  "src/appPaneLayout.test.tsx": {
-    "STRICT_READ_UNTRACKED": 66
-  },
-  "src/appPerfBudgets.test.tsx": {
-    "STRICT_READ_UNTRACKED": 585
-  },
-  "src/appPinRules.test.tsx": {
-    "STRICT_READ_UNTRACKED": 313
-  },
-  "src/appShells.test.tsx": {
-    "STRICT_READ_UNTRACKED": 393
-  },
-  "src/appSplits.test.tsx": {
-    "STRICT_READ_UNTRACKED": 887
-  },
-  "src/appSwitchStorm.test.tsx": {
-    "STRICT_READ_UNTRACKED": 269
-  },
-  "src/appTopicSelection.test.tsx": {
-    "STRICT_READ_UNTRACKED": 81
+  "$reasons": {
+    "src/components/Dialog/Dialog.test.tsx": "raised from the test's own code, not app code (first stack frame is the test); not investigated",
+    "src/components/Glide/Glide.test.tsx": "the test's own ref callback reads the row index at Glide.test.tsx:41 to fake layout",
+    "src/panels/Chat/chatSubmit.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Chat/confirmedPick.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Chat/openedChat.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Chat/openingOptions.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Chat/pendingCard.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Chat/queueSteer.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Chat/renderBudget.test.tsx": "the fixture's visibleItems memo reads every item of a 201 turn store transcript",
+    "src/panels/Chat/restoredAcpChat.test.tsx": "autoSend and agentHealth read through chatCompose.ts:485 and agentHealth.ts:158 from a ChatView effect callback; the calling effect was not located, so it is left",
+    "src/panels/Editor/DiffView.test.tsx": "DiffView.tsx:106 is a CodeMirror callback in DiffBufferView reading props.staged, outside Solid's tracking",
+    "src/panels/Editor/pdfToolbar.test.tsx": "the page field at PdfToolbar.tsx:123 is controlled by the viewer's page, and the test moves the page while a typed value is uncommitted; not investigated",
+    "src/panels/ProjectSettings/ProjectSettingsDialog.test.tsx": "agentEnabled.ts:28 and :113 read settings and agents after an await in a caller; not located",
+    "src/panels/ProjectSettings/ToolingCommands.test.tsx": "the same agentEnabled reads after an await as ProjectSettingsDialog.test.tsx",
+    "src/test/solidProbe5117.test.tsx": "upstream #5117 repro, test.fails",
+    "src/test/solidProbe5118.test.tsx": "upstream #5118 repro, test.fails",
+    "src/test/solidProbe5120.test.tsx": "upstream #5120 repro: a memo over 10k store items"
   },
   "src/components/Dialog/Dialog.test.tsx": {
     "NO_OWNER_EFFECT": 1
   },
-  "src/components/Dialogs/AddBranchDialog.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/components/Dialogs/DebugTargetDialog.test.tsx": {
-    "STRICT_READ_UNTRACKED": 18
-  },
-  "src/components/Dialogs/NewTopicDialog.test.tsx": {
-    "STRICT_READ_UNTRACKED": 7
-  },
-  "src/components/Dialogs/SpaceDialog.test.tsx": {
-    "STRICT_READ_UNTRACKED": 18
-  },
   "src/components/Glide/Glide.test.tsx": {
     "STRICT_READ_UNTRACKED": 9
   },
-  "src/components/GroupProjects/GroupProjects.test.tsx": {
-    "STRICT_READ_UNTRACKED": 9
-  },
-  "src/components/IconGrid/IconGrid.test.tsx": {
-    "STRICT_READ_UNTRACKED": 20
-  },
-  "src/components/ProjectIconPicker/ProjectIconPicker.test.tsx": {
-    "STRICT_READ_UNTRACKED": 24
-  },
-  "src/components/Select/Select.test.tsx": {
-    "STRICT_READ_UNTRACKED": 30
-  },
-  "src/components/UsageStrip/UsageCard.test.tsx": {
-    "STRICT_READ_UNTRACKED": 36
-  },
-  "src/panels/Chat/agentTurnCeiling.test.tsx": {
-    "STRICT_READ_UNTRACKED": 32
-  },
   "src/panels/Chat/chatSubmit.test.tsx": {
-    "STRICT_READ_UNTRACKED": 187
+    "STRICT_READ_UNTRACKED": 4
   },
   "src/panels/Chat/confirmedPick.test.tsx": {
-    "STRICT_READ_UNTRACKED": 96
-  },
-  "src/panels/Chat/followEdits.test.tsx": {
-    "STRICT_READ_UNTRACKED": 20
-  },
-  "src/panels/Chat/Markdown.test.tsx": {
-    "STRICT_READ_UNTRACKED": 8
-  },
-  "src/panels/Chat/MessageList.test.tsx": {
-    "STRICT_READ_UNTRACKED": 318
+    "STRICT_READ_UNTRACKED": 2
   },
   "src/panels/Chat/openedChat.test.tsx": {
-    "STRICT_READ_UNTRACKED": 189
+    "STRICT_READ_UNTRACKED": 3
   },
   "src/panels/Chat/openingOptions.test.tsx": {
-    "STRICT_READ_UNTRACKED": 123
-  },
-  "src/panels/Chat/pagedHistory.test.tsx": {
-    "STRICT_READ_UNTRACKED": 656
+    "STRICT_READ_UNTRACKED": 3
   },
   "src/panels/Chat/pendingCard.test.tsx": {
-    "STRICT_READ_UNTRACKED": 148
-  },
-  "src/panels/Chat/PlanCard.test.tsx": {
-    "STRICT_READ_UNTRACKED": 7
+    "STRICT_READ_UNTRACKED": 3
   },
   "src/panels/Chat/queueSteer.test.tsx": {
-    "STRICT_READ_UNTRACKED": 211
-  },
-  "src/panels/Chat/quotaSurfaces.test.tsx": {
-    "STRICT_READ_UNTRACKED": 86
+    "STRICT_READ_UNTRACKED": 2
   },
   "src/panels/Chat/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 247,
     "WIDE_SCOPE_DEPS": 1
   },
   "src/panels/Chat/restoredAcpChat.test.tsx": {
-    "STRICT_READ_UNTRACKED": 253
-  },
-  "src/panels/Chat/resumeAtReset.chat.test.tsx": {
-    "STRICT_READ_UNTRACKED": 146
-  },
-  "src/panels/Chat/resumedPick.test.tsx": {
-    "STRICT_READ_UNTRACKED": 74
-  },
-  "src/panels/Chat/SessionInfo.test.tsx": {
-    "STRICT_READ_UNTRACKED": 10
-  },
-  "src/panels/Editor/activeMember.test.tsx": {
-    "STRICT_READ_UNTRACKED": 25
-  },
-  "src/panels/Editor/blameToggle.test.tsx": {
-    "STRICT_READ_UNTRACKED": 74
-  },
-  "src/panels/Editor/breakpointPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 129
-  },
-  "src/panels/Editor/breakpointSave.test.tsx": {
     "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/CheckpointTimeline.test.tsx": {
-    "STRICT_READ_UNTRACKED": 28
-  },
-  "src/panels/Editor/chromeFixed.test.tsx": {
-    "STRICT_READ_UNTRACKED": 69
-  },
-  "src/panels/Editor/codeActionMenu.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/codeLensPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 528
-  },
-  "src/panels/Editor/conflictBanner.test.tsx": {
-    "STRICT_READ_UNTRACKED": 275
-  },
-  "src/panels/Editor/ConflictView.batch.test.tsx": {
-    "STRICT_READ_UNTRACKED": 64
-  },
-  "src/panels/Editor/ConflictView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 910
-  },
-  "src/panels/Editor/debugAskPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 43
-  },
-  "src/panels/Editor/debugHover.test.tsx": {
-    "STRICT_READ_UNTRACKED": 43
-  },
-  "src/panels/Editor/debugHoverWiring.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/debugPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 17
-  },
-  "src/panels/Editor/debugStackPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 178
-  },
-  "src/panels/Editor/debugTarget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 254
-  },
-  "src/panels/Editor/debugVariablesPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 83
-  },
-  "src/panels/Editor/debugWatchPane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 53
-  },
-  "src/panels/Editor/DiffView.batch.test.tsx": {
-    "STRICT_READ_UNTRACKED": 9
   },
   "src/panels/Editor/DiffView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 210
-  },
-  "src/panels/Editor/editorCommands.test.tsx": {
-    "STRICT_READ_UNTRACKED": 105
-  },
-  "src/panels/Editor/FileTree/FileTree.test.tsx": {
-    "STRICT_READ_UNTRACKED": 8
-  },
-  "src/panels/Editor/focusMember.test.tsx": {
-    "STRICT_READ_UNTRACKED": 133
-  },
-  "src/panels/Editor/hotExit.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/hotExitQuit.test.tsx": {
-    "STRICT_READ_UNTRACKED": 89,
-    "FLUSH_IN_EFFECT_CALLBACK": 4
-  },
-  "src/panels/Editor/hotExitRestore.test.tsx": {
-    "STRICT_READ_UNTRACKED": 192
-  },
-  "src/panels/Editor/lineEndings.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/multiView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/navHistory.test.tsx": {
-    "STRICT_READ_UNTRACKED": 945
-  },
-  "src/panels/Editor/organizeOnSavePane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/outOfRootSave.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/paneKeys.test.tsx": {
-    "STRICT_READ_UNTRACKED": 1384
-  },
-  "src/panels/Editor/panePublish.test.tsx": {
-    "STRICT_READ_UNTRACKED": 516
-  },
-  "src/panels/Editor/paneRekey.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/paneShowingTerminal.test.tsx": {
-    "STRICT_READ_UNTRACKED": 55
-  },
-  "src/panels/Editor/pdfTab.test.tsx": {
-    "STRICT_READ_UNTRACKED": 385
+    "STRICT_READ_UNTRACKED": 6
   },
   "src/panels/Editor/pdfToolbar.test.tsx": {
     "UNCOMMITTED_INPUT_OVERWRITTEN": 1
   },
-  "src/panels/Editor/pdfView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 51
-  },
-  "src/panels/Editor/prefsReconfigure.test.tsx": {
-    "STRICT_READ_UNTRACKED": 453
-  },
-  "src/panels/Editor/previewBuffer.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Editor/PullRequests/PrAllFilesView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 4
-  },
-  "src/panels/Editor/PullRequests/PrDiffView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 4
-  },
-  "src/panels/Editor/PullRequests/PrFileBody.test.tsx": {
-    "STRICT_READ_UNTRACKED": 74
-  },
-  "src/panels/Editor/PullRequests/PullsPanel.test.tsx": {
-    "STRICT_READ_UNTRACKED": 84
-  },
-  "src/panels/Editor/recentFiles.test.tsx": {
-    "STRICT_READ_UNTRACKED": 353
-  },
-  "src/panels/Editor/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 79
-  },
-  "src/panels/Editor/ReviewPanel.test.tsx": {
-    "STRICT_READ_UNTRACKED": 693
-  },
-  "src/panels/Editor/rightModeProblems.test.tsx": {
-    "STRICT_READ_UNTRACKED": 13
-  },
-  "src/panels/Editor/scratchTabs.test.tsx": {
-    "STRICT_READ_UNTRACKED": 223
-  },
-  "src/panels/Editor/SearchPanel.test.tsx": {
-    "STRICT_READ_UNTRACKED": 127
-  },
-  "src/panels/Editor/SessionPanel.test.tsx": {
-    "STRICT_READ_UNTRACKED": 5
-  },
-  "src/panels/Editor/syntheticTab.test.tsx": {
-    "STRICT_READ_UNTRACKED": 395
-  },
-  "src/panels/Editor/tabMenu.test.tsx": {
-    "STRICT_READ_UNTRACKED": 1116
-  },
-  "src/panels/Editor/TodoPanel.test.tsx": {
-    "STRICT_READ_UNTRACKED": 550
-  },
-  "src/panels/Editor/topicRoot.test.tsx": {
-    "STRICT_READ_UNTRACKED": 71
-  },
-  "src/panels/Editor/topicTabIdentity.test.tsx": {
-    "STRICT_READ_UNTRACKED": 94
-  },
-  "src/panels/Editor/transientTabs.test.tsx": {
-    "STRICT_READ_UNTRACKED": 599
-  },
-  "src/panels/Editor/undoOnReopen.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/FirstRun/intro/Intro.test.tsx": {
-    "STRICT_READ_UNTRACKED": 95
-  },
-  "src/panels/Inbox/InboxView.test.tsx": {
-    "STRICT_READ_UNTRACKED": 63
-  },
-  "src/panels/LeftSidebar/addBranchUnit.test.tsx": {
-    "STRICT_READ_UNTRACKED": 72
-  },
-  "src/panels/LeftSidebar/addUnitSelects.test.tsx": {
-    "STRICT_READ_UNTRACKED": 95
-  },
-  "src/panels/LeftSidebar/attachedRow.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/LeftSidebar/branchTruncation.test.tsx": {
-    "STRICT_READ_UNTRACKED": 191
-  },
-  "src/panels/LeftSidebar/convertLayout.test.tsx": {
-    "STRICT_READ_UNTRACKED": 138
-  },
-  "src/panels/LeftSidebar/deleteSpace.test.tsx": {
-    "STRICT_READ_UNTRACKED": 24
-  },
-  "src/panels/LeftSidebar/forgeChipRow.test.tsx": {
-    "STRICT_READ_UNTRACKED": 289
-  },
-  "src/panels/LeftSidebar/globalChats.test.tsx": {
-    "STRICT_READ_UNTRACKED": 71
-  },
-  "src/panels/LeftSidebar/globalProjects.test.tsx": {
-    "STRICT_READ_UNTRACKED": 174
-  },
-  "src/panels/LeftSidebar/globalSwitch.test.tsx": {
-    "STRICT_READ_UNTRACKED": 113
-  },
-  "src/panels/LeftSidebar/groupCards.test.tsx": {
-    "STRICT_READ_UNTRACKED": 340
-  },
-  "src/panels/LeftSidebar/LeftSidebar.test.tsx": {
-    "STRICT_READ_UNTRACKED": 213
-  },
-  "src/panels/LeftSidebar/navigate.test.tsx": {
-    "STRICT_READ_UNTRACKED": 117
-  },
-  "src/panels/LeftSidebar/needsYou.test.tsx": {
-    "STRICT_READ_UNTRACKED": 33
-  },
-  "src/panels/LeftSidebar/prLanes.test.tsx": {
-    "STRICT_READ_UNTRACKED": 87
-  },
-  "src/panels/LeftSidebar/removeBranchUnit.test.tsx": {
-    "STRICT_READ_UNTRACKED": 72
-  },
-  "src/panels/LeftSidebar/removeMember.test.tsx": {
-    "STRICT_READ_UNTRACKED": 18
-  },
-  "src/panels/LeftSidebar/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 26
-  },
-  "src/panels/LeftSidebar/restoreWorktree.test.tsx": {
-    "STRICT_READ_UNTRACKED": 51
-  },
-  "src/panels/LeftSidebar/reviewRequestsRow.test.tsx": {
-    "STRICT_READ_UNTRACKED": 40
-  },
-  "src/panels/LeftSidebar/rollupAttribution.test.tsx": {
-    "STRICT_READ_UNTRACKED": 16
-  },
-  "src/panels/LeftSidebar/sessionAction.test.tsx": {
-    "STRICT_READ_UNTRACKED": 89
-  },
-  "src/panels/LeftSidebar/sessionReach.test.tsx": {
-    "STRICT_READ_UNTRACKED": 190
-  },
-  "src/panels/LeftSidebar/sidebarFilter.test.tsx": {
-    "STRICT_READ_UNTRACKED": 103
-  },
-  "src/panels/LeftSidebar/sidebarOrder.test.tsx": {
-    "STRICT_READ_UNTRACKED": 60
-  },
-  "src/panels/LeftSidebar/sidebarStructure.test.tsx": {
-    "STRICT_READ_UNTRACKED": 741
-  },
-  "src/panels/LeftSidebar/spaceArea.test.tsx": {
-    "STRICT_READ_UNTRACKED": 54
-  },
-  "src/panels/LeftSidebar/spaceHeader.test.tsx": {
-    "STRICT_READ_UNTRACKED": 105
-  },
-  "src/panels/LeftSidebar/spaceSwitch.test.tsx": {
-    "STRICT_READ_UNTRACKED": 140
-  },
-  "src/panels/LeftSidebar/spaceTopics.test.tsx": {
-    "STRICT_READ_UNTRACKED": 177
-  },
-  "src/panels/LeftSidebar/stackGroup.test.tsx": {
-    "STRICT_READ_UNTRACKED": 68
-  },
-  "src/panels/LeftSidebar/topicActions.test.tsx": {
-    "STRICT_READ_UNTRACKED": 16
-  },
-  "src/panels/LeftSidebar/topicChip.test.tsx": {
-    "STRICT_READ_UNTRACKED": 128
-  },
-  "src/panels/LeftSidebar/topicDeselect.test.tsx": {
-    "STRICT_READ_UNTRACKED": 36
-  },
-  "src/panels/LeftSidebar/TopicItem.test.tsx": {
-    "STRICT_READ_UNTRACKED": 28
-  },
-  "src/panels/LeftSidebar/TopicList.test.tsx": {
-    "STRICT_READ_UNTRACKED": 59
-  },
-  "src/panels/LeftSidebar/topicSelect.test.tsx": {
-    "STRICT_READ_UNTRACKED": 16
-  },
-  "src/panels/LeftSidebar/viewMenu.test.tsx": {
-    "STRICT_READ_UNTRACKED": 40
-  },
   "src/panels/ProjectSettings/ProjectSettingsDialog.test.tsx": {
-    "STRICT_READ_UNTRACKED": 66,
     "UNTRACKED_READ_AFTER_AWAIT": 15
   },
   "src/panels/ProjectSettings/ToolingCommands.test.tsx": {
-    "STRICT_READ_UNTRACKED": 29,
     "UNTRACKED_READ_AFTER_AWAIT": 9
-  },
-  "src/panels/Settings/editorSection.test.tsx": {
-    "STRICT_READ_UNTRACKED": 369
-  },
-  "src/panels/Settings/notificationRows.test.tsx": {
-    "STRICT_READ_UNTRACKED": 205
-  },
-  "src/panels/Settings/panes/AppearancePane/themePack.test.tsx": {
-    "STRICT_READ_UNTRACKED": 6
-  },
-  "src/panels/Settings/panes/AutopilotPane/ProjectContract.test.tsx": {
-    "STRICT_READ_UNTRACKED": 42
-  },
-  "src/panels/Settings/panes/AutopilotPane/ProjectContractEditor.test.tsx": {
-    "STRICT_READ_UNTRACKED": 7
-  },
-  "src/panels/Settings/panes/IntegrationsPane/ForgeSection.test.tsx": {
-    "STRICT_READ_UNTRACKED": 256
-  },
-  "src/panels/Settings/panes/LanguagesPane/LspSection.test.tsx": {
-    "STRICT_READ_UNTRACKED": 20
-  },
-  "src/panels/Settings/panes/ProjectsPane/executionPolicy.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Settings/panes/RemotePane/RemotePane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 1
-  },
-  "src/panels/Settings/paneSelects.test.tsx": {
-    "STRICT_READ_UNTRACKED": 72
-  },
-  "src/panels/Settings/panesSection.test.tsx": {
-    "STRICT_READ_UNTRACKED": 82
-  },
-  "src/panels/Settings/prefsCommands.test.tsx": {
-    "STRICT_READ_UNTRACKED": 41
-  },
-  "src/panels/Settings/readAloudRows.test.tsx": {
-    "STRICT_READ_UNTRACKED": 12
-  },
-  "src/panels/Settings/remotePane.test.tsx": {
-    "STRICT_READ_UNTRACKED": 86
-  },
-  "src/panels/Settings/settingsAxe.test.tsx": {
-    "STRICT_READ_UNTRACKED": 246
-  },
-  "src/panels/Settings/settingsFilter.test.tsx": {
-    "STRICT_READ_UNTRACKED": 781
-  },
-  "src/panels/Settings/settingsPanel.test.tsx": {
-    "STRICT_READ_UNTRACKED": 2250
-  },
-  "src/panels/Terminal/commandLifecycle.test.tsx": {
-    "STRICT_READ_UNTRACKED": 99
-  },
-  "src/panels/Terminal/commandTabs.test.tsx": {
-    "STRICT_READ_UNTRACKED": 57
-  },
-  "src/panels/Terminal/newTabControl.test.tsx": {
-    "STRICT_READ_UNTRACKED": 158
-  },
-  "src/panels/Terminal/paneKeys.test.tsx": {
-    "STRICT_READ_UNTRACKED": 33
-  },
-  "src/panels/Terminal/taskTabs.test.tsx": {
-    "STRICT_READ_UNTRACKED": 3
-  },
-  "src/panels/Terminal/terminalHistory.test.tsx": {
-    "STRICT_READ_UNTRACKED": 15
-  },
-  "src/panels/Terminal/terminalTabStrip.test.tsx": {
-    "STRICT_READ_UNTRACKED": 94
-  },
-  "src/panels/Terminal/topicTabIdentity.test.tsx": {
-    "STRICT_READ_UNTRACKED": 22
-  },
-  "src/panels/Terminal/topicWorkspace.test.tsx": {
-    "STRICT_READ_UNTRACKED": 33
-  },
-  "src/tabs/restoreCoexist.test.tsx": {
-    "STRICT_READ_UNTRACKED": 757
-  },
-  "src/tabs/unifiedTabStrip.test.tsx": {
-    "STRICT_READ_UNTRACKED": 70
-  },
-  "src/tabs/workspaceScope.test.tsx": {
-    "STRICT_READ_UNTRACKED": 61
   },
   "src/test/solidProbe5117.test.tsx": {
     "ASYNC_OUTSIDE_LOADING_BOUNDARY": 1,
@@ -549,14 +102,5 @@
   },
   "src/test/solidProbe5120.test.tsx": {
     "HUGE_FAN_IN": 4
-  },
-  "src/utils/remoteSync.test.tsx": {
-    "STRICT_READ_UNTRACKED": 30
-  },
-  "src/utils/worktreeCleanup.test.tsx": {
-    "STRICT_READ_UNTRACKED": 20
-  },
-  "src/panels/Editor/FileTree/renderBudget.test.tsx": {
-    "STRICT_READ_UNTRACKED": 1
   }
 }

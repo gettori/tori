@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
 import SegmentedControl from "../../../../components/SegmentedControl/SegmentedControl";
@@ -60,7 +60,7 @@ export default function ProjectContract(props: {
   createEffect(
     () => [props.project, JSON.stringify(props.contract.issues)],
     () => {
-      discard();
+      untrack(discard);
       setChoosing(false);
     },
   );

@@ -14,8 +14,10 @@ function shrinkLedger(modules) {
     }
   }
   const sorted = Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)));
-  // `$dev` is recorded from a live app run, which a test run cannot re-measure.
-  writeFileSync(LEDGER, `${JSON.stringify({ $dev: old.$dev, ...sorted }, null, 2)}\n`);
+  // `$dev` is recorded from a live app run, which a test run cannot re-measure,
+  // and `$reasons` is written by hand.
+  const kept = Object.fromEntries(Object.entries(old).filter(([key]) => key.startsWith("$")));
+  writeFileSync(LEDGER, `${JSON.stringify({ ...kept, ...sorted }, null, 2)}\n`);
 }
 
 export default class SolidDiagnosticsReporter {

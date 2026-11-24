@@ -664,6 +664,17 @@ describe("conflicts", () => {
     await waitFor(() => expect(screen.queryByText("Conflicts")).toBeNull());
     expect(screen.getByText("Staged Changes")).toBeTruthy();
   });
+
+  it("keeps the in-progress count in step with the conflicts", async () => {
+    statusRows = [CONFLICT];
+    render(() => <ReviewPanel root="/proj" selected={null} />);
+    await waitFor(() => expect(screen.getByText(/\(1 conflict\)/)).toBeTruthy());
+
+    statusRows = [CONFLICT, { ...CONFLICT, path: "src/d.ts" }];
+    await refreshStatus("/proj");
+
+    await waitFor(() => expect(screen.getByText(/\(2 conflicts\)/)).toBeTruthy());
+  });
 });
 
 describe("discard", () => {

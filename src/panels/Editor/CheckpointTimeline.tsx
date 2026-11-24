@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, onSettled, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, onSettled, onCleanup, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -333,7 +333,7 @@ export default function CheckpointTimeline(props: {
   // The worktree's other chats, so a file more than one of them wrote is
   // marked instead of being silently attributed to this one.
   const othersThan = (sessionId: string) =>
-    chatsInFolder(props.folderPath ?? "")
+    untrack(() => chatsInFolder(props.folderPath ?? ""))
       .map((c) => c.sessionId)
       .filter((id) => id !== sessionId);
 
@@ -351,8 +351,8 @@ export default function CheckpointTimeline(props: {
 
   async function loadFiles() {
     const mine = ++filesRead;
-    const target = open();
-    const root = props.root;
+    const target = untrack(open);
+    const root = untrack(() => props.root);
     if (!target || !root) {
       setTurnFiles([]);
       setSinceFiles([]);

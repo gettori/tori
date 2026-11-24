@@ -1032,7 +1032,7 @@ function RootBody(props: {
   // rows would answer a question nobody asked. `list_project_files` already
   // respects .gitignore, and is read once per root and cached.
   async function ensureFileList(force = false) {
-    if (!force && allFiles() !== null) return;
+    if (!force && untrack(allFiles) !== null) return;
     try {
       setAllFiles(await invoke<string[]>("list_project_files", { projectPath: props.path }));
     } catch {

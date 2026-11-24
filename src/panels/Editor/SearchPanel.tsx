@@ -384,7 +384,7 @@ export default function SearchPanel(props: {
    *  member can honour is disabled from the start rather than after a search. An
    *  empty query returns capabilities without searching anything. */
   async function probeCapabilities() {
-    const roots = searchRoots();
+    const roots = untrack(searchRoots);
     probeGen++;
     if (!roots.length) return setCaps({ backend: "", unsupported: [] });
     const gen = probeGen;
@@ -392,7 +392,7 @@ export default function SearchPanel(props: {
       roots.map((r) =>
         // A failed probe must not disable controls; that root simply reports no
         // capabilities and a real search says what went wrong.
-        invoke<SearchResult>("grep_project", grepArgs(r.path, "", options(), 0)).catch(() => null),
+        invoke<SearchResult>("grep_project", grepArgs(r.path, "", untrack(options), 0)).catch(() => null),
       ),
     );
     if (gen !== probeGen) return;

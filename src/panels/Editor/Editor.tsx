@@ -657,7 +657,7 @@ export default function Editor(props: {
    */
   const shownFileId = () => paneFileId(focusedEditorPane());
   function setTabs(next: FileTab[] | ((prev: FileTab[]) => FileTab[])) {
-    const key = ws();
+    const key = untrack(ws);
     setTabsByWs((prev) => {
       const held = prev[key] ?? [];
       const list = typeof next === "function" ? next(held) : next;
@@ -851,7 +851,7 @@ export default function Editor(props: {
    *  reason: `tori://` is not a path any picker can offer. */
   function noteTouch(path: string, kind: Touch) {
     if (isSyntheticId(path)) return;
-    setFrecency((s) => note(s, ws(), path, kind, Date.now()));
+    setFrecency((s) => note(s, untrack(ws), path, kind, Date.now()));
   }
 
   /**
@@ -1883,7 +1883,7 @@ export default function Editor(props: {
 
   /** This workspace's real-file tabs; synthetic views are not restorable state. */
   function openFileTabs(w: string): FileTab[] {
-    return (tabsByWs()[w] ?? []).filter((t) => !isSyntheticId(t.path));
+    return (untrack(tabsByWs)[w] ?? []).filter((t) => !isSyntheticId(t.path));
   }
 
   function fileRestore(w: string): Promise<void> {
@@ -2199,7 +2199,7 @@ export default function Editor(props: {
     // A breakpoint in an unsaved buffer names a line the adapter has never seen,
     // so it waits. The clean edge is the moment it can be armed, and it arrives
     // after the on-save pipeline has finished moving lines around.
-    noteBufferDirty(ws(), path, isDirty);
+    noteBufferDirty(untrack(ws), path, isDirty);
   }
 
   // A space is being deleted: force-close every open tab rooted under it, without
@@ -3747,7 +3747,7 @@ export default function Editor(props: {
       <Show when={promptReq()}>
         <PromptModal
           title={promptReq()!.title}
-          initial={promptReq()!.initial}
+          initial={untrack(() => promptReq()!.initial)}
           onSubmit={(v) => resolvePrompt(v)}
           onCancel={() => resolvePrompt(null)}
         />

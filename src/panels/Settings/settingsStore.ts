@@ -2,7 +2,7 @@
 // backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
-import { createMemo, createSignal, createStore, flush, getOwner } from "solid-js";
+import { createMemo, createSignal, createStore, flush, getOwner, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { createLent } from "../../lib/lent";
 import { listen } from "@tauri-apps/api/event";
@@ -841,10 +841,10 @@ export function chatPrefs(projectPath: string): ChatPrefs {
  * a live chat - the pick itself already took effect.
  */
 export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
-  const next: Settings = {
+  const next: Settings = untrack(() => ({
     ...settings,
     chat: { ...settings.chat, [projectPath]: { ...chatPrefs(projectPath), ...prefs } },
-  };
+  }));
   void saveSettings(next).catch(() => {});
 }
 
