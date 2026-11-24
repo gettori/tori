@@ -1,5 +1,5 @@
-import { For, Show, createSignal } from "solid-js";
-import { createFetchState } from "../../src/lib/fetchState";
+import { Errored, For, Loading, Show, createMemo, createSignal } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import AskSheet, { type Ask } from "./AskSheet";
 import type { RemoteClient } from "./remote";
 import styles from "./shell.module.css";
@@ -22,16 +22,39 @@ function DiffText(props: { text: string }) {
   );
 }
 
+function Failed(props: { error: unknown; retry: () => void }): JSX.Element {
+  return (
+    <p class={styles.banner}>
+      {String(props.error)}{" "}
+      <button class={styles.value} onClick={() => props.retry()}>
+        Try again
+      </button>
+    </p>
+  );
+}
+
+function DiffPane(props: { client: RemoteClient; id: string; shown: Shown }) {
+  const diff = createMemo(() =>
+    props.client.request<Diff>("checkpoint.diff", { id: props.id, turn: props.shown.turn, to: props.shown.to }),
+  );
+  return (
+    <Errored fallback={(err, reset) => <Failed error={err()} retry={reset} />}>
+      <Loading fallback={<p class={styles.empty}>Loading</p>}>
+        <Show when={diff().diff} fallback={<p class={styles.empty}>No file changes</p>}>
+          <DiffText text={diff().diff} />
+        </Show>
+      </Loading>
+    </Errored>
+  );
+}
+
 export default function ChangesSheet(props: { client: RemoteClient; id: string; onDone: () => void }) {
-  const [list] = createFetchState(() =>
+  const list = createMemo(() =>
     props.client
       .request<Checkpoint[]>("checkpoints.list", { id: props.id })
       .then((rows) => rows.filter((row) => row.kind === "")),
   );
   const [shown, setShown] = createSignal<Shown | null>(null);
-  const [diff] = createFetchState(shown, (s) =>
-    props.client.request<Diff>("checkpoint.diff", { id: props.id, turn: s.turn, to: s.to }),
-  );
   const [ask, setAsk] = createSignal<Ask | null>(null);
   const rewind = (turn: number) =>
     setAsk({
@@ -43,7 +66,7 @@ export default function ChangesSheet(props: { client: RemoteClient; id: string; 
       run: () => props.client.request("checkpoint.revert", { id: props.id, turn }).then(() => setShown(null)),
     });
   const last = () => {
-    const rows = list() ?? [];
+    const rows = list();
     return rows[rows.length - 1]?.turn;
   };
   return (
@@ -58,59 +81,51 @@ export default function ChangesSheet(props: { client: RemoteClient; id: string; 
           </button>
         </header>
         <div class={styles.sheetBody}>
-          <Show when={list.error || diff.error}>
-            <p class={styles.banner}>{String(list.error ?? diff.error)}</p>
-          </Show>
           <Show
             when={shown()}
             fallback={
-              <ul class={styles.group}>
-                <Show when={last()}>
-                  {(to) => (
-                    <li>
-                      <button
-                        class={`${styles.item} ${styles.setting}`}
-                        onClick={() => setShown({ title: "All changes", turn: 1, to: to() })}
-                      >
-                        <span class={styles.text}>All changes</span>
-                      </button>
-                    </li>
-                  )}
-                </Show>
-                <For
-                  each={list() ?? []}
-                  fallback={<li class={styles.empty}>{list.loading ? "Loading" : "No changes recorded"}</li>}
-                >
-                  {(row) => (
-                    <li>
-                      <div class={`${styles.item} ${styles.setting}`}>
-                        <button
-                          class={styles.text}
-                          onClick={() => setShown({ title: `Turn ${row.turn}`, turn: row.turn })}
-                        >
-                          Turn {row.turn}
-                          <span class={styles.meta}>
-                            {" "}
-                            {row.file_count} {row.file_count === 1 ? "file" : "files"}
-                          </span>
-                        </button>
-                        <button class={styles.value} onClick={() => rewind(row.turn)}>
-                          Rewind
-                        </button>
-                      </div>
-                    </li>
-                  )}
-                </For>
-              </ul>
+              <Errored fallback={(err, reset) => <Failed error={err()} retry={reset} />}>
+                <Loading fallback={<p class={styles.empty}>Loading</p>}>
+                  <ul class={styles.group}>
+                    <Show when={last()}>
+                      {(to) => (
+                        <li>
+                          <button
+                            class={`${styles.item} ${styles.setting}`}
+                            onClick={() => setShown({ title: "All changes", turn: 1, to: to() })}
+                          >
+                            <span class={styles.text}>All changes</span>
+                          </button>
+                        </li>
+                      )}
+                    </Show>
+                    <For each={list()} fallback={<li class={styles.empty}>No changes recorded</li>}>
+                      {(row) => (
+                        <li>
+                          <div class={`${styles.item} ${styles.setting}`}>
+                            <button
+                              class={styles.text}
+                              onClick={() => setShown({ title: `Turn ${row.turn}`, turn: row.turn })}
+                            >
+                              Turn {row.turn}
+                              <span class={styles.meta}>
+                                {" "}
+                                {row.file_count} {row.file_count === 1 ? "file" : "files"}
+                              </span>
+                            </button>
+                            <button class={styles.value} onClick={() => rewind(row.turn)}>
+                              Rewind
+                            </button>
+                          </div>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Loading>
+              </Errored>
             }
           >
-            <Show when={diff()} fallback={<p class={styles.empty}>Loading</p>}>
-              {(d) => (
-                <Show when={d().diff} fallback={<p class={styles.empty}>No file changes</p>}>
-                  <DiffText text={d().diff} />
-                </Show>
-              )}
-            </Show>
+            {(s) => <DiffPane client={props.client} id={props.id} shown={s()} />}
           </Show>
         </div>
       </section>

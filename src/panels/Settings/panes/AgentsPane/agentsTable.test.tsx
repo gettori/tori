@@ -74,9 +74,11 @@ async function mount(
   rows = [row(), notInstalled("copilot", "Copilot")],
   counts: Record<string, number> = { claude: 2 },
   enabled: Record<string, boolean> = { claude: true, copilot: true },
+  sweep?: () => Promise<unknown>,
 ) {
   invoked.mockReset();
   invoked.mockImplementation(async (cmd: string, args?: unknown) => {
+    if (cmd === "agent_health" && sweep) return sweep();
     if (cmd === "agent_health" || cmd === "refresh_agent_health") return rows;
     // The resolved adapters, because the row's note reads the chat transport
     // and the fallback list deliberately carries none.
@@ -268,6 +270,49 @@ describe("the agents table", () => {
   it("opens no card when nobody asked", async () => {
     const r = await mount();
     await r.findByText("Ready");
+    expect(r.container.querySelector('[data-agent="copilot"]')).not.toBeNull();
+  });
+});
+
+describe("the agents table's health sweep", () => {
+  beforeEach(() => invoked.mockReset());
+
+  function hold() {
+    let resolve!: (value: unknown) => void;
+    const promise = new Promise((yes) => (resolve = yes));
+    return { promise, resolve };
+  }
+  const mountWith = (sweep: () => Promise<unknown>) => mount(undefined, undefined, undefined, sweep);
+  const sweeps = () => invoked.mock.calls.filter((c) => c[0] === "agent_health").length;
+
+  it("paints the rows as checking until the sweep answers", async () => {
+    const sweep = hold();
+    const r = await mountWith(() => sweep.promise);
+    await waitFor(() => expect(r.container.querySelector('[data-agent="claude"]')).not.toBeNull());
+    expect(cell(r.container, "claude", styles.agentState)).toBe("Checking");
+
+    sweep.resolve([row(), notInstalled("copilot", "Copilot")]);
+    expect(await r.findByText("Ready")).toBeTruthy();
+  });
+
+  it("keeps the verdicts while Check again asks", async () => {
+    let next: Promise<unknown> = Promise.resolve([row(), notInstalled("copilot", "Copilot")]);
+    const r = await mountWith(() => next);
+    await r.findByText("Ready");
+
+    const again = hold();
+    next = again.promise;
+    fireEvent.click(await r.findByLabelText("Check again"));
+    await waitFor(() => expect(sweeps()).toBeGreaterThan(1));
+    expect(r.getByText("Ready")).toBeTruthy();
+
+    again.resolve([row({ status: "notFound" }), notInstalled("copilot", "Copilot")]);
+    await waitFor(() => expect(r.queryByText("Ready")).toBeNull());
+  });
+
+  it("says the sweep failed above rows that still list every agent", async () => {
+    const r = await mountWith(() => Promise.reject("sweep died"));
+    expect(await r.findByText(/Could not check agent CLIs: sweep died/)).toBeTruthy();
     expect(r.container.querySelector('[data-agent="copilot"]')).not.toBeNull();
   });
 });

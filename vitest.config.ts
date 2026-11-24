@@ -48,7 +48,7 @@ export default defineConfig({
         test: {
           name: "dom",
           environment: "jsdom",
-          include: ["src/**/*.test.tsx", "mobile/src/**/*.test.tsx"],
+          include: ["src/**/*.test.tsx", "mobile/src/**/*.test.tsx", "extension/src/**/*.test.tsx"],
           // `@testing-library/jest-dom` is a devDependency for one reason, and
           // it is not that any test uses its matchers. @solidjs/vite-plugin has an
           // optional peer on it, and when that peer resolves the plugin appends

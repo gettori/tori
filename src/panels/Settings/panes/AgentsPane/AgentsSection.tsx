@@ -1,5 +1,15 @@
-import { For, Show, Switch, Match, createEffect, createMemo, createSignal, onSettled, refresh } from "solid-js";
-import { createFetchState } from "../../../../lib/fetchState";
+import {
+  For,
+  Show,
+  Switch,
+  Match,
+  createDeferred,
+  createEffect,
+  createMemo,
+  createSignal,
+  onSettled,
+  refresh,
+} from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw } from "../../../../components/Icon/icons";
 import Icon from "../../../../components/Icon/Icon";
@@ -271,8 +281,15 @@ function orderRows(rows: CardRow[]): CardRow[] {
 }
 
 export default function AgentsSection(props: { projectRoot?: string | null }) {
-  const [health, { refetch }] = createFetchState(() => invoke<AgentHealth[]>("agent_health"));
-  onPacksChanged("agents", () => void reloadAdapters().then(() => refetch()));
+  const health = createDeferred<{ rows: AgentHealth[]; failed?: { error: unknown } } | undefined>(
+    () =>
+      invoke<AgentHealth[]>("agent_health").then(
+        (rows) => ({ rows: Array.isArray(rows) ? rows : [] }),
+        (error) => ({ rows: [], failed: { error } }),
+      ),
+    { loadingValue: undefined },
+  );
+  onPacksChanged("agents", () => void reloadAdapters().then(() => refresh(health)));
   // Counts come from the stored accounts file, no subprocess behind them, so
   // fetching on every open is as cheap as the read it is.
   const accountCounts = createMemo<Record<string, number> | undefined>(
@@ -285,10 +302,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
 
   // Guarded rather than defaulted: `agent_health` is an IPC call, and a reply
   // that is not a list must empty the list rather than throw through it.
-  const all = () => {
-    const h = health();
-    return Array.isArray(h) ? h : [];
-  };
+  const all = () => health()?.rows ?? [];
   // Joined from the adapters, not mapped from the sweep: the adapters are the
   // list, and health decorates whichever rows it has answered for. That is
   // what lets the cards paint before a single subprocess has run.
@@ -362,7 +376,7 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
     setRechecking(true);
     try {
       await refreshAgentHealth();
-      await refetch();
+      await refresh(health);
     } finally {
       setRechecking(false);
     }
@@ -442,8 +456,8 @@ export default function AgentsSection(props: { projectRoot?: string | null }) {
             {/* The failure is a note above the rows rather than a screen of
                 its own: the list is real either way, and the rows degrade to
                 their unswept state, which already claims nothing. */}
-            <Show when={health.error}>
-              <div class={styles.note}>Could not check agent CLIs: {String(health.error)}</div>
+            <Show when={health()?.failed}>
+              {(failed) => <div class={styles.note}>Could not check agent CLIs: {String(failed().error)}</div>}
             </Show>
             <div class={styles.agentTable}>
               <div class={styles.agentTableHead}>

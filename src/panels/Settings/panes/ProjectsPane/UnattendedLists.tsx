@@ -1,4 +1,4 @@
-import { createMemo, Show } from "solid-js";
+import { createMemo, Errored, Loading, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import { Group, Row, rowLabelId, type PaneProps } from "../../components/paneKit";
@@ -16,17 +16,30 @@ function ListRow(props: PaneProps & { id: string; label: string; key: keyof Unat
   const edited = () => (settings.unattended?.[props.key] ?? null) !== null;
   return (
     <Row {...props} stack>
-      <textarea
-        class={styles.listField}
-        aria-labelledby={rowLabelId(props.id)}
-        rows={6}
-        spellcheck="false"
-        value={list().join("\n")}
-        onChange={(e) => void setUnattended({ [props.key]: lines(e.currentTarget.value) })}
-      />
-      <Show when={edited()}>
-        <Button onClick={() => void setUnattended({ [props.key]: null })}>Reset to defaults</Button>
-      </Show>
+      <Errored
+        fallback={(err, reset) => (
+          <div class={styles.note}>
+            The default list could not be read: {String(err())}{" "}
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
+          </div>
+        )}
+      >
+        <Loading fallback={<div class={styles.note}>Reading the default list...</div>}>
+          <textarea
+            class={styles.listField}
+            aria-labelledby={rowLabelId(props.id)}
+            rows={6}
+            spellcheck="false"
+            value={list().join("\n")}
+            onChange={(e) => void setUnattended({ [props.key]: lines(e.currentTarget.value) })}
+          />
+          <Show when={edited()}>
+            <Button onClick={() => void setUnattended({ [props.key]: null })}>Reset to defaults</Button>
+          </Show>
+        </Loading>
+      </Errored>
     </Row>
   );
 }
@@ -34,11 +47,7 @@ function ListRow(props: PaneProps & { id: string; label: string; key: keyof Unat
 /** What a session nobody is watching may not run, and where a boxed session may
  *  reach. One list for every project; the level is set per project. */
 export default function UnattendedLists(props: PaneProps) {
-  // Catches inside: an uncaught rejection would halt the reactive system.
-  const defaults = createMemo<Unattended | undefined>(
-    () => invoke<Unattended>("unattended_defaults").catch(() => undefined),
-    { loadingValue: undefined },
-  );
+  const defaults = createMemo(() => invoke<Unattended>("unattended_defaults"));
   return (
     <Group {...props} title="Unattended sessions" ids={["unattended-deny", "unattended-domains"]}>
       <ListRow
@@ -46,14 +55,14 @@ export default function UnattendedLists(props: PaneProps) {
         id="unattended-deny"
         label="Never run unattended"
         key="deny"
-        defaults={defaults()?.deny ?? []}
+        defaults={defaults().deny ?? []}
       />
       <ListRow
         {...props}
         id="unattended-domains"
         label="Allowed domains when boxed"
         key="allowedDomains"
-        defaults={defaults()?.allowedDomains ?? []}
+        defaults={defaults().allowedDomains ?? []}
       />
     </Group>
   );

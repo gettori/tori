@@ -3,7 +3,7 @@ import { render, screen, waitFor, cleanup, fireEvent } from "../../test/harness"
 import type { CatalogRow, InstallNext } from "../../utils/packs";
 
 let calls: [string, unknown][] = [];
-let resolved: CatalogRow | Error;
+let resolved: CatalogRow | Error | Promise<CatalogRow>;
 let next: InstallNext = { step: "nothing" };
 
 const row = (over: Partial<CatalogRow["pack"]> = {}): CatalogRow => ({
@@ -127,5 +127,28 @@ describe("PackInstallDialog", () => {
     expect(taken).toBe(false);
     expect(toasts).toEqual(["Finish the open pack install before csharp."]);
     expect(calls.filter(([cmd]) => cmd === "packs_resolve")).toHaveLength(1);
+  });
+});
+
+describe("PackInstallDialog's catalog read", () => {
+  it("asks the catalog with Install held, then names the pack", async () => {
+    let land!: (value: CatalogRow) => void;
+    resolved = new Promise<CatalogRow>((yes) => (land = yes));
+    await open();
+    expect(screen.getByText("Asking the catalog...")).toBeTruthy();
+    expect(installButton().disabled).toBe(true);
+    expect(screen.getByRole("dialog").textContent).toContain("Install nord");
+
+    land(row());
+    await waitFor(() => expect(installButton().disabled).toBe(false));
+    expect(screen.getByRole("dialog").textContent).toContain("Install Nord");
+    expect(screen.queryByText("Asking the catalog...")).toBeNull();
+  });
+
+  it("says why it will not install a pack the catalog refused, with Install held", async () => {
+    resolved = new Error("no pack nord in the catalog");
+    await open();
+    expect(await screen.findByText(/Tori will not install this pack: Error: no pack nord in the catalog/)).toBeTruthy();
+    expect(installButton().disabled).toBe(true);
   });
 });

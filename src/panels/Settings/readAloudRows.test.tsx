@@ -10,7 +10,8 @@ import { pointerClick } from "../../test/menus";
 import ChatPane from "./panes/ChatPane/ChatPane";
 import { loadWorkspaceSettings, settings } from "./settingsStore";
 import { unstubbed } from "../../test/settingsBackend";
-import { OPEN_JOB, onWith, type OpenJob } from "../../utils/events";
+import { OPEN_JOB, TOAST, onWith, type OpenJob, type ToastEvent } from "../../utils/events";
+import { setSpeech } from "./components/paneKit";
 import { runExitEffects } from "../../utils/jobExit";
 
 const voice = { installed: true, espeak: false, brew: true };
@@ -117,5 +118,47 @@ describe("the Read aloud settings group", () => {
     render(() => <ChatPane {...paneProps} />);
     expect(await screen.findByText(/Homebrew is not on this Mac, so install espeak-ng yourself\./)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Install espeak-ng" })).toBeNull();
+  });
+});
+
+describe("the Voice picker's list of downloaded voices", () => {
+  function hold() {
+    let resolve!: (value: typeof VOICES) => void;
+    const promise = new Promise<typeof VOICES>((yes) => (resolve = yes));
+    return { promise, resolve };
+  }
+  const answer = (voices: () => Promise<unknown>) => {
+    const base = invoke.getMockImplementation()!;
+    invoke.mockImplementation(async (cmd: string, args: Record<string, unknown>) =>
+      cmd === "speech_voices" ? voices() : base(cmd, args),
+    );
+  };
+  const picked = () => screen.getByLabelText("Voice").textContent ?? "";
+
+  it("does not show a saved voice as the default while the list loads", async () => {
+    const list = hold();
+    answer(() => list.promise);
+    await setSpeech({ voice: "bf_emma" });
+    render(() => <ChatPane {...paneProps} />);
+    await macrotask();
+    expect(picked()).not.toContain("Heart");
+
+    list.resolve(VOICES);
+    await macrotask();
+    expect(picked()).toContain("Emma (en-GB)");
+  });
+
+  it("offers the default alone, and says so, when the list cannot be read", async () => {
+    answer(() => Promise.reject("no voices file"));
+    const toasts: string[] = [];
+    const off = onWith<ToastEvent>(TOAST, (t) => toasts.push(t.message));
+    render(() => <ChatPane {...paneProps} />);
+    await macrotask();
+    expect(toasts).toContain("Couldn't list the downloaded voices, so only Heart is offered.");
+
+    pointerClick(screen.getByLabelText("Voice"));
+    await screen.findByRole("listbox");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Heart (en-US)"]);
+    off();
   });
 });
