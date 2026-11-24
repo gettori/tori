@@ -473,3 +473,126 @@ describe("the way back into a subagent's lane", () => {
     expect(container.textContent).not.toContain("Read what this subagent did");
   });
 });
+
+function held<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+async function answer(command: string, reply: () => Promise<unknown>) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  vi.mocked(invoke).mockImplementation(async (c) => (c === command ? reply() : []));
+}
+
+describe("the on-disk comparison", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const edit = card({
+    name: "Edit",
+    toolKind: "edit",
+    input: { file_path: "/repo/a.rs", old_string: "a", new_string: "b" },
+  });
+  const changed = [{ path: "/repo/a.rs", diff: "@@ -1 +1 @@\n-a\n+b\n", created: false }];
+
+  function open(onRevertHunk: () => Promise<boolean> = () => Promise.resolve(false)) {
+    const view = render(() => (
+      <ToolCallCard card={edit} sessionId="s1" cwd="/repo" onSetMode={() => {}} onRevertHunk={onRevertHunk} />
+    ));
+    fireEvent.click(view.getByRole("button", { name: /Edit/ }));
+    fireEvent.click(view.getByText("Compare with the file on disk"));
+    return view;
+  }
+
+  it("says it is reading until the first answer lands, then draws it", async () => {
+    const first = held<unknown>();
+    await answer("chat_tool_diff", () => first.promise);
+    const { findByText, queryByText } = open();
+    expect(await findByText("Reading what changed...")).toBeTruthy();
+    expect(queryByText("Compare with the file on disk")).toBeNull();
+
+    first.resolve(changed);
+    expect(await findByText("Revert")).toBeTruthy();
+    expect(queryByText("Reading what changed...")).toBeNull();
+  });
+
+  // A re-read after a revert is the same question asked again, so the list
+  // stays, and the hunk keeps saying it is reverting until the new answer is
+  // in: a Revert button on the hunk that is already gone would be refused.
+  it("keeps the list through the re-read a revert asks for", async () => {
+    let reply = Promise.resolve<unknown>(changed);
+    await answer("chat_tool_diff", () => reply);
+    const { findByText, getByText, queryByText } = open(() => Promise.resolve(true));
+    await findByText("Revert");
+
+    const again = held<unknown>();
+    reply = again.promise;
+    fireEvent.click(getByText("Revert"));
+    const reverting = await findByText("Reverting...");
+    expect((reverting.closest("button") as HTMLButtonElement).disabled).toBe(true);
+    expect(queryByText("Reading what changed...")).toBeNull();
+    expect(getByText("/repo/a.rs")).toBeTruthy();
+
+    again.resolve([{ path: "/repo/a.rs", diff: null, created: false }]);
+    expect(await findByText(/nothing to diff against/)).toBeTruthy();
+    expect(queryByText("Reverting...")).toBeNull();
+  });
+
+  it("says the comparison failed rather than that there is nothing to compare", async () => {
+    let reply: () => Promise<unknown> = () => Promise.reject(new Error("git exited 128"));
+    await answer("chat_tool_diff", () => reply());
+    const { findByText, getByText, queryByText } = open();
+    expect(await findByText(/could not be compared: Error: git exited 128/)).toBeTruthy();
+    expect(queryByText(/No before-state was captured/)).toBeNull();
+
+    reply = () => Promise.resolve(changed);
+    fireEvent.click(getByText("Try again"));
+    expect(await findByText("Revert")).toBeTruthy();
+  });
+});
+
+describe("the rest of a long output", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function openTruncated() {
+    const view = mount(card({ output: "the extract", outputTruncated: true }));
+    fireEvent.click(view.getByRole("button", { name: /Bash/ }));
+    return view;
+  }
+
+  it("keeps the extract on screen while the rest loads", async () => {
+    const rest = held<unknown>();
+    await answer("chat_tool_output", () => rest.promise);
+    const { container, findByText, getByText, queryByText } = openTruncated();
+    expect(container.textContent).toContain("the extract");
+
+    fireEvent.click(getByText("Show full output"));
+    expect(await findByText("Loading...")).toBeTruthy();
+    expect(container.textContent).toContain("the extract");
+    expect(queryByText("Show full output")).toBeNull();
+
+    rest.resolve("the whole thing");
+    expect(await findByText("the whole thing")).toBeTruthy();
+    expect(queryByText("Loading...")).toBeNull();
+  });
+
+  // Eviction is an answer (null) and keeps its own note. A failed read is not,
+  // and saying "no longer held" for it would be wrong.
+  it("says the read failed, keeps the extract, and can ask again", async () => {
+    let reply: () => Promise<unknown> = () => Promise.reject(new Error("gone away"));
+    await answer("chat_tool_output", () => reply());
+    const { container, findByText, getByText, queryByText } = openTruncated();
+    fireEvent.click(getByText("Show full output"));
+    expect(await findByText(/could not be read: Error: gone away/)).toBeTruthy();
+    expect(container.textContent).toContain("the extract");
+    expect(queryByText("The rest of this output is no longer held.")).toBeNull();
+
+    reply = () => Promise.resolve("the whole thing");
+    fireEvent.click(getByText("Try again"));
+    expect(await findByText("the whole thing")).toBeTruthy();
+  });
+});
