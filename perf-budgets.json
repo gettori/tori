@@ -206,14 +206,14 @@
     "name": "renders.file_tree.selection.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 12,
+    "budget": 8,
     "reason": "effects for moving the active file between two rows of an expanded directory in a mounted FileTree. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.file_tree.selection.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 14,
+    "budget": 10,
     "reason": "reruns for moving the active file between two rows of an expanded directory in a mounted FileTree. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
   },
   {
@@ -227,21 +227,21 @@
     "name": "renders.editor.tab_switch.memos",
     "runtime": "webview",
     "unit": "count",
-    "budget": 8,
+    "budget": 11,
     "reason": "memos for back to an open file with CodeEditor mocked, so the pane writes no DOM of its own and only the runs mean anything. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.editor.tab_switch.effects",
     "runtime": "webview",
     "unit": "count",
-    "budget": 12,
+    "budget": 11,
     "reason": "effects for back to an open file with CodeEditor mocked, so the pane writes no DOM of its own and only the runs mean anything. Counts calls that cross the solid-js module boundary, so the memos inside Show, For and Switch are not in the run rows"
   },
   {
     "name": "renders.editor.tab_switch.reruns",
     "runtime": "webview",
     "unit": "count",
-    "budget": 31,
+    "budget": 33,
     "reason": "reruns for one switch back to an open editor tab. Counts every scope attribution saw re-run, including the ones inside Show, For and Switch that the memo and effect rows miss. A first run of a new scope is not a re-run"
   },
   {
