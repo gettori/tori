@@ -1,5 +1,5 @@
-import { For, Show, Switch, Match, createSignal } from "solid-js";
-import { createFetchState } from "../../../../lib/fetchState";
+import { Errored, For, Loading, Show, Switch, Match, createMemo, createSignal, refresh } from "solid-js";
+import Button from "../../../../components/Button/Button";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
@@ -153,8 +153,9 @@ function DapCard(props: { adapter: DapHealth; onChange: () => Promise<DapHealth[
 }
 
 export default function DapSection() {
-  const [health, { refetch }] = createFetchState(() => invoke<DapHealth[]>("dap_health"));
-  onPacksChanged("dap", () => void refetch());
+  const health = createMemo(() => invoke<DapHealth[]>("dap_health"));
+  const recheck = () => refresh(health).catch(() => undefined);
+  onPacksChanged("dap", () => void recheck());
   // Guarded like every IPC reply read in a pane: a reply that is not a list must
   // empty the list rather than halt the reactive system.
   const adapters = () => {
@@ -170,25 +171,26 @@ export default function DapSection() {
         <BrowsePacks kind="dap" class={styles.titleAction} />
       </div>
       <NeedsFixing kind="dap" />
-      <Switch>
-        <Match when={health.state === "pending"}>
-          <div class={styles.note}>Checking which debuggers are installed…</div>
-        </Match>
-        <Match when={health.error}>
-          <div class={styles.note}>Could not check debuggers: {String(health.error)}</div>
-        </Match>
-        <Match when={health()}>
+      <Errored
+        fallback={(err, reset) => (
+          <div class={styles.note}>
+            Could not check debuggers: {String(err())}{" "}
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
+          </div>
+        )}
+      >
+        <Loading fallback={<div class={styles.note}>Checking which debuggers are installed...</div>}>
           <div class={styles.toolGrid}>
-            <For each={adapters()}>
-              {(adapter) => <DapCard adapter={adapter} onChange={() => Promise.resolve(refetch())} />}
-            </For>
+            <For each={adapters()}>{(adapter) => <DapCard adapter={adapter} onChange={recheck} />}</For>
           </div>
           <div class={styles.note}>
             A language with no adapter still opens, edits and runs normally, it just cannot be debugged from here. Add
             one with a TOML file in <code>~/.config/tori/packs/dap/</code>; see DEBUGGERS.md.
           </div>
-        </Match>
-      </Switch>
+        </Loading>
+      </Errored>
     </section>
   );
 }

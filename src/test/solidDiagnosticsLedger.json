@@ -465,6 +465,9 @@
   "src/panels/Settings/panes/AutopilotPane/ProjectContract.test.tsx": {
     "STRICT_READ_UNTRACKED": 42
   },
+  "src/panels/Settings/panes/AutopilotPane/ProjectContractEditor.test.tsx": {
+    "STRICT_READ_UNTRACKED": 7
+  },
   "src/panels/Settings/panes/IntegrationsPane/ForgeSection.test.tsx": {
     "STRICT_READ_UNTRACKED": 256
   },
@@ -487,7 +490,7 @@
     "STRICT_READ_UNTRACKED": 41
   },
   "src/panels/Settings/readAloudRows.test.tsx": {
-    "STRICT_READ_UNTRACKED": 10
+    "STRICT_READ_UNTRACKED": 12
   },
   "src/panels/Settings/remotePane.test.tsx": {
     "STRICT_READ_UNTRACKED": 86

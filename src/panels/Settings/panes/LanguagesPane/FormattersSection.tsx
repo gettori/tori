@@ -1,5 +1,5 @@
-import { For, Show, Switch, Match, createSignal } from "solid-js";
-import { createFetchState } from "../../../../lib/fetchState";
+import { Errored, For, Loading, Show, Switch, Match, createMemo, createSignal, refresh } from "solid-js";
+import Button from "../../../../components/Button/Button";
 import { invoke } from "@tauri-apps/api/core";
 import Toggle from "../../../../components/Switch/Switch";
 import { emitWith, TOAST, type ToastEvent } from "../../../../utils/events";
@@ -103,8 +103,9 @@ function FormatterCard(props: { formatter: FormatterHealth }) {
 }
 
 export default function FormattersSection() {
-  const [formatters, { refetch }] = createFetchState(() => invoke<FormatterHealth[]>("formatter_health"));
-  onPacksChanged("formatters", () => void refetch());
+  const formatters = createMemo(() => invoke<FormatterHealth[]>("formatter_health"));
+  const recheck = () => refresh(formatters).catch(() => undefined);
+  onPacksChanged("formatters", () => void recheck());
   // Guarded like every IPC reply read in a pane: a reply that is not a list must
   // empty the list rather than halt the reactive system.
   const list = () => {
@@ -120,14 +121,17 @@ export default function FormattersSection() {
         <BrowsePacks kind="formatters" class={styles.titleAction} />
       </div>
       <NeedsFixing kind="formatters" />
-      <Switch>
-        <Match when={formatters.state === "pending"}>
-          <div class={styles.note}>Checking which formatters are installed...</div>
-        </Match>
-        <Match when={formatters.error}>
-          <div class={styles.note}>Could not check formatters: {String(formatters.error)}</div>
-        </Match>
-        <Match when={formatters()}>
+      <Errored
+        fallback={(err, reset) => (
+          <div class={styles.note}>
+            Could not check formatters: {String(err())}{" "}
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
+          </div>
+        )}
+      >
+        <Loading fallback={<div class={styles.note}>Checking which formatters are installed...</div>}>
           <div class={styles.toolGrid}>
             <For each={list()}>{(formatter) => <FormatterCard formatter={formatter} />}</For>
           </div>
@@ -136,8 +140,8 @@ export default function FormattersSection() {
             <code>format.byExtension</code> names. With neither, the language server formats. Add one with a TOML file
             in <code>~/.config/tori/packs/formatters/</code>; see FORMATTERS.md.
           </div>
-        </Match>
-      </Switch>
+        </Loading>
+      </Errored>
     </section>
   );
 }

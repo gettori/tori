@@ -1,5 +1,4 @@
-import { Show, createSignal } from "solid-js";
-import { createFetchState } from "../../../../lib/fetchState";
+import { Show, createDeferred, createSignal, isPending } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ArrowLeftRight, Play, Trash2, X } from "../../../../components/Icon/icons";
 import { homeDir } from "@tauri-apps/api/path";
@@ -220,13 +219,13 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
 export default function ChatPane(props: PaneProps) {
   void refreshVoice().catch((e) => toast(`Couldn't check the downloaded voice: ${String(e)}`));
   void refreshDictation().catch((e) => toast(`Couldn't check the dictation model: ${String(e)}`));
-  const [voices] = createFetchState(
-    () => voiceStatus().model ?? false,
-    () =>
-      listVoices().catch(() => {
-        toast(`Couldn't list the downloaded voices, so only ${defaultVoice().name} is offered.`);
-        return [];
-      }),
+  const fallBackToDefaultVoice = () => {
+    toast(`Couldn't list the downloaded voices, so only ${defaultVoice().name} is offered.`);
+    return [];
+  };
+  const voices = createDeferred<Awaited<ReturnType<typeof listVoices>> | undefined>(
+    () => (voiceStatus().model ? listVoices().catch(fallBackToDefaultVoice) : undefined),
+    { loadingValue: undefined },
   );
   const runEspeak = async (verb: "install" | "uninstall") => {
     const cwd = await homeDir().catch(() => "/");
@@ -253,7 +252,12 @@ export default function ChatPane(props: PaneProps) {
   // Not while the list loads, or a saved voice would flash as the default.
   const shownVoice = () => {
     const saved = settings.speech.voice ?? "";
-    if (voices.loading || voiceOptions().some((o) => o.value === saved)) return saved;
+    if (
+      (voiceStatus().model && voices() === undefined) ||
+      isPending(() => voices()) ||
+      voiceOptions().some((o) => o.value === saved)
+    )
+      return saved;
     return "";
   };
   const pronunciationHint = () => {

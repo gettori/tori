@@ -2,7 +2,6 @@ import { Match, Show, Switch, createMemo, createSignal, onCleanup, onSettled } f
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
-import { createFetchState } from "../../lib/fetchState";
 import Button from "../Button/Button";
 import Popover from "../Popover/Popover";
 import { pushToast } from "../Toasts/Toasts";
@@ -19,7 +18,11 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
   const [dismissed, setDismissed] = createSignal(false);
   const [open, setOpen] = createSignal(false);
   const [stage, setStage] = createSignal<Stage>({ kind: "found" });
-  const [update, { mutate }] = createFetchState(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null));
+  const checked = createMemo<UpdateInfo | null>(() => invoke<UpdateInfo | null>("check_for_update").catch(() => null), {
+    loadingValue: null,
+  });
+  const [laterCheck, setLaterCheck] = createSignal<UpdateInfo | null>(null);
+  const update = () => laterCheck() ?? checked();
   const current = createMemo<string | null | undefined>(() => getVersion().catch(() => null), {
     loadingValue: undefined,
   });
@@ -32,7 +35,7 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
     const recheck = setInterval(() => {
       if (stage().kind !== "found") return;
       void invoke<UpdateInfo | null>("check_for_update")
-        .then((found) => found && mutate(found))
+        .then((next) => next && setLaterCheck(next))
         .catch((e) => console.error("check_for_update:", e));
     }, RECHECK_MS);
     return () => clearInterval(recheck);
@@ -48,7 +51,7 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
   const checkNow = async () => {
     const found = await invoke<ManualCheck>("check_for_update_now").catch((): ManualCheck => ({ state: "failed" }));
     if (found.state === "newer") {
-      mutate({ version: found.version, blocked: found.blocked });
+      setLaterCheck({ version: found.version, blocked: found.blocked });
       setDismissed(false);
       setOpen(true);
     } else {
@@ -63,7 +66,7 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
     setStage({ kind: "installing", percent: null });
     try {
       const version = await invoke<string>("install_update");
-      mutate({ version, blocked: null });
+      setLaterCheck({ version, blocked: null });
       setStage({ kind: "ready" });
     } catch (e) {
       setStage({ kind: "found" });

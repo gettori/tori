@@ -1,5 +1,4 @@
-import { createMemo, Show } from "solid-js";
-import { createFetchState } from "../../../src/lib/fetchState";
+import { createDeferred, createMemo, createSignal, Errored, isPending, Loading, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { ConnectionRequest } from "../pick";
 import { pickShortcut } from "../shortcut";
@@ -52,7 +51,7 @@ async function connection(): Promise<string | null> {
 }
 
 export function ShortcutRow() {
-  const shortcut = createMemo(() => pickShortcut().catch(() => null), { loadingValue: undefined });
+  const shortcut = createMemo(pickShortcut);
   return (
     <Row
       id="shortcut"
@@ -65,9 +64,13 @@ export function ShortcutRow() {
         </Icon>
       }
     >
-      <Show when={shortcut()} fallback={<span class="unset">Not set</span>}>
-        {(keys) => <kbd>{keys().label}</kbd>}
-      </Show>
+      <Errored fallback={(err) => <span class="unset">Unknown, {String(err())}</span>}>
+        <Loading fallback={<span class="unset">Checking</span>}>
+          <Show when={shortcut()} fallback={<span class="unset">Not set</span>}>
+            {(keys) => <kbd>{keys().label}</kbd>}
+          </Show>
+        </Loading>
+      </Errored>
       <button type="button" class="secondary" onClick={() => void chrome.tabs.create({ url: SHORTCUTS_PAGE })}>
         Change
       </button>
@@ -76,23 +79,21 @@ export function ShortcutRow() {
 }
 
 export function ConnectionRow() {
-  const [reach, { refetch }] = createFetchState(connection);
-  return (
+  // Asked, not refreshed: a refresh is a silent re-ask, and Check again has to
+  // hold its button while Tori answers.
+  const [asked, setAsked] = createSignal(0);
+  const reach = createDeferred(() => {
+    asked();
+    return connection();
+  });
+  const row = (ok: boolean, text: JSX.Element, button: JSX.Element) => (
     <Row
       id="connection"
       label="Connection"
       hint={
         <span class="reach">
-          <span class={{ dot: true, ok: reach() === null && !reach.loading }} aria-hidden="true" />
-          <span role="status">
-            {reach.loading
-              ? "Asking Tori."
-              : reach() === null
-                ? "Tori is running and set up for this browser."
-                : reach() === sentenceOf(NOT_SET_UP)
-                  ? `${reach()} Install it in Tori ${MIN_TORI} or later, in Settings > Browser.`
-                  : reach()}
-          </span>
+          <span class={{ dot: true, ok }} aria-hidden="true" />
+          <span role="status">{text}</span>
         </span>
       }
       icon={
@@ -101,9 +102,32 @@ export function ConnectionRow() {
         </Icon>
       }
     >
-      <button type="button" class="secondary" disabled={reach.loading} onClick={() => void refetch()}>
-        Check again
-      </button>
+      {button}
     </Row>
+  );
+  const checkAgain = (props: { disabled?: boolean; onClick?: () => void }) => (
+    <button type="button" class="secondary" disabled={props.disabled} onClick={() => props.onClick?.()}>
+      Check again
+    </button>
+  );
+  return (
+    <Errored fallback={(err, reset) => row(false, String(err()), checkAgain({ onClick: reset }))}>
+      <Loading fallback={row(false, "Asking Tori.", checkAgain({ disabled: true }))}>
+        {row(
+          reach() === null,
+          reach() === null
+            ? "Tori is running and set up for this browser."
+            : reach() === sentenceOf(NOT_SET_UP)
+              ? `${reach()} Install it in Tori ${MIN_TORI} or later, in Settings > Browser.`
+              : reach(),
+          checkAgain({
+            get disabled() {
+              return isPending(() => reach());
+            },
+            onClick: () => setAsked((n) => n + 1),
+          }),
+        )}
+      </Loading>
+    </Errored>
   );
 }
