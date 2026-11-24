@@ -7,7 +7,11 @@ type Tally = Record<string, number>;
 const tally: Tally = {};
 let file: { name: string; meta: { solidDiagnostics?: Tally } } | undefined;
 
+// Wall clock time, so its count follows machine load rather than the code.
+const UNGATED = new Set(["HOT_SCOPE_TIME"]);
+
 OBSERVE?.diagnostics.subscribe((entry: { code: string }) => {
+  if (UNGATED.has(entry.code)) return;
   tally[entry.code] = (tally[entry.code] ?? 0) + 1;
 });
 
