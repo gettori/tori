@@ -36,9 +36,11 @@ export function offerLastReply(readLast: () => void): () => void {
   return () => setFrontReply((now) => (now?.read === readLast ? null : now));
 }
 
-export function readingBlockOf(from: string): number | undefined {
+export function readingIn(session: string): { itemId: string; block: number } | null {
   const now = reading();
-  return now?.source === from ? now.block : undefined;
+  const prefix = `${session}:`;
+  if (now?.block === undefined || !now.source.startsWith(prefix)) return null;
+  return { itemId: now.source.slice(prefix.length), block: now.block };
 }
 
 let generation = 0;

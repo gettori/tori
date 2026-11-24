@@ -14,6 +14,14 @@ export interface RunCount {
   effect: number;
 }
 
+export interface ListChurn {
+  store: boolean;
+  length: number;
+  first: unknown;
+  made: number;
+  disposed: number;
+}
+
 export interface RenderCost {
   mutations: number;
   memos: number;
@@ -29,10 +37,11 @@ export const settled = () => new Promise((resolve) => setTimeout(resolve, SETTLE
 export async function renderCost(
   root: Node,
   act: () => unknown,
-): Promise<{ cost: RenderCost; artifact: DiagnosticsArtifact }> {
+): Promise<{ cost: RenderCost; artifact: DiagnosticsArtifact; lists: ListChurn[] }> {
   await settled();
   const counter = countMutations(root);
   takeRuns();
+  const before = new Map(lists.map((list) => [list, { made: list.made, disposed: list.disposed }]));
   const { artifact } = await captureArtifact(async () => {
     await act();
     await settled();
@@ -41,8 +50,19 @@ export async function renderCost(
   const { memo, effect } = takeRuns();
   counter.stop();
   const reruns = artifact.attribution?.reruns.length ?? 0;
-  return { cost: { mutations: added + removed + attributes + text, memos: memo, effects: effect, reruns }, artifact };
+  const churn = lists.flatMap((list) => {
+    const was = before.get(list) ?? { made: 0, disposed: 0 };
+    return [{ ...list, made: list.made - was.made, disposed: list.disposed - was.disposed }];
+  });
+  return {
+    cost: { mutations: added + removed + attributes + text, memos: memo, effects: effect, reruns },
+    artifact,
+    lists: churn,
+  };
 }
+
+export const rowsChurned = (lists: ListChurn[]) =>
+  lists.flatMap(({ store, made, disposed }) => (made || disposed ? [{ store, made, disposed }] : []));
 
 export function rerunBudget(scenario: string): number {
   const name = `renders.${scenario}.reruns`;
@@ -103,12 +123,53 @@ const counted =
       ...rest,
     );
 
+const lists: ListChurn[] = [];
+
+type Row = (...args: unknown[]) => unknown;
+type ForProps = { each: unknown; keyed?: unknown; fallback?: unknown; children: Row };
+
+function countingFor(For: (props: ForProps) => unknown, onCleanup: (fn: () => void) => void, proxy: symbol) {
+  return (props: ForProps) => {
+    const list: ListChurn = { store: false, length: 0, first: undefined, made: 0, disposed: 0 };
+    lists.push(list);
+    const forwarded: ForProps = {
+      get each() {
+        const each = props.each as unknown[] | undefined;
+        list.store = !!each && proxy in each;
+        list.length = each?.length ?? 0;
+        list.first = each?.[0];
+        return each;
+      },
+      get keyed() {
+        return props.keyed;
+      },
+      get children() {
+        const row = props.children;
+        const counted: Row = (...args) => {
+          list.made++;
+          onCleanup(() => list.disposed++);
+          return row(...args);
+        };
+        return row.length > 1 ? (a: unknown, b: unknown) => counted(a, b) : (a: unknown) => counted(a);
+      },
+    };
+    if ("fallback" in props)
+      Object.defineProperty(forwarded, "fallback", { get: () => props.fallback, enumerable: true });
+    return For(forwarded);
+  };
+}
+
 // For `vi.mock("solid-js", ...)`. Only calls that cross the module boundary are
 // seen, so the memos inside Show, For and Switch are not counted.
 export function countingSolid<T extends object>(solid: T): T {
-  const real = solid as unknown as Record<"createMemo" | "createEffect" | "createRenderEffect", Primitive>;
+  const real = solid as unknown as Record<"createMemo" | "createEffect" | "createRenderEffect", Primitive> & {
+    For: (props: ForProps) => unknown;
+    onCleanup: (fn: () => void) => void;
+    $PROXY: symbol;
+  };
   return {
     ...solid,
+    For: countingFor(real.For, real.onCleanup, real.$PROXY),
     createMemo: counted("memo", real.createMemo),
     createEffect: counted("effect", real.createEffect),
     createRenderEffect: counted("effect", real.createRenderEffect),

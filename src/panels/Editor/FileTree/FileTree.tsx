@@ -1,4 +1,5 @@
 import { createSignal, createEffect, onSettled, onCleanup, For, Show, untrack } from "solid-js";
+import { byKey, flagsOf } from "../../../lib/byKey";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -71,6 +72,7 @@ type EditCtx = {
    *  the destination, and the drop handler sits on only one of them. */
   mounted: Map<string, () => Promise<void>>;
   selected: () => ReadonlySet<string>;
+  isSelected: (path: string) => boolean;
   toggleSelected: (path: string) => void;
   clearSelected: () => void;
 };
@@ -215,15 +217,24 @@ export function clearListingCache(): void {
   listingCache.clear();
 }
 
-const sameListing = (a: Shown[], b: Shown[]) =>
-  a.length === b.length &&
-  a.every(
-    (x, i) =>
-      x.entry.path === b[i].entry.path &&
-      x.label === b[i].label &&
-      x.entry.is_dir === b[i].entry.is_dir &&
-      x.entry.ignored === b[i].entry.ignored,
-  );
+const sameRow = (x: Shown, y: Shown) =>
+  x.entry.path === y.entry.path &&
+  x.label === y.label &&
+  x.entry.is_dir === y.entry.is_dir &&
+  x.entry.ignored === y.entry.ignored;
+
+const sameListing = (a: Shown[], b: Shown[]) => a.length === b.length && a.every((x, i) => sameRow(x, b[i]));
+
+// The rows a fresh read did not change stay the objects already drawn, so the
+// tree keeps their rows and wakes only the ones that moved.
+function keepDrawn(was: Shown[] | undefined, fresh: Shown[]): Shown[] {
+  if (!was) return fresh;
+  const byPath = new Map(was.map((row) => [row.entry.path, row]));
+  return fresh.map((row) => {
+    const old = byPath.get(row.entry.path);
+    return old && sameRow(old, row) ? old : row;
+  });
+}
 
 /** `listChildren` through the cache: `apply` runs at once when a cached listing
  *  exists, and again with the fresh read only if it differs. */
@@ -235,7 +246,7 @@ async function listChildrenCached(
   const k = `${compactFolders ? "c" : "p"}:${path}`;
   const hit = listingCache.get(k);
   if (hit) apply(hit);
-  const fresh = await listChildren(path, compactFolders);
+  const fresh = keepDrawn(listingCache.get(k), await listChildren(path, compactFolders));
   listingCache.set(k, fresh);
   if (!hit || !sameListing(hit, fresh)) apply(fresh);
 }
@@ -516,13 +527,13 @@ function TreeNode(props: {
   view: ViewCtx;
   ctx?: EditCtx;
   reloadParent: () => Promise<void>;
-  /** The file the editor is showing, so its row can say so. */
-  activePath?: string | null;
-  /** The path the tree is being asked to walk to, if any. Every node reacts to
-   *  it independently: a directory the target sits under opens itself, and the
-   *  target's own row scrolls into view once it exists. That is what makes the
-   *  walk work against a lazily-loaded tree, with no path-chasing loop. */
-  revealing?: () => Reveal | null;
+  /** Whether a path is the file the editor is showing, so its row can say so. */
+  isActive: (path: string) => boolean;
+  /** The walk the tree is on, if it passes through this path. Every node reacts
+   *  to it independently: a directory the target sits under opens itself, and
+   *  the target's own row scrolls into view once it exists. That is what makes
+   *  the walk work against a lazily-loaded tree, with no path-chasing loop. */
+  revealing?: (path: string) => Reveal | null;
   /** Called by the target's own row once it has been reached, which is what ends
    *  the walk. */
   onRevealed?: () => void;
@@ -622,7 +633,7 @@ function TreeNode(props: {
 
   createEffect(
     () => ({
-      target: props.revealing?.()?.path,
+      target: props.revealing?.(props.entry.path)?.path,
       isDir: props.entry.is_dir,
       path: props.entry.path,
     }),
@@ -739,8 +750,8 @@ function TreeNode(props: {
             [styles.ignored]: props.entry.ignored,
             [styles.cut]: !!held()?.cut && held()!.paths.includes(props.entry.path),
             [styles.dropInto]: dropInto(),
-            [styles.selected]: !!props.ctx?.selected().has(props.entry.path),
-            [styles.active]: !props.entry.is_dir && props.activePath === props.entry.path,
+            [styles.selected]: !!props.ctx?.isSelected(props.entry.path),
+            [styles.active]: !props.entry.is_dir && props.isActive(props.entry.path),
           },
         ]}
         style={{ "padding-left": `${props.depth * 12 + 8}px` }}
@@ -838,7 +849,7 @@ function TreeNode(props: {
               view={props.view}
               ctx={props.ctx}
               reloadParent={reloadSelf}
-              activePath={props.activePath}
+              isActive={props.isActive}
               revealing={props.revealing}
               onRevealed={props.onRevealed}
               collapseAll={props.collapseAll}
@@ -856,13 +867,17 @@ function TreeNode(props: {
  *  A tree keeps a match's ancestors on screen to place it, which is exactly the
  *  chrome someone filtering is trying to get past. Ranked paths put the best
  *  match on the first row every time. */
-function FilterResults(props: { root: string; matches: { rel: string; score: number }[]; activePath?: string | null }) {
+function FilterResults(props: {
+  root: string;
+  matches: { rel: string; score: number }[];
+  isActive: (path: string) => boolean;
+}) {
   return (
     <Show when={props.matches.length} fallback={<div class={styles.empty}>No files match that filter.</div>}>
       <For each={props.matches}>
         {(m) => (
           <div
-            class={[styles.treeRow, { [styles.active]: props.activePath === `${props.root}/${m.rel}` }]}
+            class={[styles.treeRow, { [styles.active]: props.isActive(`${props.root}/${m.rel}`) }]}
             onClick={() => emitWith(OPEN_IN_EDITOR, { path: `${props.root}/${m.rel}` })}
           >
             <FileIcon name={m.rel.slice(m.rel.lastIndexOf("/") + 1)} />
@@ -903,16 +918,17 @@ function RootBody(props: {
   noun?: string;
   askText?: (title: string, initial?: string) => Promise<string | null>;
   askConfirm?: (opts: ConfirmOpts) => Promise<boolean>;
-  activePath?: string | null;
+  isActive: (path: string) => boolean;
   filter: () => string;
   /** Set once the filter box has been touched, so the file list is read on the
    *  way to the first keystroke rather than after it. */
   wantFiles: () => boolean;
   collapseAll: () => number;
   compactFolders: boolean;
-  revealing: () => Reveal | null;
+  revealing: (path: string) => Reveal | null;
   onRevealed: () => void;
   selected: () => ReadonlySet<string>;
+  isSelected: (path: string) => boolean;
   toggleSelected: (path: string) => void;
   clearSelected: () => void;
   /** Lends the api on mount and takes it back on cleanup. */
@@ -945,6 +961,7 @@ function RootBody(props: {
       askConfirm: props.askConfirm,
       mounted,
       selected: props.selected,
+      isSelected: props.isSelected,
       toggleSelected: props.toggleSelected,
       clearSelected: props.clearSelected,
     };
@@ -1052,7 +1069,7 @@ function RootBody(props: {
     <div class={styles.section} data-root={props.path}>
       <Show
         when={!props.filter().trim()}
-        fallback={<FilterResults root={props.path} matches={matches()} activePath={props.activePath} />}
+        fallback={<FilterResults root={props.path} matches={matches()} isActive={props.isActive} />}
       >
         <Show
           when={entries().length}
@@ -1072,7 +1089,7 @@ function RootBody(props: {
                 view={view}
                 ctx={ctx()}
                 reloadParent={reloadRoot}
-                activePath={props.activePath}
+                isActive={props.isActive}
                 revealing={props.revealing}
                 onRevealed={props.onRevealed}
                 collapseAll={props.collapseAll}
@@ -1129,6 +1146,8 @@ export default function FileTree(props: {
   const [collapseNonce, setCollapseNonce] = createSignal(0);
   const [dropRoot, setDropRoot] = createSignal(false);
   const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set());
+  const selectedOf = flagsOf(selected);
+  const activeOf = flagsOf(() => [props.activePath]);
   const [api, setApi] = createSignal<RootApi | null>(null);
   // The file the tree is walking to. Deliberately never cleared: the walk is a
   // cascade of lazy loads, so a directory that mounts three levels down has to
@@ -1136,13 +1155,23 @@ export default function FileTree(props: {
   // same file twice reveal it twice instead of going quiet after the first.
   const [revealing, setRevealing] = createSignal<Reveal | null>(null);
   let revealNonce = 0;
-  // Arriving ends the walk without a write, since every row's reveal effect
-  // reads `revealing` and clearing it would rerun them all.
+  // Arriving ends the walk without a write, since clearing `revealing` would
+  // wake every row the walk passed through again.
   let arrived = 0;
   const walking = () => {
     const r = revealing();
     return r && r.nonce !== arrived ? r : null;
   };
+  const walkThrough = byKey(() => {
+    const r = revealing();
+    const on = new Map<string, number>();
+    if (!r) return on;
+    on.set(r.path, r.nonce);
+    for (let i = r.path.lastIndexOf("/"); i > 0; i = r.path.lastIndexOf("/", i - 1))
+      on.set(r.path.slice(0, i), r.nonce);
+    return on;
+  });
+  const walkingThrough = (path: string) => (walkThrough[path] === undefined ? null : untrack(walking));
 
   // One bucket per mount when nothing is persisted, so the two session-only
   // panes cannot close each other's folders through the shared store.
@@ -1347,14 +1376,15 @@ export default function FileTree(props: {
             noun={props.noun}
             askText={props.askText}
             askConfirm={props.askConfirm}
-            activePath={props.activePath}
+            isActive={(path) => !!activeOf[path]}
             filter={filter}
             wantFiles={wantFiles}
             collapseAll={collapseNonce}
             compactFolders={compactFolders()}
-            revealing={walking}
+            revealing={walkingThrough}
             onRevealed={() => (arrived = revealNonce)}
             selected={selected}
+            isSelected={(path) => !!selectedOf[path]}
             toggleSelected={toggleSelected}
             clearSelected={clearSelected}
             onApi={(a, lent) => setApi((prev) => (lent ? a : prev === a ? null : prev))}
