@@ -2,7 +2,7 @@
 // drawn, closed, activated, and staged. Panels register at setup with closures
 // over their own state, so the strips draw every kind through one code path
 // and the per-kind knowledge lives with the panel that owns the kind.
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import Tab from "../components/Tab/Tab";
 import { endTabDrag, startTabDrag } from "./tabDrag";
@@ -119,7 +119,7 @@ export type StripPlace = { ws: string; paneId: string };
 
 /** The one tab markup every strip draws, fed entirely from the descriptor. */
 export function renderRegistryTab(t: UnifiedTab, ghost?: boolean, place?: StripPlace): JSX.Element {
-  const d = kindEntry(t.kind);
+  const d = untrack(() => kindEntry(t.kind));
   const fixed = !!d.fixed?.(t);
   const tab = (
     <Tab

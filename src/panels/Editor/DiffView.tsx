@@ -240,7 +240,7 @@ export default function DiffView(props: {
     () => {
       setLoading(true);
       void (async () => {
-        await reload();
+        await untrack(reload);
         setLoading(false);
       })();
     },
@@ -252,17 +252,17 @@ export default function DiffView(props: {
     editorLayout,
     () => {
       setPicked(null);
-      void reload();
+      void untrack(reload);
     },
     { defer: true },
   );
 
-  createEffect(ignoreWhitespace, () => void reload(), { defer: true });
+  createEffect(ignoreWhitespace, () => void untrack(reload), { defer: true });
   createEffect(
     () => [blameOn(), gitStateFor(props.workspace).head] as const,
     () => {
       void (async () => {
-        if (editorLayout()) setBlame(await fetchBlame());
+        if (untrack(editorLayout)) setBlame(await untrack(fetchBlame));
       })();
     },
     { defer: true },
@@ -476,16 +476,14 @@ export default function DiffView(props: {
         }
       >
         <For each={gapLines()[gapKey] ?? []}>
-          {(text) =>
-            twoColumn() ? (
+          {(text) => (
+            <Show when={twoColumn()} fallback={<div class={diffRowClasses.line}>{text || " "}</div>}>
               <div class={diffRowClasses.sideRow}>
                 <div class={diffRowClasses.line}>{text || " "}</div>
                 <div class={diffRowClasses.line}>{text || " "}</div>
               </div>
-            ) : (
-              <div class={diffRowClasses.line}>{text || " "}</div>
-            )
-          }
+            </Show>
+          )}
         </For>
       </Show>
     );
@@ -716,7 +714,14 @@ export default function DiffView(props: {
                         : undefined
                     }
                   />
-                  <For each={gaps().filter((g) => g.afterHunk === hi())}>{(gap) => gapRow(gap, `gap${hi()}`)}</For>
+                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
+                    {(gap) =>
+                      gapRow(
+                        gap,
+                        untrack(() => `gap${hi()}`),
+                      )
+                    }
+                  </For>
                 </div>
               )}
             </For>

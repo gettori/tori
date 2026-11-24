@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { ToggleGroup } from "../ToggleGroup/ToggleGroup";
 import Tooltip from "../Tooltip/Tooltip";
@@ -137,7 +137,7 @@ export default function IconGrid(props: IconGridProps) {
       <Show when={props.search}>
         {(search) => (
           <input
-            ref={search().ref}
+            ref={untrack(() => search().ref)}
             class={styles.search}
             value={query()}
             placeholder={search().placeholder}

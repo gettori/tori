@@ -153,8 +153,10 @@ export default function DiffRows(allProps: {
     // Read once, not per render: staging and roving keys are properties of the
     // surface, so a diff with neither gets no handlers or roles, rather than
     // inert ones on every line of a five-thousand-line diff.
-    const selectable = !!props.selection && !!row && (row.kind === "add" || row.kind === "del") && index !== null;
-    const commentable = !!props.comment && !!row && index !== null;
+    const selectable = untrack(
+      () => !!props.selection && !!row && (row.kind === "add" || row.kind === "del") && index !== null,
+    );
+    const commentable = untrack(() => !!props.comment && !!row && index !== null);
     const toggle = () => props.selection!.toggle(index!);
     const picked = () => selectable && props.selection!.has(index!);
     const spans = () => (index === null ? null : (painted()?.[index] ?? null));

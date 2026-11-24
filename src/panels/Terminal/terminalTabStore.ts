@@ -1,7 +1,7 @@
 // The terminal pane's tab model, module-level so the unified tab store (plan
 // phase 4) can compose it without mounting the panel; sessionStore is the
 // precedent. Terminal.tsx resets it at setup: the lifetime still tracks the panel.
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { noteTabFocus } from "../../layout/layoutStore";
 import { isShellsKey, SHELLS_KEY } from "../../utils/topics";
 
@@ -191,7 +191,7 @@ export function seedInert(id: string): void {
  * not a spawn.
  */
 export const stateOnActivate = (t: OpenTerm): TabState =>
-  tabState(t) === "inert" ? statesFor(t.kind)[1] : tabState(t);
+  untrack(() => (tabState(t) === "inert" ? statesFor(t.kind)[1] : tabState(t)));
 
 // Restored terminals the daemon still runs. Mounting them all at once would
 // replay every ring at launch.

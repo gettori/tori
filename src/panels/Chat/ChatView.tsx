@@ -464,7 +464,7 @@ export default function ChatView(props: {
    * unmount.
    */
   function failFirstSend(reason: string): boolean {
-    const held = takeAutoSend(composerKey());
+    const held = untrack(() => takeAutoSend(composerKey()));
     if (held === null) return false;
     handBackHeldSend(composerKey(), held);
     props.onFirstSendFailed(reason);
@@ -1296,7 +1296,7 @@ export default function ChatView(props: {
       //
       // Read here rather than at mount: an opened chat marks its held message
       // at the moment it starts, which is after mount and before this runs.
-      if (hasAutoSend(composerKey())) {
+      if (untrack(() => hasAutoSend(composerKey()))) {
         const timer = setTimeout(() => {
           if (canSend()) return;
           failFirstSend("that agent did not get a session open in time, so nothing was sent.");
@@ -1710,7 +1710,7 @@ export default function ChatView(props: {
         const t = takeForSend(s);
         if (t) taken.push(t);
       });
-      if (taken.length) void sendBlocks(taken[0].blocks, taken[0].held ? "chat_send_held" : "chat_send");
+      if (taken.length) void untrack(() => sendBlocks(taken[0].blocks, taken[0].held ? "chat_send_held" : "chat_send"));
     },
   );
 
@@ -1992,7 +1992,7 @@ export default function ChatView(props: {
   // font size) does not re-run the budget check.
   createEffect(
     () => [settings.budgets?.sessionUsd, settings.budgets?.projectUsd, settings.budgets?.contextPercent],
-    () => void applyBudget(),
+    () => void untrack(applyBudget),
     { defer: true },
   );
 

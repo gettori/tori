@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight, GitBranch, RefreshCw } from "../../components/Icon/icons";
 
@@ -95,11 +95,11 @@ export default function GraphView(props: { workspace: string }) {
   const rowHue = (row: GraphRow) => (row.entry.off_base ? LANE_HUES[row.lane % LANE_HUES.length] : TRUNK_HUE);
 
   async function load(skip: number) {
-    if (loading()) return;
+    if (untrack(loading)) return;
     setLoading(true);
     try {
       const page = await invoke<LogEntry[]>("git_log", {
-        projectPath: props.workspace,
+        projectPath: untrack(() => props.workspace),
         skip,
         limit: PAGE,
       });

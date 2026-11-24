@@ -308,9 +308,9 @@ function PdfDocumentView(props: {
     const prev = prevScale;
     prevScale = s;
     if (prev === undefined || prev === s || !placed) return;
-    const held = anchor ?? { ...probeAnchor, viewportY: height() / 3 };
+    const held = anchor ?? { ...probeAnchor, viewportY: untrack(height) / 3 };
     anchor = null;
-    const top = scrollTopFor(held.page, heights(), held.offset) - held.viewportY;
+    const top = scrollTopFor(held.page, untrack(heights), held.offset) - held.viewportY;
     untrack(() => scrollTo(top));
   });
 

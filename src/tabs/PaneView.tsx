@@ -320,7 +320,7 @@ export default function PaneView(props: {
         end={props.end}
         items={items()}
         activeId={activeId()}
-        place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
+        place={untrack(() => (props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined))}
         onActivate={(t) => props.paneId && setPaneActive(props.ws ?? "", props.paneId, t.id)}
         onReorder={(next) =>
           preserveScrollAndFocus(root, () =>

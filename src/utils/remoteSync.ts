@@ -10,7 +10,7 @@
 // ten-minute tick to find out is the difference between a live surface and a
 // decorative one. The floor is what stops that becoming a fetch per alt-tab.
 
-import { createEffect } from "solid-js";
+import { createEffect, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitStateFor } from "./gitActions";
 import { settings } from "../panels/Settings/settingsStore";
@@ -100,7 +100,10 @@ export function startRemoteFetch(): () => void {
   // `SETTINGS_CHANGED`, so a listener would arm on the built-in default and
   // keep sweeping every ten minutes for somebody who had switched it off -
   // until their next save, and never for an edit made to the file by hand.
-  createEffect(() => [running(), minutes()], arm);
+  createEffect(
+    () => [running(), minutes()],
+    () => untrack(arm),
+  );
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("focus", onFocus);
 

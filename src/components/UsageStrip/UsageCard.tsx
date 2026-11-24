@@ -272,7 +272,7 @@ export default function UsageCard(props: {
           <AgentGlyph id={props.agentId} label={adapter().label} size={24} />
           <span class={styles.who}>{adapter().label}</span>
           <span class={styles.ago}>
-            <Show when={ago()}>{(when) => when()}</Show>
+            <Show when={ago()}>{(when) => <>{when()}</>}</Show>
             {/* Only where there is a read to run. A sessions-only account gets
                 its numbers from chat turns and has nothing to ask; a button
                 there would spawn nothing and say it had. `manual` skips the
