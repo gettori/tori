@@ -1,8 +1,8 @@
 ---
 summary: rows in perf-budgets.json are measured by cargo test and pnpm test; counts exact, bytes fail over or 10% under, never ms
 status: current
-updated: 2026-10-04
-source: "Gate performance with deterministic budgets in tests (personal/tori, branch `determinstic-budget-in-tests`, gettori/tickets#6); `perf-budgets.json`, `src-tauri/src/perf_budgets.rs`, `src/test/perfBudgets.ts`, `src/appPerfBudgets.test.tsx`, `src-tauri/src/exec.rs` (`git_spawns_under`); commits 048f1138, c2b709bb"
+updated: 2026-11-25
+source: "Gate performance with deterministic budgets in tests (personal/tori, branch `determinstic-budget-in-tests`, gettori/tickets#6); `perf-budgets.json`, `src-tauri/src/perf_budgets.rs`, `src/test/perfBudgets.ts`, `src/appPerfBudgets.test.tsx`, `src-tauri/src/exec.rs` (`git_spawns_under`); commits 048f1138, c2b709bb; render rows: `src/test/perfCounters.ts` (`renderCost`, `countingSolid`, `rowsChurned`), commits 04e4daba, 1981349c"
 ---
 
 # Performance budgets
@@ -47,6 +47,18 @@ Seven rows today:
   Runs under fake timers; `settle()` advances 1 s at a time (which also runs
   frames) until the invoke count holds for two rounds, and throws if it never
   does. A test repeats each switch 20 times to prove the count is stable.
+- `renders.<scenario>.{mutations,memos,effects,reruns}` (webview): one change
+  into a mounted chat transcript, sidebar, file tree or editor. `renderCost` in
+  `src/test/perfCounters.ts` counts:
+  - DOM mutations, through an observer;
+  - memo and effect runs that cross the solid-js module boundary, through
+    `countingSolid`;
+  - re-runs from @solidjs/diagnostics attribution, through
+    `toStayWithinRerunBudget`, which prints the causes when the count rises.
+
+  `countingSolid` also wraps `<For>` and counts the rows each list makes and
+  disposes. Each scenario pins that count through `rowsChurned`, so a list that
+  rebuilds its rows fails even when the run counts hold.
 
 Every row was proven able to fail before it was trusted: dropping the output
 cut, making `cached_probe` always miss, and adding a stray invoke on the switch
@@ -70,6 +82,7 @@ lives in the webview, so a change to it does not move this row.
 ## Related
 
 - [[concept_solid_2_conventions]] - the Solid 2 rules the render and rerun rows hold the app to
+- [[gotcha_importing_solid_js_from_a_module_the_solid_js_mock_factory_loads_deadlocks]] - why `countingSolid` takes its solid-js pieces from the mocked original
 - [[component_perf_trace_harness]] - the release build instrument this gates beside
 - [[lesson_a_gate_that_cannot_fail_is_not_a_gate]] - why every row has a negative control
 - [[lesson_a_gate_only_sees_the_configuration_the_test_builds]] - why the measurers call the shipped functions and mount real panels

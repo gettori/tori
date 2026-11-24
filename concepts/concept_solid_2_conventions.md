@@ -76,3 +76,5 @@ const use = action(function* (on: boolean) {
 - [[adr_live_state_for_module_signals]] the stage C flushing signals this replaced
 - [[concept_perf_budgets]] where the render and rerun rows live
 - [[gotcha_a_for_over_an_array_rebuilt_from_props_recreates_every_row]] the identity trap behind the list rules
+- [[lesson_a_diagnostics_ledger_shrinks_by_census_not_by_reading]] how the ledger was cleared
+- [[gotcha_a_beforeeach_arrow_that_returns_a_mock_hangs_the_suite]] a trap hit while testing the actions
