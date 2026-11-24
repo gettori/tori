@@ -283,3 +283,59 @@ describe("SessionInfo", () => {
     expect(container.textContent).not.toContain("Chat capabilities");
   });
 });
+
+describe("the configured server list", () => {
+  beforeEach(() => invoked.mockReset());
+
+  function held<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((yes) => (resolve = yes));
+    return { promise, resolve };
+  }
+
+  // The live servers come from the handshake, so they are drawn at once. Only
+  // what the config files add waits for them.
+  it("draws the live servers while the config files are read, then adds what they declare", async () => {
+    const read = held<unknown>();
+    invoked.mockImplementation(() => read.promise);
+    const { container } = render(() => <SessionInfo {...props({ cwd: "/repo", mcpServers: [server()] })} />);
+    open(container);
+    expect(container.textContent).toContain("ctx");
+    expect(container.textContent).toContain("1 of 1 connected");
+    expect(container.textContent).not.toContain("pending approval");
+
+    read.resolve([{ name: "everything", scope: "project", approval: "pending", config: {} }]);
+    await waitFor(() => expect(container.textContent).toContain("pending approval"));
+    expect(container.textContent).toContain("1 of 2 connected");
+  });
+
+  it("says the files could not be read, keeps the live servers, and can ask again", async () => {
+    invoked.mockRejectedValueOnce("no such file");
+    invoked.mockResolvedValue([{ name: "everything", scope: "project", approval: "pending", config: {} }]);
+    const { container, getByText } = render(() => <SessionInfo {...props({ cwd: "/repo", mcpServers: [server()] })} />);
+    open(container);
+    await waitFor(() => expect(container.textContent).toContain("could not be read: no such file"));
+    expect(container.textContent).toContain("ctx");
+    expect(container.textContent).toContain("Add server");
+
+    fireEvent.click(getByText("Try again"));
+    await waitFor(() => expect(container.textContent).toContain("pending approval"));
+    expect(container.textContent).not.toContain("could not be read");
+  });
+
+  it("reads the list again after a write and shows the server it added", async () => {
+    let listed: unknown[] = [];
+    invoked.mockImplementation(async (command) => (command === "chat_mcp_list" ? listed : []));
+    const { container, getByPlaceholderText, getByText } = render(() => <SessionInfo {...props({ cwd: "/repo" })} />);
+    open(container);
+    await waitFor(() => expect(invoked).toHaveBeenCalledWith("chat_mcp_list", expect.anything()));
+
+    listed = [{ name: "everything", scope: "project", approval: "pending", config: {} }];
+    fireEvent.click(getByText("Add server"));
+    fireEvent.input(getByPlaceholderText("name"), { target: { value: "everything" } });
+    fireEvent.input(getByPlaceholderText("npx -y @scope/server"), { target: { value: "npx server" } });
+    fireEvent.click(getByText("Save"));
+    await waitFor(() => expect(container.textContent).toContain("Add server"));
+    expect(container.textContent).toContain("pending approval");
+  });
+});
