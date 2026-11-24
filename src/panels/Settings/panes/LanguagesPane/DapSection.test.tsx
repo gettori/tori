@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { onWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { render, screen, waitFor, cleanup, fireEvent } from "../../../../test/harness";
 import type { DapHealth } from "./DapSection";
 
+let save: (next: unknown) => Promise<unknown> = async (next) => next;
 let health: DapHealth[] = [];
 let calls: [string, unknown][] = [];
 let askedForErrors = false;
@@ -23,6 +25,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
     calls.push([cmd, args]);
+    if (cmd === "set_settings") return save((args as { settings: unknown }).settings);
     if (cmd === "dap_health" && reply) return reply();
     if (cmd !== "packs_load_errors") return Promise.resolve(cmd === "dap_health" ? health : null);
     askedForErrors = true;
@@ -59,6 +62,7 @@ const delve = (over: Partial<DapHealth> = {}): DapHealth => ({
 });
 
 beforeEach(() => {
+  save = async (next) => next;
   cleanup();
   health = [];
   calls = [];
@@ -151,4 +155,27 @@ describe("the debuggers health read", () => {
     fireEvent.click(screen.getByText("Try again"));
     expect(await screen.findByText("Go (Delve)")).toBeTruthy();
   });
+});
+
+describe("the debugger card's Use switch", () => {
+  const sw = () => screen.getByRole("switch", { name: "Use Go (Delve)" });
+  const toasts: string[] = [];
+  onWith<ToastEvent>(TOAST, (t) => toasts.push(t.message));
+
+  for (const ok of [true, false]) {
+    it(`shows the switch off at once, then ${ok ? "keeps it off once saved" : "turns it back on when the save fails"}`, async () => {
+      health = [delve()];
+      let answer!: (ok: boolean) => void;
+      save = (next) => new Promise((yes, no) => (answer = (fine) => (fine ? yes(next) : no("disk full"))));
+      render(() => <DapSection />);
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe("true"));
+
+      fireEvent.click(sw());
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe("false"));
+
+      answer(ok);
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe(ok ? "false" : "true"));
+      if (!ok) await waitFor(() => expect(toasts).toContain("Could not turn off Go (Delve): disk full"));
+    });
+  }
 });
