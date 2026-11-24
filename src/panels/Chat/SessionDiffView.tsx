@@ -1,5 +1,4 @@
-import { For, Show, createDeferred, createMemo, createSignal, onSettled } from "solid-js";
-import { createFetchState } from "../../lib/fetchState";
+import { Errored, For, Loading, Show, createDeferred, createMemo, createSignal, onSettled } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
@@ -85,9 +84,8 @@ export default function SessionDiffView(props: {
     return () => ro.disconnect();
   });
 
-  const [files] = createFetchState(
-    () => (props.live ? { sessionId: props.sessionId, cwd: props.cwd } : null),
-    (args) => invoke<SessionFileDiff[]>("chat_session_diff", args).catch(() => [] as SessionFileDiff[]),
+  const files = createMemo<SessionFileDiff[] | null>(() =>
+    props.live ? invoke<SessionFileDiff[]>("chat_session_diff", { sessionId: props.sessionId, cwd: props.cwd }) : null,
   );
 
   // The worktree's own account of the same span, so the view can show what
@@ -110,7 +108,7 @@ export default function SessionDiffView(props: {
         others: chatsInFolder(args.cwd)
           .map((c) => c.sessionId)
           .filter((id) => id !== args.sessionId),
-      }).catch(() => [] as CheckpointFile[]);
+      });
     },
     { loadingValue: undefined },
   );
@@ -149,27 +147,6 @@ export default function SessionDiffView(props: {
 
   return (
     <div class={styles.diffView} ref={host}>
-      <Show when={props.live && (files() ?? []).length}>
-        <div class={styles.viewBar}>
-          <Tooltip
-            as="button"
-            type="button"
-            class={styles.whyToggle}
-            disabled={width() < SIDE_BY_SIDE_MIN_WIDTH}
-            whenDisabled
-            label={
-              width() < SIDE_BY_SIDE_MIN_WIDTH
-                ? "The panel is too narrow for two columns"
-                : "Same preference as the Changes panel"
-            }
-            onClick={() => {
-              writeSideBySide(!sideBySide());
-            }}
-          >
-            {twoColumn() ? "Inline" : "Side by side"}
-          </Tooltip>
-        </div>
-      </Show>
       <Show
         when={props.live}
         fallback={
@@ -179,108 +156,151 @@ export default function SessionDiffView(props: {
           </div>
         }
       >
-        <Show when={files.loading}>
-          <div class={styles.empty}>Building the diff…</div>
-        </Show>
-        <Show when={!files.loading && !(files() ?? []).length}>
-          <div class={styles.empty}>This session has not changed any files yet.</div>
-        </Show>
-        <For each={files() ?? []}>
-          {(file) => (
-            <div class={styles.file}>
-              <div class={styles.fileHeader}>
-                <span class={styles.filePath} title={file.path}>
-                  {baseName(file.path)}
-                </span>
-                <Show when={file.created}>
-                  <span class={styles.badge}>new file</span>
-                </Show>
-                <Show when={alsoWrittenBy(file.path).length}>
-                  <span
-                    class={styles.badge}
-                    title={`Another chat in this worktree also wrote this file (${alsoWrittenBy(file.path).join(", ")}). What is below is this session's own edits; the file on disk carries both.`}
-                  >
-                    shared
-                  </span>
-                </Show>
-                <span class={styles.callCount}>
-                  {file.toolUseIds.length} {file.toolUseIds.length === 1 ? "edit" : "edits"}
-                </span>
-              </div>
-              <For each={traceWork("session-diff", () => parseDiffHunks(file.diff))}>
-                {(hunk, hi) => {
-                  const key = () => `${file.path}:${hi()}`;
-                  // The reasoning behind the call that produced these lines,
-                  // collapsed: the hunk is the answer, the reasoning is the
-                  // footnote, and a transcript's worth of prose inlined between
-                  // every hunk would bury the diff it is explaining.
-                  const why = () => {
-                    const id = file.hunkToolUseIds[hi()];
-                    return id ? reasoningFor(props.items, id) : null;
-                  };
-                  return (
-                    <div>
-                      <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${styles.hunkHeader}`}>
-                        <span>{hunk.header}</span>
-                        <Show when={why()}>
-                          <button
-                            type="button"
-                            class={styles.whyToggle}
-                            aria-expanded={openHunks().has(key()) ? "true" : "false"}
-                            onClick={() => toggleHunk(key())}
-                          >
-                            {openHunks().has(key()) ? "hide why" : "why"}
-                          </button>
-                        </Show>
-                      </div>
-                      <Show when={openHunks().has(key()) && why()}>
-                        {(text) => <div class={styles.why}>{text()}</div>}
-                      </Show>
-                      <DiffRows
-                        rows={traceWork("session-diff", () =>
-                          buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }),
-                        )}
-                        path={file.path}
-                        twoColumn={twoColumn()}
-                      />
-                    </div>
-                  );
-                }}
-              </For>
+        <Errored
+          fallback={(err, reset) => (
+            <div class={styles.empty}>
+              The diff could not be built: {String(err())}{" "}
+              <button type="button" class={styles.whyToggle} onClick={() => reset()}>
+                Try again
+              </button>
             </div>
           )}
-        </For>
-
-        {/* Changed in this worktree, but not by this session. Shown without a
-            diff on purpose: there is no captured before-state for them, so the
-            honest answer is "this changed and here is who claims it", not a
-            reconstruction. */}
-        <Show when={foreignFiles().length}>
-          <div class={styles.foreign}>
-            <div class={styles.foreignHeading}>Changed by something else while this session ran</div>
-            <For each={foreignFiles()}>
-              {(f) => (
-                <div class={styles.foreignRow}>
-                  <span class={styles.filePath} title={f.path}>
-                    {f.path}
-                  </span>
-                  <Show
-                    when={f.sessions.length}
-                    fallback={
-                      <span class={styles.badge} title={UNATTRIBUTED_NOTICE}>
-                        unattributed
-                      </span>
-                    }
-                  >
-                    <span class={styles.badge} title="Another chat in this worktree wrote this file.">
-                      {f.sessions.join(", ")}
+        >
+          <Loading fallback={<div class={styles.empty}>Building the diff…</div>}>
+            <Show when={(files() ?? []).length}>
+              <div class={styles.viewBar}>
+                <Tooltip
+                  as="button"
+                  type="button"
+                  class={styles.whyToggle}
+                  disabled={width() < SIDE_BY_SIDE_MIN_WIDTH}
+                  whenDisabled
+                  label={
+                    width() < SIDE_BY_SIDE_MIN_WIDTH
+                      ? "The panel is too narrow for two columns"
+                      : "Same preference as the Changes panel"
+                  }
+                  onClick={() => {
+                    writeSideBySide(!sideBySide());
+                  }}
+                >
+                  {twoColumn() ? "Inline" : "Side by side"}
+                </Tooltip>
+              </div>
+            </Show>
+            <Show when={!(files() ?? []).length}>
+              <div class={styles.empty}>This session has not changed any files yet.</div>
+            </Show>
+            <For each={files() ?? []}>
+              {(file) => (
+                <div class={styles.file}>
+                  <div class={styles.fileHeader}>
+                    <span class={styles.filePath} title={file.path}>
+                      {baseName(file.path)}
                     </span>
-                  </Show>
+                    <Show when={file.created}>
+                      <span class={styles.badge}>new file</span>
+                    </Show>
+                    <Errored fallback={null}>
+                      <Show when={alsoWrittenBy(file.path).length}>
+                        <span
+                          class={styles.badge}
+                          title={`Another chat in this worktree also wrote this file (${alsoWrittenBy(file.path).join(", ")}). What is below is this session's own edits; the file on disk carries both.`}
+                        >
+                          shared
+                        </span>
+                      </Show>
+                    </Errored>
+                    <span class={styles.callCount}>
+                      {file.toolUseIds.length} {file.toolUseIds.length === 1 ? "edit" : "edits"}
+                    </span>
+                  </div>
+                  <For each={traceWork("session-diff", () => parseDiffHunks(file.diff))}>
+                    {(hunk, hi) => {
+                      const key = () => `${file.path}:${hi()}`;
+                      // The reasoning behind the call that produced these lines,
+                      // collapsed: the hunk is the answer, the reasoning is the
+                      // footnote, and a transcript's worth of prose inlined between
+                      // every hunk would bury the diff it is explaining.
+                      const why = () => {
+                        const id = file.hunkToolUseIds[hi()];
+                        return id ? reasoningFor(props.items, id) : null;
+                      };
+                      return (
+                        <div>
+                          <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${styles.hunkHeader}`}>
+                            <span>{hunk.header}</span>
+                            <Show when={why()}>
+                              <button
+                                type="button"
+                                class={styles.whyToggle}
+                                aria-expanded={openHunks().has(key()) ? "true" : "false"}
+                                onClick={() => toggleHunk(key())}
+                              >
+                                {openHunks().has(key()) ? "hide why" : "why"}
+                              </button>
+                            </Show>
+                          </div>
+                          <Show when={openHunks().has(key()) && why()}>
+                            {(text) => <div class={styles.why}>{text()}</div>}
+                          </Show>
+                          <DiffRows
+                            rows={traceWork("session-diff", () =>
+                              buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }),
+                            )}
+                            path={file.path}
+                            twoColumn={twoColumn()}
+                          />
+                        </div>
+                      );
+                    }}
+                  </For>
                 </div>
               )}
             </For>
-          </div>
-        </Show>
+
+            {/* Changed in this worktree, but not by this session. Shown without a
+            diff on purpose: there is no captured before-state for them, so the
+            honest answer is "this changed and here is who claims it", not a
+            reconstruction. */}
+            <Errored
+              fallback={(err) => (
+                <div class={styles.foreign}>
+                  <div class={styles.foreignHeading}>
+                    Could not read what else changed in this worktree: {String(err())}
+                  </div>
+                </div>
+              )}
+            >
+              <Show when={foreignFiles().length}>
+                <div class={styles.foreign}>
+                  <div class={styles.foreignHeading}>Changed by something else while this session ran</div>
+                  <For each={foreignFiles()}>
+                    {(f) => (
+                      <div class={styles.foreignRow}>
+                        <span class={styles.filePath} title={f.path}>
+                          {f.path}
+                        </span>
+                        <Show
+                          when={f.sessions.length}
+                          fallback={
+                            <span class={styles.badge} title={UNATTRIBUTED_NOTICE}>
+                              unattributed
+                            </span>
+                          }
+                        >
+                          <span class={styles.badge} title="Another chat in this worktree wrote this file.">
+                            {f.sessions.join(", ")}
+                          </span>
+                        </Show>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </Errored>
+          </Loading>
+        </Errored>
       </Show>
     </div>
   );
