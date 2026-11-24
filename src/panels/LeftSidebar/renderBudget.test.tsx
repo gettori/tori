@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vite-plus/test";
 import { createSignal } from "solid-js";
 import { render, screen } from "../../test/harness";
-import { renderCost, renderDrift, rerunBudget } from "../../test/perfCounters";
+import { renderCost, renderDrift, rerunBudget, rowsChurned } from "../../test/perfCounters";
 import type { BranchSync } from "../../utils/gitActions";
 
 vi.mock("solid-js", async (original) => {
@@ -79,9 +79,12 @@ it("holds the render budget for one branch status change", async () => {
   const { container } = render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
   await screen.findByText("beta");
 
-  const { cost, artifact } = await renderCost(container, () => adoptSync(`${REPO}/alpha`, "alpha", ahead));
+  const { cost, artifact, lists } = await renderCost(container, () => adoptSync(`${REPO}/alpha`, "alpha", ahead));
 
   expect(cost.mutations).toBeGreaterThan(0);
+  const worktreeRows = lists.filter((list) => (list.first as { folderPath?: string } | undefined)?.folderPath);
+  expect(worktreeRows.length).toBeGreaterThan(0);
+  expect(rowsChurned(worktreeRows)).toEqual([]);
   expect(artifact).toStayWithinRerunBudget(rerunBudget("sidebar.branch_status"));
   expect(renderDrift("sidebar.branch_status", cost), JSON.stringify(cost)).toEqual([]);
 });
@@ -104,9 +107,10 @@ it("holds the render budget for one selection change", async () => {
   const { container } = render(() => <LeftSidebar selected={selected()} onSelect={() => {}} liveTabs={[]} />);
   await screen.findByText("beta");
 
-  const { cost, artifact } = await renderCost(container, () => setSelected(unit("beta")));
+  const { cost, artifact, lists } = await renderCost(container, () => setSelected(unit("beta")));
 
   expect(cost.mutations).toBeGreaterThan(0);
+  expect(rowsChurned(lists)).toEqual([]);
   expect(artifact).toStayWithinRerunBudget(rerunBudget("sidebar.selection"));
   expect(renderDrift("sidebar.selection", cost), JSON.stringify(cost)).toEqual([]);
 });
