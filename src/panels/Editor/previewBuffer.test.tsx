@@ -28,6 +28,7 @@ const ON_DISK = "# On disk\n";
  *  half of what this suite asserts. */
 let disk: Record<string, string> = {};
 let reads: string[] = [];
+let gate: Promise<void> | null = null;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -35,7 +36,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     switch (cmd) {
       case "fs_read_file":
         reads.push(path);
-        return path in disk ? Promise.resolve(disk[path]) : Promise.reject("ENOENT");
+        return (gate ?? Promise.resolve()).then(() => (path in disk ? disk[path] : Promise.reject("ENOENT")));
       case "file_exists":
         return Promise.resolve(path in disk);
       case "git_status":
@@ -125,6 +126,7 @@ function rendered(): string {
 beforeEach(() => {
   disk = { [NOTES]: ON_DISK, [CODE]: "export const a = 1;\n" };
   reads = [];
+  gate = null;
   clearLiveBuffers();
 });
 afterEach(() => {
@@ -184,6 +186,22 @@ describe("previewing a file no buffer holds", () => {
 
     expect(rendered()).toContain("On disk");
     expect(reads).toEqual([NOTES]);
+  });
+
+  it("says it is loading until the file is read", async () => {
+    let land!: () => void;
+    gate = new Promise((yes) => (land = yes));
+    preview = render(() => <MarkdownPreview path={NOTES} />);
+    await waitFor(() => expect(preview!.container.querySelector(".tree-empty")?.textContent).toBe("Loading…"));
+
+    land();
+    await waitFor(() => expect(rendered()).toContain("On disk"));
+    expect(preview.container.querySelector(".tree-empty")).toBeNull();
+  });
+
+  it("says the file could not be read, in the preview rather than the whole pane", async () => {
+    preview = render(() => <MarkdownPreview path={`${REPO}/gone.md`} />);
+    await waitFor(() => expect(rendered()).toContain("This file could not be read: ENOENT"));
   });
 
   it("goes back to the file once the tab is closed", async () => {

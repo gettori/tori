@@ -1,5 +1,4 @@
-import { For, Show } from "solid-js";
-import { createFetchState } from "../../lib/fetchState";
+import { Errored, For, Loading, Show, createMemo } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
@@ -18,9 +17,8 @@ const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/"
  * A row opens that file's patch in a tab of its own.
  */
 export default function CommitFiles(props: { root: string; sha: string }) {
-  const [detail] = createFetchState(
-    () => ({ projectPath: props.root, sha: props.sha }),
-    (args) => invoke<CommitDetailData>("git_commit_detail", args),
+  const detail = createMemo(() =>
+    invoke<CommitDetailData>("git_commit_detail", { projectPath: props.root, sha: props.sha }),
   );
 
   function open(f: CommitFile) {
@@ -29,13 +27,10 @@ export default function CommitFiles(props: { root: string; sha: string }) {
 
   return (
     <div class={styles.files}>
-      <Show when={detail.error}>
-        <div class={styles.note}>{String(detail.error)}</div>
-      </Show>
-      <Show when={detail()}>
-        {(d) => (
-          <Show when={d().files.length} fallback={<div class={styles.note}>No files in this commit.</div>}>
-            <For each={d().files}>
+      <Errored fallback={(err) => <div class={styles.note}>{String(err())}</div>}>
+        <Loading on={props.sha} fallback={<div class={styles.note}>Reading the files...</div>}>
+          <Show when={detail().files.length} fallback={<div class={styles.note}>No files in this commit.</div>}>
+            <For each={detail().files}>
               {(f) => (
                 <Tooltip
                   as="button"
@@ -56,8 +51,8 @@ export default function CommitFiles(props: { root: string; sha: string }) {
               )}
             </For>
           </Show>
-        )}
-      </Show>
+        </Loading>
+      </Errored>
     </div>
   );
 }

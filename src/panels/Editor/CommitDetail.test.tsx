@@ -182,7 +182,7 @@ describe("the commit detail tab", () => {
   it("shows git's own complaint when the commit cannot be read", async () => {
     detailFails = "fatal: bad object";
     mount();
-    await waitFor(() => expect(screen.getByText("fatal: bad object")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/fatal: bad object/)).toBeTruthy());
   });
 
   it("says plainly when a commit changed no files", async () => {
@@ -218,6 +218,48 @@ describe("the commit detail tab", () => {
     await waitFor(() => expect(screen.getByText("the one asked for")).toBeTruthy());
     expect(screen.queryByText("the one left behind")).toBeNull();
     expect(screen.queryByText("stale.ts")).toBeNull();
+  });
+});
+
+describe("the commit detail tab while it reads", () => {
+  it("says it is reading until the commit lands", async () => {
+    holdDetail = true;
+    mount();
+    expect(await screen.findByText("Reading the commit...")).toBeTruthy();
+
+    pendingDetail[0]({ ...base, subject: "landed" });
+    expect(await screen.findByText("landed")).toBeTruthy();
+    expect(screen.queryByText("Reading the commit...")).toBeNull();
+  });
+
+  it("reads the commit switched to behind the placeholder, with the old one's open patch closed", async () => {
+    detail = { ...base, subject: "the first", files: [{ path: "src/a.ts", old_path: null, status: "M" }] };
+    diffs["src/a.ts"] = ["@@ -1,1 +1,1 @@", "-alpha", "+bravo"].join("\n");
+    const [sha, setSha] = createSignal(SHA);
+    render(() => <CommitDetail workspace={REPO} sha={sha()} />);
+    fireEvent.click(await screen.findByText("src/a.ts"));
+    await screen.findByText("+bravo");
+
+    holdDetail = true;
+    setSha("b".repeat(40));
+    expect(await screen.findByText("Reading the commit...")).toBeTruthy();
+    expect(screen.queryByText("the first")).toBeNull();
+
+    pendingDetail[0]({ ...base, subject: "the second", files: [{ path: "src/a.ts", old_path: null, status: "M" }] });
+    expect(await screen.findByText("the second")).toBeTruthy();
+    expect(screen.queryByText("+bravo")).toBeNull();
+  });
+
+  it("tries again after git's complaint", async () => {
+    detailFails = "fatal: bad object";
+    mount();
+    await screen.findByText(/fatal: bad object/);
+    expect(screen.queryByText("This commit changed no files.")).toBeNull();
+
+    detailFails = "";
+    detail = { ...base, subject: "readable now" };
+    fireEvent.click(screen.getByText("Try again"));
+    expect(await screen.findByText("readable now")).toBeTruthy();
   });
 });
 

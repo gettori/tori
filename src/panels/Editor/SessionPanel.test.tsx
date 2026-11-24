@@ -8,12 +8,16 @@ import { render, screen, waitFor, fireEvent } from "../../test/harness";
 // hidden until the toggle asks for it.
 
 let touched: { path: string; op: string; first_ts: number; last_ts: number; count: number }[] = [];
+let touchedReply: (() => Promise<unknown>) | null = null;
+let touchedReads = 0;
+const listeners: Record<string, (() => void)[]> = {};
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     switch (cmd) {
       case "session_touched_files":
-        return Promise.resolve(touched);
+        touchedReads += 1;
+        return touchedReply ? touchedReply() : Promise.resolve(touched);
       default:
         return Promise.resolve([]);
     }
@@ -21,7 +25,10 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: () => Promise.resolve(() => {}),
+  listen: (name: string, fn: () => void) => {
+    (listeners[name] ??= []).push(fn);
+    return Promise.resolve(() => {});
+  },
   emit: () => Promise.resolve(),
 }));
 
@@ -33,7 +40,16 @@ beforeEach(() => {
     { path: "/proj/written.ts", op: "write", first_ts: 1, last_ts: 2, count: 1 },
     { path: "/proj/read-only.ts", op: "read", first_ts: 1, last_ts: 2, count: 1 },
   ];
+  touchedReply = null;
+  touchedReads = 0;
+  for (const key of Object.keys(listeners)) delete listeners[key];
 });
+
+function hold() {
+  let resolve!: (value: unknown) => void;
+  const promise = new Promise((yes) => (resolve = yes));
+  return { promise, resolve };
+}
 
 function open() {
   return render(() => (
@@ -84,5 +100,47 @@ describe("SessionPanel: held comments", () => {
     open();
     fireEvent.click(screen.getByRole("button", { name: "1 comment" }));
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("SessionPanel: reading what the session touched", () => {
+  it("says it is reading until the list lands, rather than that nothing was edited", async () => {
+    const read = hold();
+    touchedReply = () => read.promise;
+    open();
+    expect(await screen.findByText("Reading what this session touched...")).toBeTruthy();
+    expect(screen.queryByText(/Nothing edited yet/)).toBeNull();
+    expect(screen.getByRole("switch", { name: /show reads/i })).toBeTruthy();
+
+    read.resolve(touched);
+    expect(await screen.findByText(/written\.ts/)).toBeTruthy();
+    expect(screen.queryByText("Reading what this session touched...")).toBeNull();
+  });
+
+  it("keeps the rows up while a finished turn reads the list again", async () => {
+    open();
+    await screen.findByText(/written\.ts/);
+    await waitFor(() => expect(listeners["sessions://changed"]?.length).toBe(1));
+
+    const again = hold();
+    touchedReply = () => again.promise;
+    listeners["sessions://changed"][0]();
+    await waitFor(() => expect(touchedReads).toBe(2));
+    expect(screen.getByText(/written\.ts/)).toBeTruthy();
+    expect(screen.queryByText("Reading what this session touched...")).toBeNull();
+
+    again.resolve([...touched, { path: "/proj/new.ts", op: "create", first_ts: 3, last_ts: 3, count: 1 }]);
+    expect(await screen.findByText(/new\.ts/)).toBeTruthy();
+  });
+
+  it("says the transcript could not be read instead of that nothing was edited, and tries again", async () => {
+    touchedReply = () => Promise.reject("transcript missing");
+    open();
+    expect(await screen.findByText(/could not be read: transcript missing/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing edited yet/)).toBeNull();
+
+    touchedReply = null;
+    fireEvent.click(screen.getByText("Try again"));
+    expect(await screen.findByText(/written\.ts/)).toBeTruthy();
   });
 });

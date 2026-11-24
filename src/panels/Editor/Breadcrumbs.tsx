@@ -1,5 +1,4 @@
-import { For, Show, createMemo } from "solid-js";
-import { createFetchState } from "../../lib/fetchState";
+import { Errored, For, Loading, Show, createMemo } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "../../components/Icon/icons";
@@ -24,13 +23,9 @@ const HIDDEN = new Set([".git"]);
  *  folder with nothing in it. The tree can swallow the difference because it
  *  shows nothing either way; a picker has to say a sentence, and "this folder is
  *  empty" is a claim a failed read cannot support. */
-async function readDir(path: string): Promise<Entry[] | null> {
-  try {
-    const list = await invoke<Entry[]>("fs_read_dir", { path });
-    return list.filter((e) => !HIDDEN.has(e.name));
-  } catch {
-    return null;
-  }
+async function readDir(path: string): Promise<Entry[]> {
+  const list = await invoke<Entry[]>("fs_read_dir", { path });
+  return list.filter((e) => !HIDDEN.has(e.name));
 }
 
 /**
@@ -172,33 +167,31 @@ function Crumb(props: { menu: JSX.Element; children: JSX.Element }) {
  * and the only way back was Escape.
  */
 function DirLevel(props: { dir: string; here: string | null; onPick: (d: OpenInEditor) => void }) {
-  const [entries] = createFetchState(() => props.dir, readDir);
+  const entries = createMemo(() => readDir(props.dir));
 
   return (
-    <Show when={!entries.loading} fallback={<MenuRow disabled>Reading the folder…</MenuRow>}>
-      <Show when={entries()} fallback={<MenuRow disabled>Could not read this folder.</MenuRow>}>
-        {(list) => (
-          <Rows
-            each={list()}
-            empty="This folder is empty."
-            row={(entry) => (
-              <Show
-                when={entry.is_dir}
-                fallback={
-                  <MenuRow onClick={() => props.onPick({ path: entry.path })}>
-                    <EntryName entry={entry} here={props.here} />
-                  </MenuRow>
-                }
-              >
-                <MenuSub label={<EntryName entry={entry} here={props.here} />} textValue={entry.name}>
-                  <DirLevel dir={entry.path} here={props.here} onPick={props.onPick} />
-                </MenuSub>
-              </Show>
-            )}
-          />
-        )}
-      </Show>
-    </Show>
+    <Errored fallback={<MenuRow disabled>Could not read this folder.</MenuRow>}>
+      <Loading on={props.dir} fallback={<MenuRow disabled>Reading the folder…</MenuRow>}>
+        <Rows
+          each={entries()}
+          empty="This folder is empty."
+          row={(entry) => (
+            <Show
+              when={entry.is_dir}
+              fallback={
+                <MenuRow onClick={() => props.onPick({ path: entry.path })}>
+                  <EntryName entry={entry} here={props.here} />
+                </MenuRow>
+              }
+            >
+              <MenuSub label={<EntryName entry={entry} here={props.here} />} textValue={entry.name}>
+                <DirLevel dir={entry.path} here={props.here} onPick={props.onPick} />
+              </MenuSub>
+            </Show>
+          )}
+        />
+      </Loading>
+    </Errored>
   );
 }
 

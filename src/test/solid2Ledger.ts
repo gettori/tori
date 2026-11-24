@@ -50,11 +50,6 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
   ],
   "effect-writes": [
     {
-      file: "src/panels/Editor/CheckpointDiffView.tsx",
-      count: 1,
-      reason: "fetches a diff behind a supersede token; 2.0: async createMemo keyed on workspace and target",
-    },
-    {
       file: "src/panels/Editor/CheckpointTimeline.tsx",
       count: 4,
       reason:
@@ -63,12 +58,8 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
     {
       file: "src/panels/Editor/CommitDetail.tsx",
       count: 1,
-      reason: "fetches commit detail behind a supersede token; 2.0: async createMemo keyed on workspace and sha",
-    },
-    {
-      file: "src/panels/Editor/CommitDiffView.tsx",
-      count: 1,
-      reason: "two step fetch behind a supersede token; 2.0: async createMemo keyed on workspace and target",
+      reason:
+        "closes the open file row when the sha changes, since the row belongs to the commit it was opened in; 2.0: unchanged",
     },
     {
       file: "src/panels/Editor/ConflictView.tsx",
@@ -86,7 +77,7 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       file: "src/panels/Editor/Editor.tsx",
       count: 5,
       reason:
-        "a ResizeObserver, a right mode the user also sets, a pending open consumed once, the workspace switch work and a session reset with refetches; a memo on right mode would restore the old tab on leaving a chat; 2.0: createSignal(fn) for right mode, createEffect(compute, apply) for the rest",
+        "a ResizeObserver, a right mode the user also sets, a pending open consumed once, the workspace switch work, a session reset with refetches and a closed tab's caret dropped; a memo on right mode would restore the old tab on leaving a chat; 2.0: createSignal(fn) for right mode, createEffect(compute, apply) for the rest",
     },
     {
       file: "src/panels/Editor/FileTree/FileTree.tsx",
@@ -464,11 +455,6 @@ export const LEDGER: Partial<Record<IdiomClass, readonly LedgerEntry[]>> = {
       file: "src/panels/Settings/panes/IntegrationsPane/deviceFlow.tsx",
       count: 1,
       reason: "the prompt check comes after an await and must see a cancel made meanwhile; 2.0: unchanged",
-    },
-    {
-      file: "src/panels/Settings/settingsStore.ts",
-      count: 1,
-      reason: "the root check comes after an await and must see a newer selection; 2.0: unchanged",
     },
     {
       file: "src/utils/dictation.ts",

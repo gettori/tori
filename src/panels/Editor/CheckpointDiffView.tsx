@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onSettled, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, onSettled, Errored, For, Loading, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { Columns2, Copy, FileCode } from "../../components/Icon/icons";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type ToastEvent } from "../../utils/events";
@@ -12,6 +12,7 @@ import HunkProvenance, { createOpenHunks, WhyToggle } from "./HunkProvenance";
 import { claimsVia, type ClaimReader } from "../../utils/provenance";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
+import Button from "../../components/Button/Button";
 import styles from "./CommitDiffView.module.css";
 import hunkStyles from "./HunkCommentInput.module.css";
 
@@ -56,43 +57,37 @@ export function checkpointClaims(
  */
 export default function CheckpointDiffView(props: { workspace: string; arg: string }) {
   const target = createMemo(() => parseCheckpointDiffArg(props.arg));
-  const [diff, setDiff] = createSignal("");
-  const [error, setError] = createSignal("");
-  const [loading, setLoading] = createSignal(true);
+  const diff = createMemo(() => {
+    const of = target();
+    return checkpointFileDiff(props.workspace, of).then((text) => ({ of, text }));
+  });
   const [paneWidth, setPaneWidth] = createSignal(Infinity);
   const whyOpen = createOpenHunks();
 
-  const hunks = createMemo(() => parseDiffHunks(diff()));
+  const hunks = createMemo(() => parseDiffHunks(diff().text));
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
   const file = () => target().file;
 
-  // Which read is current: the tab strip reuses this component across tabs
-  // of the same kind, so an earlier tab's answer can land after a later one's.
-  let current = 0;
-
   createEffect(
     () => [props.workspace, target()] as const,
-    ([workspace, target]) => {
-      const mine = ++current;
-      setLoading(true);
-      setDiff("");
-      setError("");
+    () => {
       whyOpen.clear();
-      void (async () => {
-        try {
-          const text = await checkpointFileDiff(workspace, target);
-          if (mine === current) setDiff(text);
-        } catch (e) {
-          if (mine === current) setError(String(e));
-        } finally {
-          if (mine === current) setLoading(false);
-        }
-      })();
     },
   );
 
+  // The read throws while pending or failed, and holds the previous file's
+  // diff while the next one is read.
+  function shownDiff(): string {
+    try {
+      const shown = diff();
+      return shown.of === target() ? shown.text : "";
+    } catch {
+      return "";
+    }
+  }
+
   async function copyDiff() {
-    const text = diff();
+    const text = shownDiff();
     if (!text) {
       emitWith<ToastEvent>(TOAST, { message: "No diff to copy.", kind: "error" });
       return;
@@ -147,40 +142,55 @@ export default function CheckpointDiffView(props: { workspace: string; arg: stri
           onClick={() => writeSideBySide(!sideBySide())}
         />
       </div>
-      <Show when={error()}>
-        <div class={styles.error}>{error()}</div>
-      </Show>
-      <Show
-        when={hunks().length}
-        fallback={
-          <div class="tree-empty">
-            <Show when={!loading() && !error()}>
-              <p>No line changes to show (a binary file, or a mode change).</p>
-            </Show>
+      <Errored
+        fallback={(err, reset) => (
+          <div class={styles.error}>
+            {String(err())}{" "}
+            <Button size="xs" variant="ghost" onClick={() => reset()}>
+              Try again
+            </Button>
           </div>
-        }
+        )}
       >
-        <div class={styles.body}>
-          <For each={hunks()}>
-            {(hunk, hi) => (
-              <div>
-                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
-                  <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
-                  <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
-                </div>
-                <Show when={whyOpen.has(hi())}>
-                  <HunkProvenance file={file()} hunk={hunk} read={checkpointClaims(props.workspace, target())} />
-                </Show>
-                <DiffRows
-                  rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
-                  path={file()}
-                  twoColumn={twoColumn()}
-                />
+        <Loading
+          on={target()}
+          fallback={
+            <div class="tree-empty">
+              <p>Reading the diff...</p>
+            </div>
+          }
+        >
+          <Show
+            when={hunks().length}
+            fallback={
+              <div class="tree-empty">
+                <p>No line changes to show (a binary file, or a mode change).</p>
               </div>
-            )}
-          </For>
-        </div>
-      </Show>
+            }
+          >
+            <div class={styles.body}>
+              <For each={hunks()}>
+                {(hunk, hi) => (
+                  <div>
+                    <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                      <span class={hunkStyles.hunkHeaderText}>{hunk.header}</span>
+                      <WhyToggle open={whyOpen.has(hi())} onClick={() => whyOpen.toggle(hi())} />
+                    </div>
+                    <Show when={whyOpen.has(hi())}>
+                      <HunkProvenance file={file()} hunk={hunk} read={checkpointClaims(props.workspace, target())} />
+                    </Show>
+                    <DiffRows
+                      rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
+                      path={file()}
+                      twoColumn={twoColumn()}
+                    />
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </Loading>
+      </Errored>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createDeferred, createEffect, createMemo, createSignal, Errored, For, Loading, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { GitCommitHorizontal } from "../../components/Icon/icons";
 
@@ -10,6 +10,7 @@ import { syntheticId } from "../../utils/syntheticTabs";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import IconButton from "../../components/IconButton/IconButton";
 import Icon from "../../components/Icon/Icon";
+import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import CommitFiles from "./CommitFiles";
 import styles from "./GraphSection.module.css";
@@ -40,8 +41,6 @@ export default function GraphSection(props: {
   /** The trunk's name, whose pill wears the trunk lane's colour. */
   base?: string | null;
 }) {
-  const [entries, setEntries] = createSignal<LogEntry[]>([]);
-  const [error, setError] = createSignal("");
   const [open, setOpen] = createSignal<ReadonlySet<string>>(new Set());
 
   const pills = (c: LogEntry) => foldPills(c.refs, props.base);
@@ -61,85 +60,94 @@ export default function GraphSection(props: {
   // every status re-read and fetch stamp, and a fresh array built from it would
   // re-read the log on each of those.
   const head = createMemo(() => gitStateFor(props.root).head);
+  // Deferred, so a moved HEAD keeps the list up until the new log lands
+  // instead of holding the store write that moved it.
+  const entries = createDeferred(async (): Promise<LogEntry[]> => {
+    const root = props.root;
+    const all = !!props.all;
+    void head();
+    if (!root) return [];
+    // A branch longer than one page would push the base off the bottom,
+    // and where you left the trunk is the one thing this section is for.
+    // So the page grows to reach it, rather than the reader paging for it.
+    const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
+    const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
+    const rows = await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all });
+    // Thrown here: inside the Show below, a non-list would halt the reactive system.
+    if (!Array.isArray(rows)) throw new TypeError("git log did not return a list");
+    return rows;
+  });
   createEffect(
     () => [props.root, head(), !!props.all] as const,
-    ([root, , all]) => {
+    () => {
       setOpen(new Set<string>());
-      if (!root) {
-        setEntries([]);
-        return;
-      }
-      void (async () => {
-        try {
-          // A branch longer than one page would push the base off the bottom,
-          // and where you left the trunk is the one thing this section is for.
-          // So the page grows to reach it, rather than the reader paging for it.
-          const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(() => 0);
-          const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
-          const rows = await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all });
-          // Thrown here: inside the Show below, a non-list would halt the reactive system.
-          if (!Array.isArray(rows)) throw new TypeError("git log did not return a list");
-          setEntries(rows);
-          setError("");
-        } catch (e) {
-          setEntries([]);
-          setError(String(e));
-        }
-      })();
     },
   );
 
   return (
-    <Show when={entries().length} fallback={<div class="tree-empty">{error() || "No commits yet."}</div>}>
-      <OverlayScroll class={styles.scroll}>
-        <For each={entries()}>
-          {(c) => (
-            <div class={[styles.entry, { [styles.open]: open().has(c.sha), [styles.local]: c.off_base }]}>
-              {/* The button expands; the commit itself opens from the control
+    <Errored
+      fallback={(err, reset) => (
+        <div class="tree-empty">
+          {String(err())}{" "}
+          <Button size="xs" variant="ghost" onClick={() => reset()}>
+            Try again
+          </Button>
+        </div>
+      )}
+    >
+      <Loading fallback={<div class="tree-empty">Reading the history...</div>}>
+        <Show when={entries().length} fallback={<div class="tree-empty">No commits yet.</div>}>
+          <OverlayScroll class={styles.scroll}>
+            <For each={entries()}>
+              {(c) => (
+                <div class={[styles.entry, { [styles.open]: open().has(c.sha), [styles.local]: c.off_base }]}>
+                  {/* The button expands; the commit itself opens from the control
                   beside it, kept outside since a button cannot hold one. */}
-              <div class={styles.rowWrap}>
-                <Tooltip
-                  as="button"
-                  type="button"
-                  class={styles.row}
-                  aria-expanded={open().has(c.sha) ? "true" : "false"}
-                  label={`${c.short} - ${c.author}, ${c.relative_date}`}
-                  onClick={() => toggle(c.sha)}
-                >
-                  <span class={styles.lane} aria-hidden="true">
-                    <span class={[styles.dot, { [styles.head]: pills(c).some((p) => p.kind === "head") }]} />
-                  </span>
-                  <span class={styles.subject}>{c.subject}</span>
-                  <For each={pills(c)}>
-                    {(pill) => (
-                      <span class={[`${styles.ref} ${styles[pill.kind]}`, { [styles.base]: pill.base }]}>
-                        {pill.label}
+                  <div class={styles.rowWrap}>
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.row}
+                      aria-expanded={open().has(c.sha) ? "true" : "false"}
+                      label={`${c.short} - ${c.author}, ${c.relative_date}`}
+                      onClick={() => toggle(c.sha)}
+                    >
+                      <span class={styles.lane} aria-hidden="true">
+                        <span class={[styles.dot, { [styles.head]: pills(c).some((p) => p.kind === "head") }]} />
                       </span>
-                    )}
-                  </For>
-                  <span class={styles.who} aria-hidden="true">
-                    {authorInitials(c.author)}
-                  </span>
-                  <span class={styles.age}>{compactAge(c.committed_at)}</span>
-                </Tooltip>
-                <span class={styles.rowEnd}>
-                  <IconButton
-                    size="xs"
-                    icon={<Icon icon={GitCommitHorizontal} />}
-                    tooltip="Open this commit"
-                    onClick={() =>
-                      props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, c.sha) })
-                    }
-                  />
-                </span>
-              </div>
-              <Show when={open().has(c.sha) && props.root}>
-                <CommitFiles root={props.root!} sha={c.sha} />
-              </Show>
-            </div>
-          )}
-        </For>
-      </OverlayScroll>
-    </Show>
+                      <span class={styles.subject}>{c.subject}</span>
+                      <For each={pills(c)}>
+                        {(pill) => (
+                          <span class={[`${styles.ref} ${styles[pill.kind]}`, { [styles.base]: pill.base }]}>
+                            {pill.label}
+                          </span>
+                        )}
+                      </For>
+                      <span class={styles.who} aria-hidden="true">
+                        {authorInitials(c.author)}
+                      </span>
+                      <span class={styles.age}>{compactAge(c.committed_at)}</span>
+                    </Tooltip>
+                    <span class={styles.rowEnd}>
+                      <IconButton
+                        size="xs"
+                        icon={<Icon icon={GitCommitHorizontal} />}
+                        tooltip="Open this commit"
+                        onClick={() =>
+                          props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, c.sha) })
+                        }
+                      />
+                    </span>
+                  </div>
+                  <Show when={open().has(c.sha) && props.root}>
+                    <CommitFiles root={props.root!} sha={c.sha} />
+                  </Show>
+                </div>
+              )}
+            </For>
+          </OverlayScroll>
+        </Show>
+      </Loading>
+    </Errored>
   );
 }
