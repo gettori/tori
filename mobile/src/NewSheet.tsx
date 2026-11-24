@@ -1,6 +1,6 @@
-import { For, Show, createDeferred, createEffect, createMemo, createSignal, untrack } from "solid-js";
-import { createFetchState } from "../../src/lib/fetchState";
+import { Errored, For, Loading, Show, createDeferred, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { issueDraft, type Issue, type IssueRef } from "../../src/utils/issues";
+import type { JSX } from "@solidjs/web";
 import type { RemoteClient } from "./remote";
 import type { Unit } from "./tree";
 import styles from "./shell.module.css";
@@ -19,6 +19,58 @@ const WHERE_LABEL: Record<Where, string> = {
   issue: "From an issue",
   review: "Review a PR",
 };
+
+function AssignedRows(props: {
+  client: RemoteClient;
+  project: string;
+  kind: IssueRef["kind"];
+  picked: IssueRef | null;
+  onPick: (row: IssueRef) => void;
+}) {
+  const assigned = createMemo(() => props.client.request<Assigned>("issues.assigned", { project: props.project }));
+  const rows = () =>
+    assigned()
+      .lists.flatMap((l) => l.rows)
+      .filter((r) => r.kind === props.kind);
+  const note = (text: JSX.Element) => (
+    <li>
+      <p class={styles.footnote}>{text}</p>
+    </li>
+  );
+  return (
+    <Errored
+      fallback={(err, reset) =>
+        note(
+          <>
+            {String(err())}{" "}
+            <button class={styles.value} onClick={() => reset()}>
+              Try again
+            </button>
+          </>,
+        )
+      }
+    >
+      <Loading fallback={note("Loading")}>
+        <For each={rows()} fallback={note("Nothing assigned")}>
+          {(row) => (
+            <li>
+              <button
+                class={styles.item}
+                aria-pressed={props.picked?.key === row.key ? "true" : "false"}
+                onClick={() => props.onPick(row)}
+              >
+                <span class={styles.text}>
+                  <span class={styles.name}>{row.title}</span>
+                  <span class={styles.meta}>{row.display}</span>
+                </span>
+              </button>
+            </li>
+          )}
+        </For>
+      </Loading>
+    </Errored>
+  );
+}
 
 export default function NewSheet(props: {
   client: RemoteClient;
@@ -60,14 +112,6 @@ export default function NewSheet(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  const [assigned] = createFetchState(
-    () => (where() === "issue" || where() === "review") && props.project,
-    (project) => props.client.request<Assigned>("issues.assigned", { project }),
-  );
-  const rows = () => {
-    const kind = where() === "issue" ? "issue" : "reviewRequest";
-    return (assigned()?.lists ?? []).flatMap((l) => l.rows).filter((r) => r.kind === kind);
-  };
   const wheres = (): Where[] => (props.project ? ["here", "worktree", "issue", "review"] : ["here"]);
   const ready = () => {
     if (busy() || agent() === null) return false;
@@ -180,34 +224,18 @@ export default function NewSheet(props: {
             </div>
           </Show>
 
-          <Show when={where() === "issue" || where() === "review"}>
-            <ul class={styles.group}>
-              <For
-                each={rows()}
-                fallback={
-                  <li>
-                    <p class={styles.footnote}>
-                      {assigned.loading ? "Loading" : assigned.error ? String(assigned.error) : "Nothing assigned"}
-                    </p>
-                  </li>
-                }
-              >
-                {(row) => (
-                  <li>
-                    <button
-                      class={styles.item}
-                      aria-pressed={picked()?.key === row.key ? "true" : "false"}
-                      onClick={() => setPicked(row)}
-                    >
-                      <span class={styles.text}>
-                        <span class={styles.name}>{row.title}</span>
-                        <span class={styles.meta}>{row.display}</span>
-                      </span>
-                    </button>
-                  </li>
-                )}
-              </For>
-            </ul>
+          <Show when={(where() === "issue" || where() === "review") && props.project}>
+            {(project) => (
+              <ul class={styles.group}>
+                <AssignedRows
+                  client={props.client}
+                  project={project()}
+                  kind={where() === "issue" ? "issue" : "reviewRequest"}
+                  picked={picked()}
+                  onPick={setPicked}
+                />
+              </ul>
+            )}
           </Show>
 
           <h2 class={styles.label}>Agent</h2>

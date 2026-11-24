@@ -1,4 +1,4 @@
-import { createMemo, createSignal, onCleanup, refresh, Show, untrack } from "solid-js";
+import { createMemo, createSignal, onCleanup, refresh, Errored, Loading, Show, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import { TriangleAlert } from "../../components/Icon/icons";
@@ -22,16 +22,13 @@ const toast = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: 
  * not name.
  */
 export default function TrustSection(props: { projectPath: string }) {
-  // Catches inside: an uncaught rejection would halt the reactive system.
-  const entries = createMemo<string[] | undefined>(() => invoke<string[]>("trusted_projects").catch(() => undefined), {
-    loadingValue: undefined,
-  });
-  onCleanup(onTrustChange(() => void refresh(entries)));
+  const entries = createMemo(() => invoke<string[]>("trusted_projects"));
+  onCleanup(onTrustChange(() => void refresh(entries).catch(() => undefined)));
   const [busy, setBusy] = createSignal(false);
 
-  const own = () => (entries() ?? []).find((e) => sameCwd(e, props.projectPath));
+  const own = () => entries().find((e) => sameCwd(e, props.projectPath));
   const via = () =>
-    (entries() ?? [])
+    entries()
       .filter((e) => !sameCwd(e, props.projectPath) && isUnderPath(props.projectPath, e))
       .sort((a, b) => b.length - a.length)[0];
 
@@ -51,56 +48,64 @@ export default function TrustSection(props: { projectPath: string }) {
 
   return (
     <Section heading="Trust">
-      <Show when={entries() !== undefined}>
-        <Show
-          when={own()}
-          fallback={
-            <Show
-              when={via()}
-              fallback={
-                <div class={styles.warnCard} role="group" aria-label="Not trusted">
-                  <Icon icon={TriangleAlert} />
-                  <div class={styles.warnText}>
-                    <span class={styles.warnTitle}>Not trusted</span>
-                    <span class={styles.warnBody}>{why}</span>
+      <Errored
+        fallback={(err, reset) => (
+          <Row label="Trust unknown" hint={`The trusted list could not be read: ${String(err())}`}>
+            <Button onClick={() => reset()}>Try again</Button>
+          </Row>
+        )}
+      >
+        <Loading fallback={null}>
+          <Show
+            when={own()}
+            fallback={
+              <Show
+                when={via()}
+                fallback={
+                  <div class={styles.warnCard} role="group" aria-label="Not trusted">
+                    <Icon icon={TriangleAlert} />
+                    <div class={styles.warnText}>
+                      <span class={styles.warnTitle}>Not trusted</span>
+                      <span class={styles.warnBody}>{why}</span>
+                    </div>
+                    <Button
+                      variant="primary"
+                      disabled={busy()}
+                      onClick={() => void run("trust", () => trustProject(untrack(() => props.projectPath)))}
+                    >
+                      Trust
+                    </Button>
                   </div>
-                  <Button
-                    variant="primary"
-                    disabled={busy()}
-                    onClick={() => void run("trust", () => trustProject(untrack(() => props.projectPath)))}
+                }
+              >
+                {(entry) => (
+                  <Row
+                    label="Trusted"
+                    hint={
+                      <>
+                        Through <code class={styles.mono}>{entry()}</code>, which covers every project under it, so it
+                        is revoked from the trusted list in Settings.
+                      </>
+                    }
                   >
-                    Trust
-                  </Button>
-                </div>
-              }
-            >
-              {(entry) => (
-                <Row
-                  label="Trusted"
-                  hint={
-                    <>
-                      Through <code class={styles.mono}>{entry()}</code>, which covers every project under it, so it is
-                      revoked from the trusted list in Settings.
-                    </>
-                  }
-                >
-                  <Button onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "projects-list" })}>
-                    Open projects
-                  </Button>
-                </Row>
-              )}
-            </Show>
-          }
-        >
-          {(entry) => (
-            <Row label="Trusted" hint={why}>
-              <Button disabled={busy()} onClick={() => void run("revoke", () => revokeProject(entry()))}>
-                Revoke
-              </Button>
-            </Row>
-          )}
-        </Show>
-      </Show>
+                    <Button onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "projects-list" })}>
+                      Open projects
+                    </Button>
+                  </Row>
+                )}
+              </Show>
+            }
+          >
+            {(entry) => (
+              <Row label="Trusted" hint={why}>
+                <Button disabled={busy()} onClick={() => void run("revoke", () => revokeProject(entry()))}>
+                  Revoke
+                </Button>
+              </Row>
+            )}
+          </Show>
+        </Loading>
+      </Errored>
     </Section>
   );
 }

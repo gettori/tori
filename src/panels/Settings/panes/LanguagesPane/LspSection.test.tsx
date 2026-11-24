@@ -15,11 +15,12 @@ let health: LspHealth[] = [];
 let trusted: string[] = [];
 let calls: [string, unknown][] = [];
 let loadErrors: LoadError[] = [];
+let reply: (() => Promise<LspHealth[]>) | null = null;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { path?: string }) => {
     calls.push([cmd, args]);
-    if (cmd === "lsp_health") return Promise.resolve(health);
+    if (cmd === "lsp_health") return reply ? reply() : Promise.resolve(health);
     if (cmd === "trusted_projects") return Promise.resolve(trusted);
     if (cmd === "packs_load_errors") return Promise.resolve(loadErrors);
     if (cmd === "revoke_project") trusted = trusted.filter((p) => p !== args?.path);
@@ -40,6 +41,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 const { default: LspSection } = await import("./LspSection");
+const { default: LintersSection } = await import("./LintersSection");
 const { default: ProjectTrust } = await import("../ProjectsPane/ProjectTrust");
 
 const server = (over: Partial<LspHealth> = {}): LspHealth => ({
@@ -90,6 +92,58 @@ beforeEach(() => {
   trusted = [];
   calls = [];
   loadErrors = [];
+  reply = null;
+});
+
+function hold() {
+  let resolve!: (value: LspHealth[]) => void;
+  const promise = new Promise<LspHealth[]>((yes) => (resolve = yes));
+  return { promise, resolve };
+}
+
+const asked = () => calls.filter(([cmd]) => cmd === "lsp_health").length;
+
+describe.each([
+  { pane: "Servers", Section: LspSection, checking: "language servers", row: server() },
+  { pane: "Linters", Section: LintersSection, checking: "linters", row: server({ role: "secondary", label: "Ruff" }) },
+])("the $pane pane's health read", ({ Section, checking, row }) => {
+  it("says it is checking until the answer lands", async () => {
+    const first = hold();
+    reply = () => first.promise;
+    render(() => <Section />);
+    expect(await screen.findByText(`Checking which ${checking} are installed...`)).toBeTruthy();
+
+    first.resolve([row]);
+    expect(await screen.findByText(row.label)).toBeTruthy();
+    expect(screen.queryByText(`Checking which ${checking} are installed...`)).toBeNull();
+  });
+
+  it("keeps the cards while a pack change asks again", async () => {
+    health = [row];
+    render(() => <Section />);
+    await screen.findByText(row.label);
+
+    const second = hold();
+    reply = () => second.promise;
+    emit("packs:changed", "lsp");
+    await waitFor(() => expect(asked()).toBe(2));
+    expect(screen.getByText(row.label)).toBeTruthy();
+    expect(screen.queryByText(`Checking which ${checking} are installed...`)).toBeNull();
+
+    second.resolve([row, { ...row, id: "mine", label: "Mine" }]);
+    expect(await screen.findByText("Mine")).toBeTruthy();
+  });
+
+  it("says the check failed instead of listing nothing, and tries again", async () => {
+    reply = () => Promise.reject("probe died");
+    render(() => <Section />);
+    expect(await screen.findByText(new RegExp(`Could not check ${checking}: probe died`))).toBeTruthy();
+
+    reply = null;
+    health = [row];
+    fireEvent.click(screen.getByText("Try again"));
+    expect(await screen.findByText(row.label)).toBeTruthy();
+  });
 });
 
 describe("LspSection", () => {

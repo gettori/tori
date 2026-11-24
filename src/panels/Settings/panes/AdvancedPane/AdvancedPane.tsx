@@ -1,4 +1,5 @@
-import { createMemo, createSignal, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, onSettled, refresh, Errored, Loading, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { FileWarning, Folder, SquareTerminal } from "../../../../components/Icon/icons";
@@ -6,7 +7,6 @@ import Button from "../../../../components/Button/Button";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Icon from "../../../../components/Icon/Icon";
 import { emit, emitWith, OPEN_GROUPING, TOAST, type ToastEvent } from "../../../../utils/events";
-import { createFetchState } from "../../../../lib/fetchState";
 import { firstRunConfig, forgetIntro } from "../../../../utils/firstRun";
 import { shortHome } from "../../../../utils/names";
 import { ago } from "../../../../utils/relativeTime";
@@ -50,9 +50,7 @@ export default function AdvancedPane(props: PaneProps) {
 
   // Read on every pane open rather than cached: a crash file appears between
   // launches, and the pane is where the user comes to find it.
-  const crashes = createMemo<CrashLogs | null | undefined>(() => invoke<CrashLogs>("crash_logs").catch(() => null), {
-    loadingValue: undefined,
-  });
+  const crashes = createMemo(() => invoke<CrashLogs | null>("crash_logs"));
   // Guarded like every IPC reply read in a pane: a shape that is not the one
   // expected reads as "nothing answered", never as a thrown render.
   const crashFiles = () => {
@@ -64,16 +62,33 @@ export default function AdvancedPane(props: PaneProps) {
     return typeof v === "string" ? v : null;
   };
   const newestCrash = () => crashFiles()[0] ?? null;
-
-  const [shellPathError, setShellPathError] = createSignal<string | null>(null);
-  const [shellPath, { mutate: setShellPath }] = createFetchState(() =>
-    invoke<ShellPath>("shell_path_status").catch((e) => {
-      setShellPathError(String(e));
-      return null;
-    }),
+  const crashRow = (version: JSX.Element, status: JSX.Element, reveal: JSX.Element) => (
+    <>
+      <div class={styles.connectMain}>
+        <div class={styles.connectTitle}>Tori {version}</div>
+        <div class={styles.cardStatus}>{status}</div>
+      </div>
+      {reveal}
+    </>
   );
+
+  const shellPath = createMemo(() => invoke<ShellPath>("shell_path_status"));
   const toggleShellPath = () =>
-    invoke<ShellPath>("shell_path_set", { on: !shellPath()?.on }).then(setShellPath).catch(fail);
+    invoke<ShellPath>("shell_path_set", { on: !shellPath().on }).then(
+      () => refresh(shellPath).catch(() => undefined),
+      fail,
+    );
+  const shellRow = (status: JSX.Element, button: JSX.Element) => (
+    <>
+      <div class={styles.connectMain}>
+        <div class={styles.connectTitle}>
+          <code>tori</code> in your shell
+        </div>
+        <div class={styles.cardStatus}>{status}</div>
+      </div>
+      {button}
+    </>
+  );
 
   function fail(e: unknown) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
@@ -174,30 +189,43 @@ export default function AdvancedPane(props: PaneProps) {
           <div class={styles.connectGlyph} aria-hidden="true">
             <Icon icon={FileWarning} size="calc(28px * var(--ui-scale))" />
           </div>
-          <div class={styles.connectMain}>
-            <div class={styles.connectTitle}>
-              Tori <Show when={crashVersion()}>{(v) => v()}</Show>
-            </div>
-            <div class={styles.cardStatus}>
-              <Show
-                when={newestCrash()}
-                fallback="No crash files. If Tori ever closes on its own, the next launch says so and the file lands here."
-              >
-                {(f) => (
-                  <>
-                    {count(crashFiles().length, "crash file", "crash files")}, the newest {ago(f().at)} ago:{" "}
-                    <code>{f().headline}</code>. Nothing is sent anywhere until you report it.
-                  </>
-                )}
-              </Show>
-            </div>
-          </div>
-          <Button
-            disabled={!newestCrash()}
-            onClick={() => void invoke("reveal_in_finder", { path: newestCrash()!.path }).catch(fail)}
+          <Errored
+            fallback={(err, reset) =>
+              crashRow(
+                null,
+                <>
+                  The crash files could not be read: {String(err())}{" "}
+                  <Button size="xs" variant="ghost" onClick={() => reset()}>
+                    Try again
+                  </Button>
+                </>,
+                <Button disabled>Reveal</Button>,
+              )
+            }
           >
-            Reveal
-          </Button>
+            <Loading fallback={crashRow(null, "Looking for crash files...", <Button disabled>Reveal</Button>)}>
+              {crashRow(
+                crashVersion(),
+                <Show
+                  when={newestCrash()}
+                  fallback="No crash files. If Tori ever closes on its own, the next launch says so and the file lands here."
+                >
+                  {(f) => (
+                    <>
+                      {count(crashFiles().length, "crash file", "crash files")}, the newest {ago(f().at)} ago:{" "}
+                      <code>{f().headline}</code>. Nothing is sent anywhere until you report it.
+                    </>
+                  )}
+                </Show>,
+                <Button
+                  disabled={!newestCrash()}
+                  onClick={() => void invoke("reveal_in_finder", { path: newestCrash()!.path }).catch(fail)}
+                >
+                  Reveal
+                </Button>,
+              )}
+            </Loading>
+          </Errored>
           <Button onClick={() => void invoke("open_crash_issue").catch(fail)}>Report a bug</Button>
         </div>
       </Group>
@@ -207,31 +235,33 @@ export default function AdvancedPane(props: PaneProps) {
           <div class={styles.connectGlyph} aria-hidden="true">
             <Icon icon={SquareTerminal} size="calc(28px * var(--ui-scale))" />
           </div>
-          <div class={styles.connectMain}>
-            <div class={styles.connectTitle}>
-              <code>tori</code> in your shell
-            </div>
-            <div class={styles.cardStatus}>
-              <Show
-                when={shellPath()?.on}
-                fallback={
-                  shellPathError() ??
-                  "A terminal outside Tori cannot run tori yet. Adding it writes one line to your shell profile; new terminals pick it up."
-                }
-              >
-                {(_) => (
-                  <>
-                    New terminals run tori from <code>{shortHome(shellPath()!.dir, home())}</code>, by a line in{" "}
-                    <code>{shortHome(shellPath()!.profile, home())}</code>. Removing it takes that line out and nothing
-                    else.
-                  </>
-                )}
-              </Show>
-            </div>
-          </div>
-          <Button disabled={!shellPath()} onClick={() => void toggleShellPath()}>
-            {shellPath()?.on ? "Remove" : "Add"}
-          </Button>
+          <Errored
+            fallback={(err, reset) =>
+              shellRow(
+                <>
+                  {String(err())}{" "}
+                  <Button size="xs" variant="ghost" onClick={() => reset()}>
+                    Try again
+                  </Button>
+                </>,
+                <Button disabled>Add</Button>,
+              )
+            }
+          >
+            <Loading fallback={shellRow("Checking your shell profile...", <Button disabled>Add</Button>)}>
+              {shellRow(
+                <Show
+                  when={shellPath().on}
+                  fallback="A terminal outside Tori cannot run tori yet. Adding it writes one line to your shell profile; new terminals pick it up."
+                >
+                  New terminals run tori from <code>{shortHome(shellPath().dir, home())}</code>, by a line in{" "}
+                  <code>{shortHome(shellPath().profile, home())}</code>. Removing it takes that line out and nothing
+                  else.
+                </Show>,
+                <Button onClick={() => void toggleShellPath()}>{shellPath().on ? "Remove" : "Add"}</Button>,
+              )}
+            </Loading>
+          </Errored>
         </div>
       </Group>
 

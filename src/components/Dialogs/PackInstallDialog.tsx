@@ -1,9 +1,8 @@
-import { createSignal, For, Match, Show, Switch } from "solid-js";
+import { createDeferred, createSignal, For, Match, Show, Switch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
-import { createFetchState } from "../../lib/fetchState";
 import { dismissPackInstall, pendingPackInstall, type PackInstallOrigin } from "../../utils/packInstall";
 import { KIND_NOUN, type CatalogRow, type InstallNext, type PackKind } from "../../utils/packs";
 
@@ -51,18 +50,26 @@ export default function PackInstallDialog() {
     <Show when={pendingPackInstall()} keyed>
       {(request) => {
         let cancel: HTMLButtonElement | undefined;
-        const [row] = createFetchState(() =>
-          invoke<CatalogRow>("packs_resolve", {
-            kind: request.kind,
-            id: request.id,
-          }),
+        const row = createDeferred<{ row: CatalogRow } | { error: unknown } | undefined>(
+          () =>
+            invoke<CatalogRow>("packs_resolve", { kind: request.kind, id: request.id }).then(
+              (row) => ({ row }),
+              (error) => ({ error }),
+            ),
+          { loadingValue: undefined },
         );
         const [busy, setBusy] = createSignal(false);
         const [failed, setFailed] = createSignal<string | null>(null);
         const [done, setDone] = createSignal<InstallNext | null>(null);
         const noun = KIND_NOUN[request.kind];
-        // Reading an errored resource throws, so the row is only read once it is ready.
-        const ready = () => (row.state === "ready" ? row() : undefined);
+        const ready = () => {
+          const r = row();
+          return r && "row" in r ? r.row : undefined;
+        };
+        const refused = () => {
+          const r = row();
+          return r && "error" in r ? { error: r.error } : undefined;
+        };
         const label = () => ready()?.pack.label ?? request.id;
         const canInstall = () => {
           const r = ready();
@@ -111,11 +118,11 @@ export default function PackInstallDialog() {
           >
             <div class={styles.msg}>{ORIGIN[request.origin]}</div>
             <Switch>
-              <Match when={row.state === "pending"}>
+              <Match when={row() === undefined}>
                 <div class={styles.note}>Asking the catalog...</div>
               </Match>
-              <Match when={row.error}>
-                <div class={styles.warning}>Tori will not install this pack: {String(row.error)}</div>
+              <Match when={refused()}>
+                {(r) => <div class={styles.warning}>Tori will not install this pack: {String(r().error)}</div>}
               </Match>
               <Match when={done()}>
                 {(next) => (
