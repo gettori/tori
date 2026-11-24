@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vite-plus/test";
+import { onWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { render, screen, waitFor, cleanup, fireEvent } from "../../../../test/harness";
 
+let save: (next: unknown) => Promise<unknown> = async (next) => next;
 let calls: [string, unknown][] = [];
 let reply: (() => Promise<unknown>) | null = null;
 
@@ -37,6 +39,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
     calls.push([cmd, args]);
+    if (cmd === "set_settings") return save((args as { settings: unknown }).settings);
     if (cmd === "formatter_health" && reply) return reply();
     return Promise.resolve(cmd === "formatter_health" ? [gofmt] : null);
   },
@@ -45,6 +48,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 const { default: FormattersSection } = await import("./FormattersSection");
 
 beforeEach(() => {
+  save = async (next) => next;
   cleanup();
   calls = [];
 });
@@ -106,4 +110,26 @@ describe("the formatters health read", () => {
     fireEvent.click(screen.getByText("Try again"));
     expect(await screen.findAllByText("gofmt")).not.toHaveLength(0);
   });
+});
+
+describe("the formatter card's Use switch", () => {
+  const sw = () => screen.getByRole("switch", { name: "Use gofmt" });
+  const toasts: string[] = [];
+  onWith<ToastEvent>(TOAST, (t) => toasts.push(t.message));
+
+  for (const ok of [true, false]) {
+    it(`shows the switch off at once, then ${ok ? "keeps it off once saved" : "turns it back on when the save fails"}`, async () => {
+      let answer!: (ok: boolean) => void;
+      save = (next) => new Promise((yes, no) => (answer = (fine) => (fine ? yes(next) : no("disk full"))));
+      render(() => <FormattersSection />);
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe("true"));
+
+      fireEvent.click(sw());
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe("false"));
+
+      answer(ok);
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe(ok ? "false" : "true"));
+      if (!ok) await waitFor(() => expect(toasts).toContain("Could not turn off gofmt: disk full"));
+    });
+  }
 });

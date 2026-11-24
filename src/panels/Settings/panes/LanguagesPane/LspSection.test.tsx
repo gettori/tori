@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, onTestFinished } from "vite-plus/test";
+import { onWith, TOAST, type ToastEvent } from "../../../../utils/events";
 import { render, screen, waitFor, cleanup, fireEvent } from "../../../../test/harness";
 import type { LspHealth } from "./LspSection";
 import type { LoadError } from "../../../../utils/packs";
@@ -11,6 +12,7 @@ import type { LoadError } from "../../../../utils/packs";
 // card has to name the real problem, and must not tell the user to install
 // node, which they plainly already have.
 
+let save: (next: unknown) => Promise<unknown> = async (next) => next;
 let health: LspHealth[] = [];
 let trusted: string[] = [];
 let calls: [string, unknown][] = [];
@@ -20,6 +22,7 @@ let reply: (() => Promise<LspHealth[]>) | null = null;
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: { path?: string }) => {
     calls.push([cmd, args]);
+    if (cmd === "set_settings") return save((args as { settings: unknown }).settings);
     if (cmd === "lsp_health") return reply ? reply() : Promise.resolve(health);
     if (cmd === "trusted_projects") return Promise.resolve(trusted);
     if (cmd === "packs_load_errors") return Promise.resolve(loadErrors);
@@ -87,6 +90,7 @@ const pyright = (over: Partial<LspHealth> = {}) =>
   });
 
 beforeEach(() => {
+  save = async (next) => next;
   cleanup();
   health = [];
   trusted = [];
@@ -458,4 +462,27 @@ describe("LspSection", () => {
     fireEvent.click(await waitFor(() => screen.getByLabelText("Restore /cfg/packs/lsp/fresh.toml")));
     await waitFor(() => expect(calls).toContainEqual(["packs_update", { kind: "lsp", id: "fresh" }]));
   });
+});
+
+describe("the language server card's Use switch", () => {
+  const sw = () => screen.getByRole("switch", { name: "Use TypeScript / JavaScript" });
+  const toasts: string[] = [];
+  onWith<ToastEvent>(TOAST, (t) => toasts.push(t.message));
+
+  for (const ok of [true, false]) {
+    it(`shows the switch off at once, then ${ok ? "keeps it off once saved" : "turns it back on when the save fails"}`, async () => {
+      health = [server()];
+      let answer!: (ok: boolean) => void;
+      save = (next) => new Promise((yes, no) => (answer = (fine) => (fine ? yes(next) : no("disk full"))));
+      render(() => <LspSection />);
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe("true"));
+
+      fireEvent.click(sw());
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe("false"));
+
+      answer(ok);
+      await waitFor(() => expect(sw().getAttribute("aria-checked")).toBe(ok ? "false" : "true"));
+      if (!ok) await waitFor(() => expect(toasts).toContain("Could not turn off TypeScript / JavaScript: disk full"));
+    });
+  }
 });
