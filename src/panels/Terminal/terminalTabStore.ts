@@ -6,9 +6,9 @@ import { noteTabFocus } from "../../layout/layoutStore";
 import { isShellsKey, SHELLS_KEY } from "../../utils/topics";
 
 // A `task` tab is a shell tab seeded with the task's command line, kept a kind
-// of its own for one reason: `tabPersist` restores shell tabs, and restoring a
-// task would either re-run it or bring back a bare shell wearing its name.
-// Excluded there exactly as a command tab is, and for the same reason.
+// of its own because restoring one as a shell would re-run it. A restore
+// reattaches a task the daemon still runs, offers Run again for one stopped on
+// quit, and brings any other back as a shell without its command.
 export type TabKind = "shell" | "agent" | "command" | "chat" | "task";
 
 export type OpenTerm = {
@@ -203,15 +203,33 @@ export function markHeld(id: string): void {
 
 export const isHeld = (id: string) => held().has(id);
 
+// Task tabs whose script Tori stopped on quit. Marked before the kill, so the
+// exit it causes does not close the tab and the save that follows records it.
+const [stopped, setStopped] = createSignal<Set<string>>(new Set(), { ownedWrite: true });
+
+export const stoppedIds = () => stopped();
+export const isStopped = (id: string) => stopped().has(id);
+
+export function markStopped(ids: readonly string[]): void {
+  if (ids.length) setStopped((was) => new Set([...was, ...ids]));
+}
+
+const without = (id: string) => (was: Set<string>) => {
+  if (!was.has(id)) return was;
+  const next = new Set(was);
+  next.delete(id);
+  return next;
+};
+
+export function clearStopped(id: string): void {
+  setStopped(without(id));
+}
+
 /** A closed tab leaves no state behind, or a future tab reusing the id would
  *  inherit it (restore reuses stored ids since Phase 1). */
 export function dropTabState(id: string): void {
-  setHeld((was) => {
-    if (!was.has(id)) return was;
-    const next = new Set(was);
-    next.delete(id);
-    return next;
-  });
+  setHeld(without(id));
+  setStopped(without(id));
   setTabStates((states) => {
     if (!(id in states)) return states;
     const next = { ...states };
@@ -299,6 +317,7 @@ export function resetTerminalTabModel() {
   setTabTitles({});
   setTabStates({});
   setHeld(new Set<string>());
+  setStopped(new Set<string>());
   setActiveWorkspace(null);
   setActiveByWorkspace({});
 }

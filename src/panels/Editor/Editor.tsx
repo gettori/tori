@@ -253,7 +253,7 @@ import {
   saveStash,
   stashToWrite,
 } from "../../utils/hotExit";
-import { closeAllowed } from "../../utils/closeGuard";
+import { closeAllowed, runQuitHooks } from "../../utils/closeGuard";
 import { mayRewrite, type GuardAsk } from "../../utils/gitGuard";
 import { flushDeferredWrites } from "../../utils/deferredWrite";
 import {
@@ -2891,6 +2891,9 @@ export default function Editor(props: {
       });
       // window.confirm can't run here, so the window is destroyed by hand once
       // the user confirms.
+      const quitNow = async () => {
+        if (await runQuitHooks()) await getCurrentWindow().destroy();
+      };
       offQuit = await listen("app://quit", async () => {
         void invoke("quit_heard");
         // Before any branch: every exit below is `destroy()`, which skips
@@ -2921,7 +2924,7 @@ export default function Editor(props: {
           if (editorDefaults().hotExit && !(await saveStash(stashToWrite({})))) {
             console.error("the hot-exit stash was not rewritten on quit");
           }
-          await getCurrentWindow().destroy();
+          await quitNow();
           return;
         }
         // Hot exit replaces the prompt rather than sitting beside it: there is
@@ -2930,7 +2933,7 @@ export default function Editor(props: {
         // disk, so a refused or unanswered stash falls back to the same confirm
         // that has always been here, and no buffer goes quietly.
         if (editorDefaults().hotExit && (await requestStash())) {
-          await getCurrentWindow().destroy();
+          await quitNow();
           return;
         }
         const ok = await askConfirm({
@@ -2939,7 +2942,7 @@ export default function Editor(props: {
           confirmLabel: "Close without saving",
           danger: true,
         });
-        if (ok) await getCurrentWindow().destroy();
+        if (ok) await quitNow();
       });
     })();
   });

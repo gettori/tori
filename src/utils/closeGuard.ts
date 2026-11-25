@@ -15,6 +15,30 @@ export function registerCloseGuard(guard: CloseGuard): () => void {
   };
 }
 
+export type QuitHook = () => boolean | Promise<boolean>;
+
+const hooks = new Set<QuitHook>();
+
+/** Register work for a quit nothing refused any more. Returns the unregister. */
+export function registerQuitHook(hook: QuitHook): () => void {
+  hooks.add(hook);
+  return () => {
+    hooks.delete(hook);
+  };
+}
+
+/**
+ * Run the quit hooks, right before the window goes. Guards can still refuse
+ * after the first one has answered (the editor's unsaved prompt), so anything
+ * that cannot be taken back waits for this. False when a hook refused.
+ */
+export async function runQuitHooks(): Promise<boolean> {
+  for (const hook of [...hooks]) {
+    if (!(await hook())) return false;
+  }
+  return true;
+}
+
 /**
  * True when every guard agrees the app may quit. Serial, not `Promise.all`:
  * these open modals, and two prompts at once is not a question anyone can

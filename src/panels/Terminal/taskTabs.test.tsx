@@ -114,9 +114,9 @@ describe("a task tab arriving from the Tasks panel", () => {
 });
 
 describe("what a relaunch brings back", () => {
-  it("leaves task tabs out, exactly as it leaves a clone out", () => {
-    // Both for the same reason: restoring one would either re-run it or bring
-    // back a bare shell wearing its name. A shell tab beside them still returns.
+  it("keeps task tabs with their command and leaves a clone out", () => {
+    // A task comes back as a tab that never runs on its own; a clone has no
+    // such form, since re-running it on relaunch would be destructive.
     const stored = toStore(
       [
         { ...TASK, kind: "task", workspace: REPO, profile: null },
@@ -144,7 +144,8 @@ describe("what a relaunch brings back", () => {
       {},
       1,
     );
-    expect(stored[REPO].tabs.map((t) => t.title)).toEqual(["repo shell"]);
+    expect(stored[REPO].tabs.map((t) => t.title)).toEqual([TASK.title, "repo shell"]);
+    expect(stored[REPO].tabs[0].init).toBe(TASK.init);
     expect(stored["/tmp/new"]).toBeUndefined();
   });
 });
