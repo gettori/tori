@@ -227,6 +227,15 @@
   display: none;
 }
 
+.termStopped {
+  align-items: center;
+  justify-content: center;
+  gap: calc(10px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-lg);
+  background: var(--canvas-card);
+}
+
 .termHost {
   flex: 1;
   min-height: 0;

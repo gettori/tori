@@ -36,7 +36,7 @@ import { noteVisit } from "./utils/visitLog";
 import { setPref } from "./panels/Settings/utils/prefValues";
 import { watchSessionIssues } from "./utils/sessionIssues";
 import { tabsByWs } from "./panels/Editor/editorTabStore";
-import { open as openTerms } from "./panels/Terminal/terminalTabStore";
+import { clearStopped, markStopped, open as openTerms, tabTitle } from "./panels/Terminal/terminalTabStore";
 import Toolbar from "./components/Toolbar/Toolbar";
 import WindowControls from "./components/WindowControls/WindowControls";
 import Resizer from "./components/Resizer/Resizer";
@@ -120,7 +120,7 @@ import {
 import { dispatchWindowHotkey } from "./utils/hotkeys";
 import { COMMANDS } from "./utils/commands";
 import { menuSpec } from "./utils/appMenu";
-import { registerCloseGuard } from "./utils/closeGuard";
+import { registerCloseGuard, registerQuitHook } from "./utils/closeGuard";
 import { windowDragStart } from "./utils/windowDrag";
 import {
   MAX_PANES,
@@ -492,34 +492,59 @@ function AppShell() {
   // second quit listener: only one can own the quit (see utils/closeGuard), and
   // the editor's unsaved-buffer prompt is already it.
   // This runs ahead of that one, so a cancelled quit never reaches the buffers.
+  //
+  // What the answer commits to waits for a quit hook: the editor's prompt can
+  // still refuse after this one said yes.
   const [quitReq, setQuitReq] = createSignal<ConfirmReq | null>(null);
   const [stopSessions, setStopSessions] = createSignal(false);
-  async function resolveQuit(v: boolean) {
+  let quitPlan: { stopAll: boolean; tasks: string[] } | null = null;
+  function resolveQuit(v: boolean) {
     const req = quitReq();
     setQuitReq(null);
-    if (v && stopSessions()) {
-      try {
-        await invoke("daemon_stop");
-      } catch (e) {
-        emitWith<ToastEvent>(TOAST, { message: `Tori did not quit: ${String(e)}`, kind: "error" });
-        v = false;
-      }
-    }
+    if (v) quitPlan = { stopAll: stopSessions(), tasks: quitPlan?.tasks ?? [] };
+    else quitPlan = null;
     setStopSessions(false);
     req?.resolve(v);
   }
   onCleanup(
-    registerCloseGuard(
-      () =>
-        new Promise<boolean>((resolve) =>
-          setQuitReq({
-            title: "Quit Tori?",
-            message: "Sessions and terminals keep running in the background.",
-            confirmLabel: "Quit",
-            resolve,
-          }),
-        ),
-    ),
+    registerCloseGuard(async () => {
+      const busy = new Set(await invoke<string[]>("pty_busy_ids").catch(() => [] as string[]));
+      const tasks = openTerms().filter((t) => t.kind === "task" && busy.has(t.id));
+      quitPlan = { stopAll: false, tasks: tasks.map((t) => t.id) };
+      const base = "Sessions and terminals keep running in the background.";
+      const names = tasks.map(tabTitle).join(", ");
+      const n = tasks.length;
+      const message = n
+        ? `${base} ${n} running script${n > 1 ? "s" : ""} will stop: ${names}. ${
+            n > 1 ? "Their tabs come" : "Its tab comes"
+          } back when you reopen Tori.`
+        : base;
+      return new Promise<boolean>((resolve) =>
+        setQuitReq({ title: "Quit Tori?", message, confirmLabel: "Quit", resolve }),
+      );
+    }),
+  );
+  onCleanup(
+    registerQuitHook(async () => {
+      const plan = quitPlan;
+      if (!plan) return true;
+      // Marked and saved before anything is killed: the exit the kill causes
+      // would otherwise close the tab, and the save would drop it.
+      markStopped(plan.tasks);
+      flush();
+      if (plan.stopAll) {
+        try {
+          await invoke("daemon_stop");
+        } catch (e) {
+          emitWith<ToastEvent>(TOAST, { message: `Tori did not quit: ${String(e)}`, kind: "error" });
+          plan.tasks.forEach(clearStopped);
+          return false;
+        }
+        return true;
+      }
+      await Promise.all(plan.tasks.map((id) => invoke("pty_kill", { id }).catch(() => undefined)));
+      return true;
+    }),
   );
 
   createEffect(selected, (s) => {
@@ -1317,8 +1342,8 @@ function AppShell() {
           confirmLabel={quitReq()!.confirmLabel}
           danger={stopSessions()}
           extra={<Checkbox checked={stopSessions()} onChange={setStopSessions} label="Also stop running sessions" />}
-          onConfirm={() => void resolveQuit(true)}
-          onCancel={() => void resolveQuit(false)}
+          onConfirm={() => resolveQuit(true)}
+          onCancel={() => resolveQuit(false)}
         />
       </Show>
 

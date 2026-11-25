@@ -188,9 +188,13 @@ import { chatPrefs, rememberChatPrefs, settings } from "../Settings/settingsStor
 import {
   advanceTabState,
   canRevertToDraft,
+  clearStopped,
   dropTabState,
   isHeld,
+  isStopped,
   markHeld,
+  markStopped,
+  stoppedIds,
   isChatDraft,
   open,
   seedInert,
@@ -709,6 +713,30 @@ export default function Terminal(props: {
         if (landed !== id) dropTabState(id);
         continue;
       }
+      if (d.kind === "task") {
+        const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
+        const running = live.pty.has(id);
+        if (running) markHeld(id);
+        else if (d.stopped) markStopped([id]);
+        openOrActivate(
+          {
+            id,
+            title: d.title,
+            cwd: await cwdFor(d.cwd),
+            workspace: ws,
+            kind: "task",
+            program: d.program,
+            args: d.args,
+            profile: null,
+            // A task that ended on its own comes back as its shell: typing the
+            // command again on wake would re-run it unasked.
+            ...((running || d.stopped) && d.init ? { init: d.init } : {}),
+          },
+          false,
+        );
+        producedId[i] = id;
+        continue;
+      }
       // A plain shell, or an agent tab whose session was never attributed: come
       // back as the same shell-hosted tab, seeded again if it had an init.
       const cwd = await cwdFor(d.cwd);
@@ -907,7 +935,7 @@ export default function Terminal(props: {
   const sidesOf = (tabs: readonly OpenTerm[]) => new Map(tabs.map((t) => [t.id, savedSides(drawerOf(t.id))]));
   const withDrafts = (tabs: readonly OpenTerm[], sidesByTab: ReadonlyMap<string, SavedSides | undefined>) =>
     tabs.map((t) => {
-      const named = { ...t, title: tabTitle(t) };
+      const named = { ...t, title: tabTitle(t), ...(isStopped(t.id) ? { stopped: true } : {}) };
       if (named.kind !== "chat") return named;
       const sides = sidesByTab.get(t.id);
       // The pick goes down either way. A live chat's session restores its own
@@ -934,7 +962,7 @@ export default function Terminal(props: {
   }
 
   createEffect(
-    () => [open(), activeByWorkspace(), sidesOf(open())] as const,
+    () => [open(), activeByWorkspace(), sidesOf(open()), stoppedIds()] as const,
     ([tabs, active, sides]) => saveTabStore(tabs, active, sides),
   );
 
@@ -1300,7 +1328,7 @@ export default function Terminal(props: {
     // process is the command, so its exit is the verdict instead.
     unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
       const t = open().find((o) => o.id === e.payload.id);
-      if (!t) return;
+      if (!t || isStopped(t.id)) return;
       if (t.kind === "command") noteCommandExit(t, e.payload.code);
       else closeId(t.id);
     });
@@ -2729,8 +2757,12 @@ export default function Terminal(props: {
   const ptyStage = (u: UnifiedTab) => {
     const term = asTerm(u) as PtyTab;
     const active = createMemo(() => onScreen(term));
+    // Latched off, and only ever true from the row's first read: a task marked
+    // stopped while it runs (the quit) keeps its surface, since closing the
+    // outer Show below would destroy a live PTY.
+    const stoppedHere = createMemo<boolean>((was) => was !== false && isStopped(term.id));
     const woken = createMemo<boolean>((was) => !!was || (tabState(term) !== "inert" && (!isHeld(term.id) || active())));
-    untrack(() => wakeOnScreen(term, active));
+    untrack(() => wakeOnScreen(term, () => active() && !stoppedHere()));
     // No fallback: an inert tab is a strip entry and nothing else, so there is
     // no PTY to spawn and nothing to draw. A terminal kind has no readable
     // middle state - a shell with no process has nothing to show.
@@ -2738,8 +2770,20 @@ export default function Terminal(props: {
     // `Show` defers its children until the condition holds, which is what keeps
     // `TerminalView` (and its `pty_spawn`) from being built for a tab nobody has
     // reached for. Pinned by the restore suite, not by reading the compiler.
-    return <Show when={woken()}>{ptySurface(term, active)}</Show>;
+    return (
+      <Show when={!stoppedHere()} fallback={stoppedStage(term, active)}>
+        <Show when={woken()}>{ptySurface(term, active)}</Show>
+      </Show>
+    );
   };
+  const stoppedStage = (term: PtyTab, active: () => boolean) => (
+    <div class={[styles.termHostWrap, styles.termStopped, { [styles.hidden]: !active() }]}>
+      <span>{tabTitle(term)} was stopped when Tori quit.</span>
+      <Button variant="primary" size="sm" onClick={() => clearStopped(term.id)}>
+        Run again
+      </Button>
+    </div>
+  );
   const ptySurface = (term: PtyTab, active: () => boolean) => {
     return (
       <TerminalView

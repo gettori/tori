@@ -29,7 +29,7 @@ const MAX_DRAFT_TEXT = 16_000;
 
 // Command tabs (clone/bootstrap) are deliberately excluded: they are one-shot
 // progress views, and re-running a clone on relaunch would be destructive.
-export type PersistedKind = "shell" | "agent" | "chat";
+export type PersistedKind = "shell" | "agent" | "chat" | "task";
 
 export type SavedSides = { sessions: string[]; active: number; closed?: string[] };
 
@@ -79,6 +79,11 @@ export type PersistedTab = {
   // The session that spawned it, so a resume links the worker back.
   spawner?: string;
   sides?: SavedSides;
+  // Task tabs: the command line, kept so Run again can type it again.
+  init?: string;
+  // Task tabs whose script Tori stopped on quit. Restore never runs one on its
+  // own; the tab offers Run again instead.
+  stopped?: boolean;
 };
 
 export type WorkspaceTabs = {
@@ -119,9 +124,12 @@ export type OpenTabLike = {
   text?: string;
   pick?: DraftPick;
   sides?: SavedSides;
+  init?: string;
+  stopped?: boolean;
 };
 
-const isPersistable = (kind: string): kind is PersistedKind => kind === "shell" || kind === "agent" || kind === "chat";
+const isPersistable = (kind: string): kind is PersistedKind =>
+  kind === "shell" || kind === "agent" || kind === "chat" || kind === "task";
 
 // Fold the whole open set into a per-workspace store. Called on every open-set,
 // order, or active-tab change, so the stored order always matches what is on
@@ -169,6 +177,8 @@ export function toStore(
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
       ...(keepPick && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
       ...(t.kind === "chat" && t.sides ? { sides: t.sides } : {}),
+      ...(t.kind === "task" && t.init ? { init: t.init } : {}),
+      ...(t.kind === "task" && t.stopped ? { stopped: true } : {}),
     });
   }
   return out;
@@ -252,6 +262,13 @@ function chatFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick" | "side
   };
 }
 
+/** A task tab's command is typed into a shell, so anything but a string is
+ *  dropped, and a stopped flag without a command has nothing to run again. */
+function taskFields(t: PersistedTab): Pick<PersistedTab, "init" | "stopped"> {
+  const init = typeof t.init === "string" && t.init ? t.init : undefined;
+  return { init, stopped: !!init && t.stopped === true ? true : undefined };
+}
+
 // Tolerant of anything already in storage: a shape that does not parse is
 // treated as "nothing stored" rather than throwing on startup.
 export function parseStore(raw: string | null): TabStore {
@@ -283,6 +300,7 @@ export function parseStore(raw: string | null): TabStore {
           const id = typeof t.id === "string" && t.id ? t.id : undefined;
           const profile = typeof t.profile === "string" && t.profile ? t.profile : undefined;
           const base = { ...t, id, profile };
+          if (base.kind === "task") return { ...base, ...taskFields(base) };
           return base.kind === "chat" ? { ...base, ...chatFields(base) } : base;
         });
       if (tabs.length) {
