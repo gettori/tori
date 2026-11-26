@@ -47,15 +47,147 @@ fn walk(repo: &Path, prefix: &str, out: &mut Vec<Submodule>) {
     }
 }
 
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct Pointer {
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub ahead: Vec<PointerCommit>,
+    pub behind: Vec<PointerCommit>,
+}
+
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct PointerCommit {
+    pub sha: String,
+    pub subject: String,
+}
+
+const POINTER_LOG_MAX: &str = "-n50";
+
+#[tauri::command]
+pub async fn git_submodule_pointer(root: String, path: String) -> Pointer {
+    crate::exec::blocking("git_submodule_pointer", move || pointer(Path::new(&root), &path)).await
+}
+
+fn pointer(root: &Path, path: &str) -> Pointer {
+    let sub = root.join(path);
+    let from = line(root, &["rev-parse", "--verify", "-q", &format!("HEAD:{path}")]);
+    let to = line(&sub, &["rev-parse", "--verify", "-q", "HEAD"]);
+    let between = |a: &Option<String>, b: &Option<String>| match (a, b) {
+        (Some(a), Some(b)) => commits(&sub, &format!("{a}..{b}")),
+        _ => Vec::new(),
+    };
+    Pointer {
+        ahead: between(&from, &to),
+        behind: between(&to, &from),
+        from,
+        to,
+    }
+}
+
+fn commits(repo: &Path, range: &str) -> Vec<PointerCommit> {
+    output(repo, &["log", "--format=%h%x09%s", POINTER_LOG_MAX, range, "--"])
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(sha, subject)| PointerCommit {
+            sha: sha.to_string(),
+            subject: subject.to_string(),
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn git_submodule_reset_pointer(root: String, path: String) -> Result<(), String> {
+    crate::exec::git_write("git_submodule_reset_pointer", root.clone(), move || {
+        let out = crate::exec::git_in(&root)
+            .args(["submodule", "update", "--no-fetch", "--checkout", "--", &path])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    })
+    .await
+}
+
+// A detached submodule gets a branch before its first commit, named like the
+// parent's so the two PRs pair up. A name already used elsewhere in it is never
+// checked out, since that would move HEAD off the commit under the edits.
+#[tauri::command]
+pub async fn git_submodule_branch_suggestion(root: String, want: String) -> String {
+    crate::exec::blocking("git_submodule_branch_suggestion", move || {
+        free_branch(Path::new(&root), want.trim())
+    })
+    .await
+}
+
+fn free_branch(sub: &Path, want: &str) -> String {
+    if want.is_empty() {
+        return String::new();
+    }
+    let head = line(sub, &["rev-parse", "--verify", "-q", "HEAD"]);
+    let usable = |name: &str| match branch_tip(sub, name) {
+        None => true,
+        tip => tip == head,
+    };
+    if usable(want) {
+        return want.to_string();
+    }
+    (2..100)
+        .map(|n| format!("{want}-{n}"))
+        .find(|name| usable(name))
+        .unwrap_or_else(|| want.to_string())
+}
+
+fn branch_tip(repo: &Path, name: &str) -> Option<String> {
+    line(repo, &["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")])
+}
+
+#[tauri::command]
+pub async fn git_submodule_attach_branch(root: String, name: String) -> Result<(), String> {
+    crate::exec::git_write("git_submodule_attach_branch", root.clone(), move || {
+        attach_branch(Path::new(&root), name.trim())
+    })
+    .await
+}
+
+fn attach_branch(sub: &Path, name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Name a branch for the submodule first.".into());
+    }
+    let head = line(sub, &["rev-parse", "--verify", "-q", "HEAD"]);
+    let args: &[&str] = match branch_tip(sub, name) {
+        None => &["switch", "-q", "-c", name],
+        tip if tip == head => &["switch", "-q", name],
+        _ => return Err(format!("{name} already exists in this submodule at another commit.")),
+    };
+    let out = crate::exec::git_in(sub)
+        .args(args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn git_submodule_init(
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::askpass::AskpassState>,
+    fs: tauri::State<'_, crate::fs::FsWatch>,
     root: String,
     paths: Vec<String>,
 ) -> Result<(), String> {
     let bridge = state.0.clone();
+    let fs = fs.inner().clone();
     crate::exec::blocking("git_submodule_init", move || {
-        init(&root, &paths, bridge.sock_path(), bridge.token())
+        init(&root, &paths, bridge.sock_path(), bridge.token())?;
+        crate::fs::rewatch_containing(&app, &fs, Path::new(&root));
+        Ok(())
     })
     .await
 }

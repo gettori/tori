@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onSettled, onCleanup, For, Show, untrack } from "solid-js";
+import { createSignal, createEffect, createMemo, onSettled, onCleanup, For, Show, untrack } from "solid-js";
 import { byKey, flagsOf } from "../../../lib/byKey";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -23,7 +23,9 @@ import Chevron from "../../../components/Chevron/Chevron";
 import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
 import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
-import { FilePlus, FolderPlus, Crosshair, ChevronsDownUp } from "../../../components/Icon/icons";
+import { FilePlus, FolderPlus, FolderGit2, Crosshair, ChevronsDownUp } from "../../../components/Icon/icons";
+import { flaggedSubmodules, gitStateFor } from "../../../utils/gitActions";
+import { isUnderPath } from "../../../utils/pathScope";
 import ContextMenu from "../../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
@@ -146,9 +148,29 @@ async function shareEntry(
   await reloadParent();
 }
 
+// The repo whose status records `path`: the nearest submodule above it, else `base`.
+function nearestRepoAbove(path: string, base: string, submodules: Iterable<string>): string {
+  let at = base;
+  for (const key of submodules) {
+    if (key !== path && isUnderPath(path, key) && key.length > at.length) at = key;
+  }
+  return at;
+}
+
+type SubmoduleInfo = {
+  path: string;
+  name: string;
+  recorded: string | null;
+  current: string | null;
+  branch: string | null;
+  initialized: boolean;
+};
+
 /** What every row's menu needs, editable tree or not. */
 type ViewCtx = {
   root: string;
+  submodules?: () => ReadonlyMap<string, SubmoduleInfo>;
+  reloadSubmodules?: () => void;
   /** The repo behind the Files tab's tree, and only there: Find in Folder
    *  narrows the search to it, and file history reads it. */
   repoPath?: string;
@@ -549,6 +571,36 @@ function TreeNode(props: {
 
   const open = () => props.expand.isOpen(props.entry.path) || transient();
 
+  const submodule = () => (props.entry.is_dir ? props.view.submodules?.().get(props.entry.path) : undefined);
+  const statusRepo = () =>
+    nearestRepoAbove(props.entry.path, props.view.repoPath ?? props.view.root, props.view.submodules?.().keys() ?? []);
+  const submoduleChanged = () => {
+    if (!submodule()) return false;
+    const rel = props.entry.path.slice(statusRepo().length + 1);
+    const flags = gitStateFor(statusRepo()).files.find((f) => f.path === rel)?.submodule;
+    return !!flags && (flags.pointer_moved || flags.modified || flags.untracked);
+  };
+  const submoduleTip = () => {
+    const sub = submodule();
+    if (!sub) return "";
+    if (!sub.initialized) return "Submodule, not checked out. Right-click to initialize it.";
+    const at = sub.branch ? `on ${sub.branch}` : `at ${sub.current?.slice(0, 7) ?? "?"}, detached`;
+    return `Submodule ${at}${submoduleChanged() ? ", with changes" : ""}`;
+  };
+  async function initSubmodule() {
+    const sub = submodule();
+    if (!sub) return;
+    const from = statusRepo();
+    try {
+      await invoke("git_submodule_init", { root: from, paths: [props.entry.path.slice(from.length + 1)] });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: `Could not initialize ${sub.path}: ${String(e)}`, kind: "error" });
+      return;
+    }
+    props.view.reloadSubmodules?.();
+    await reloadSelf();
+  }
+
   // Re-read this dir's children in place, *without* opening it: a watcher burst
   // reloads every mounted directory, and forcing them open would expand the
   // whole tree every time a file changed under it.
@@ -672,6 +724,10 @@ function TreeNode(props: {
     // rather than as a footnote to them.
     return grouped(
       ctx?.member,
+      [
+        submodule() &&
+          !submodule()!.initialized && { label: "Initialize Submodule", onClick: () => void initSubmodule() },
+      ],
       [
         ctx && e.is_dir && { label: "New File", onClick: () => newFileIn(ctx, e.path, reloadOpen) },
         ctx && e.is_dir && { label: "New Folder", onClick: () => newFolderIn(ctx, e.path, reloadOpen) },
@@ -830,6 +886,21 @@ function TreeNode(props: {
         >
           {props.label}
         </span>
+        <Show when={submodule()}>
+          <span
+            class={[styles.submoduleBadge, { [styles.submoduleAbsent]: !submodule()!.initialized }]}
+            title={submoduleTip()}
+            aria-label={submoduleTip()}
+            data-submodule={submodule()!.path}
+          >
+            <Icon icon={FolderGit2} />
+          </span>
+          <Show when={submoduleChanged()}>
+            <span class={styles.submoduleDot} aria-hidden="true">
+              ●
+            </span>
+          </Show>
+        </Show>
         <Show when={!props.entry.is_dir && (isTouched(props.entry.path) || isEditingNow(props.entry.path))}>
           <span
             class={[styles.touchedDot, { [styles.editingDot]: isEditingNow(props.entry.path) }]}
@@ -942,10 +1013,30 @@ function RootBody(props: {
   // Every mounted directory's reload, this root's included, so a move can
   // refresh both ends.
   const mounted = new Map<string, () => Promise<void>>();
+  const [submodules, setSubmodules] = createSignal<ReadonlyMap<string, SubmoduleInfo>>(new Map());
+  function loadSubmodules() {
+    const repo = props.repoPath;
+    if (!repo) return;
+    void invoke<SubmoduleInfo[]>("git_submodules", { root: repo })
+      .then((list) => setSubmodules(new Map(list.map((sub) => [`${repo}/${sub.path}`, sub]))))
+      .catch(() => {});
+  }
+  const submoduleKey = createMemo(() => {
+    const repo = props.repoPath;
+    if (!repo) return "";
+    const flags = gitStateFor(repo)
+      .files.filter((f) => f.submodule)
+      .map((f) => `${f.path}:${JSON.stringify(f.submodule)}`);
+    const heads = flaggedSubmodules(repo).map((sub) => gitStateFor(sub).head);
+    return [gitStateFor(repo).head, ...flags, ...heads].join("\n");
+  });
+  createEffect(submoduleKey, () => loadSubmodules());
   const view: ViewCtx = untrack(() => ({
     root: props.path,
     repoPath: props.repoPath,
     container: props.container,
+    submodules,
+    reloadSubmodules: loadSubmodules,
   }));
 
   async function reloadRoot(compact = props.compactFolders) {

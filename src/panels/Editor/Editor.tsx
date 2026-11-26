@@ -262,6 +262,7 @@ import {
   enterRoots,
   lendActiveRoot,
   lendGitRoots,
+  withSubmodules,
   gitStateFor,
   isConflicted,
   statusLetter,
@@ -1598,15 +1599,25 @@ export default function Editor(props: {
     const joined = watchKey();
     return joined ? joined.split("\n") : [];
   });
-  onSettled(() => lendGitRoots(watched));
   // The git store spans the same set, and for the same reason: a background
   // member's numbers have to be true for the section showing them, the palette
   // and the sidebar count, none of which is the member in front.
-  createEffect(watchKey, (joined) => {
+  const gitKey = createMemo(() => withSubmodules(watched()).join("\n"));
+  const gitRoots = createMemo(() => {
+    const joined = gitKey();
+    return joined ? joined.split("\n") : [];
+  });
+  onSettled(() => lendGitRoots(gitRoots));
+  let entered: readonly string[] = [];
+  createEffect(gitKey, (joined) => {
     untrack(() => {
       const roots = joined ? joined.split("\n") : [];
+      // A submodule coming or going is not a workspace switch, so only the
+      // roots that just joined are read.
+      const fresh = roots.filter((r) => !entered.includes(r));
+      entered = roots;
       enterRoots(roots, root());
-      void Promise.all(roots.map((r) => refreshGit(r))).then(() => traceSettle("git", ws()));
+      void Promise.all(fresh.map((r) => refreshGit(r))).then(() => traceSettle("git", ws()));
     });
   });
   createEffect(

@@ -179,11 +179,42 @@ pub(crate) fn gitignored_paths<'a>(
     dir: &str,
     paths: impl Iterator<Item = &'a str>,
 ) -> std::collections::HashSet<String> {
+    // Asked of the repo each path is in: the parent's check-ignore dies on the
+    // first path inside a submodule and judges nothing after it.
+    let mut groups: Vec<(PathBuf, Vec<&str>)> = Vec::new();
+    let mut owners: std::collections::HashMap<&Path, PathBuf> = std::collections::HashMap::new();
+    for p in paths {
+        let parent = Path::new(p).parent().unwrap_or(Path::new(p));
+        let repo = owners
+            .entry(parent)
+            .or_insert_with(|| owning_repo(Path::new(dir), parent))
+            .clone();
+        match groups.iter_mut().find(|(r, _)| *r == repo) {
+            Some((_, group)) => group.push(p),
+            None => groups.push((repo, vec![p])),
+        }
+    }
+    let mut set = std::collections::HashSet::new();
+    for (repo, group) in groups {
+        set.extend(check_ignore(&repo, group));
+    }
+    set
+}
+
+fn owning_repo(dir: &Path, parent: &Path) -> PathBuf {
+    parent
+        .ancestors()
+        .take_while(|a| a.starts_with(dir) && *a != dir)
+        .find(|a| a.join(".git").exists())
+        .unwrap_or(dir)
+        .to_path_buf()
+}
+
+fn check_ignore(dir: &Path, paths: Vec<&str>) -> std::collections::HashSet<String> {
     use std::io::Write;
     use std::process::Stdio;
 
     let mut set = std::collections::HashSet::new();
-    let paths: Vec<&str> = paths.collect();
     if paths.is_empty() {
         return set;
     }
@@ -547,14 +578,27 @@ pub async fn list_project_files(project_path: String) -> Result<Vec<String>, Str
 }
 
 pub(crate) fn list_project_files_body(project_path: String) -> Result<Vec<String>, String> {
-    if let Ok(out) = crate::exec::git_in(&project_path)
-        .args(["ls-files", "--cached", "--others", "--exclude-standard"])
-        .output()
-    {
-        if out.status.success() {
-            let text = String::from_utf8_lossy(&out.stdout);
-            return Ok(text.lines().filter(|l| !l.is_empty()).map(String::from).collect());
-        }
+    let ls = |args: &[&str]| {
+        let out = crate::exec::git_in(&project_path).args(args).output().ok()?;
+        out.status.success().then(|| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect::<Vec<_>>()
+        })
+    };
+    // Two reads because git refuses `--recurse-submodules` beside `--others`:
+    // tracked files inside checked out submodules, then this repo's untracked.
+    if let (Some(mut tracked), Some(untracked)) = (
+        ls(&["ls-files", "--cached", "--recurse-submodules"]),
+        ls(&["ls-files", "--others", "--exclude-standard"]),
+    ) {
+        tracked.extend(untracked);
+        return Ok(tracked);
+    }
+    if let Some(files) = ls(&["ls-files", "--cached", "--others", "--exclude-standard"]) {
+        return Ok(files);
     }
     let root = PathBuf::from(&project_path);
     let mut files = Vec::new();
@@ -892,6 +936,29 @@ fn submodule_git_dirs(modules: &Path, depth: usize) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+// A linked worktree's submodule git dirs live outside its root, where the
+// recursive watch misses them, so one checked out later needs a new watcher.
+pub(crate) fn rewatch_containing(app: &AppHandle, state: &FsWatch, path: &Path) {
+    let mut entries = state.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    for entry in entries
+        .iter_mut()
+        .filter(|e| e.watcher.is_some() && path.starts_with(&e.root))
+    {
+        if let Err(e) = replace_watcher(app, entry) {
+            eprintln!("tori: cannot rewatch {}: {e}", entry.root);
+        }
+    }
+}
+
+fn replace_watcher(app: &AppHandle, entry: &mut WatchEntry) -> Result<(), String> {
+    // Dropped before the new one exists, so the old debounce thread ends
+    // rather than emitting beside it.
+    entry.watcher = None;
+    let root = entry.root.clone();
+    entry.watcher = Some(install_watcher(app, Path::new(&root), &root, entry.muted.clone())?);
+    Ok(())
 }
 
 /// Watch one root and wire its bursts to `fs://changed`. Shared by the

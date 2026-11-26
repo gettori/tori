@@ -66,6 +66,7 @@ import {
   divergedIn,
   refuseIfDiverged,
   type FileStatus,
+  withSubmodules,
 } from "../../utils/gitActions";
 import { divergedWords, forcePushWords, pullRebaseWords, pullWords, pushWords } from "../../utils/pushWords";
 import { fetchRootNow } from "../../utils/remoteSync";
@@ -182,6 +183,7 @@ type StashOutcome = { restored: string[]; deleted: string[] };
  *  one that draws no header, since there is nothing to say whose it is. */
 type Section = {
   root: string;
+  parent?: string;
   label?: string;
   tint?: string;
   icon?: ProjectIconSource;
@@ -190,6 +192,28 @@ type Section = {
 };
 
 // Same wording as the file tree's section headers: one member, one vocabulary.
+
+type SubmodulePointer = {
+  from: string | null;
+  to: string | null;
+  ahead: { sha: string; subject: string }[];
+  behind: { sha: string; subject: string }[];
+};
+
+const sameSections = (a: Section[], b: Section[]) =>
+  a.length === b.length &&
+  a.every((x, i) => {
+    const y = b[i];
+    return (
+      x.root === y.root &&
+      x.parent === y.parent &&
+      x.label === y.label &&
+      x.tint === y.tint &&
+      x.icon === y.icon &&
+      x.state === y.state &&
+      x.readOnly === y.readOnly
+    );
+  });
 
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
@@ -284,7 +308,7 @@ export default function ReviewPanel(props: {
   // One section per member inside a Topic, one unnamed section for a branch
   // unit. Member order, which is the order the tree and the search panel draw
   // them in, so the three surfaces agree about what "second member" means.
-  const sections = createMemo<Section[]>(() =>
+  const memberSections = (): Section[] =>
     props.roots?.length
       ? props.roots.map((m) => ({
           root: m.path,
@@ -296,8 +320,19 @@ export default function ReviewPanel(props: {
         }))
       : props.root
         ? [{ root: props.root }]
-        : [],
-  );
+        : [];
+  const sectionsOf = (m: Section): Section[] => [
+    m,
+    ...withSubmodules([m.root])
+      .slice(1)
+      .map((sub) => ({ root: sub, parent: m.root, label: sub.slice(m.root.length + 1), readOnly: m.readOnly })),
+  ];
+  const sections = createMemo<Section[]>(() => memberSections().flatMap(sectionsOf), {
+    // By value: every status answer rebuilds the list, and a fresh one each
+    // time would rerun the refresh keyed on it into a read loop.
+    equals: sameSections,
+  });
+  const submodulesOf = (root: string | null) => sections().filter((sec) => !!root && sec.parent === root);
   /** Inside a Topic, where the chips pick which member is on screen. A branch
    *  unit has one repo and names itself instead. */
   const headed = () => !!props.roots?.length;
@@ -378,7 +413,9 @@ export default function ReviewPanel(props: {
    *  pulled, never staged, committed, discarded or pushed from here. */
   const readOnlyRoot = (root: string | null) => !!root && !!sections().find((s) => s.root === root)?.readOnly;
   const viewedReadOnly = () => readOnlyRoot(viewedRoot());
-  const anyFiles = () => !!gitStateFor(viewedRoot()).files.length;
+  const anyFiles = () =>
+    !!gitStateFor(viewedRoot()).files.length ||
+    submodulesOf(viewedRoot()).some((sec) => gitStateFor(sec.root).files.length);
 
   // The branch, the PR paths and the stash list are all one-repo surfaces, and
   // the repo they are about is the one on screen.
@@ -662,9 +699,10 @@ export default function ReviewPanel(props: {
   // What the commit would hold: staged when anything is, else the working tree,
   // which is what you are about to stage.
   const statsLabel = () => {
-    const root = viewedRoot();
-    const staged = stagedFiles(root).length;
-    const n = staged || changedFiles(root).length + conflictedFiles(root).length;
+    const roots = [viewedRoot(), ...submodulesOf(viewedRoot()).map((sec) => sec.root)];
+    const count = (pick: (root: string | null) => FileStatus[]) => roots.reduce((n, r) => n + pick(r).length, 0);
+    const staged = count(stagedFiles);
+    const n = staged || count(changedFiles) + count(conflictedFiles);
     return n ? plural(n, "file") : "Nothing to commit";
   };
 
@@ -724,6 +762,19 @@ export default function ReviewPanel(props: {
           danger: true,
         });
         if (!ok) return;
+      }
+      // Every detached submodule gets its branch before anything commits, so a
+      // refused name leaves no repo half way.
+      for (const root of roots) {
+        const sec = sections().find((x) => x.root === root);
+        if (!sec?.parent || gitStateFor(root).branch) continue;
+        try {
+          await invoke("git_submodule_attach_branch", { root, name: await submoduleBranch(sec) });
+          await refreshMeta(root);
+        } catch (e) {
+          toastError(`${sec.label}: ${String(e)}`);
+          return;
+        }
       }
       // One at a time rather than in parallel: each write takes that repo's
       // lock, and a failure part-way through has to leave the repos behind it
@@ -1195,11 +1246,136 @@ export default function ReviewPanel(props: {
     );
   }
 
+  const [openPointers, setOpenPointers] = createSignal<ReadonlySet<string>>(new Set());
+  const [typedBranches, setTypedBranches] = createSignal<ReadonlyMap<string, string>>(new Map());
+  const suggestBranch = (sec: Section) =>
+    invoke<string>("git_submodule_branch_suggestion", {
+      root: sec.root,
+      want: gitStateFor(sec.parent).branch ?? "",
+    });
+  const submoduleBranch = async (sec: Section) => typedBranches().get(sec.root) ?? (await suggestBranch(sec));
+
+  async function discardPointer(root: string, path: string) {
+    await busy(() =>
+      guarded("Discard", root, async () => {
+        const { to } = await invoke<SubmodulePointer>("git_submodule_pointer", {
+          root,
+          path,
+        });
+        const ok = await askConfirm({
+          title: `Check ${path} back out?`,
+          message: `The submodule goes back to the commit this repo records${to ? `, leaving ${to.slice(0, 7)}` : ""}. Its own commits stay where they are, and a branch it is on keeps them.`,
+          confirmLabel: "Check out recorded commit",
+          danger: true,
+        });
+        if (!ok) return;
+        await invoke("git_submodule_reset_pointer", { root, path });
+        await refreshStatus(root);
+        await refreshGit(`${root}/${path}`);
+      }),
+    );
+  }
+
+  function pointerRow(f: FileStatus, opts: { staged: boolean; root: string; readOnly?: boolean }) {
+    const key = `${opts.root}\0${f.path}\0${opts.staged}`;
+    const moved = () => opts.staged || !!f.submodule?.pointer_moved;
+    const pointer = createMemo(() => {
+      void gitStateFor(`${opts.root}/${f.path}`).head;
+      return invoke<SubmodulePointer>("git_submodule_pointer", {
+        root: opts.root,
+        path: f.path,
+      });
+    });
+    const open = () => openPointers().has(key);
+    const short = (sha: string | null) => (sha ? sha.slice(0, 7) : "none");
+    return (
+      <>
+        <div
+          class={styles.reviewRow}
+          title={f.path}
+          data-pointer={f.path}
+          aria-expanded={moved() ? (open() ? "true" : "false") : undefined}
+          onClick={() =>
+            moved() &&
+            setOpenPointers((prev) => {
+              const next = new Set(prev);
+              if (!next.delete(key)) next.add(key);
+              return next;
+            })
+          }
+        >
+          <Icon icon={GitCommitHorizontal} />
+          <span class={styles.reviewName}>{baseName(f.path)}</span>
+          <Show when={dirName(f.path)}>
+            <span class={styles.reviewDir}>{dirName(f.path)}</span>
+          </Show>
+          <Show when={moved()} fallback={<span class={styles.pointerNote}>edited inside</span>}>
+            <Loading fallback={null}>
+              <span class={styles.pointerShas}>
+                {short(pointer().from)} -&gt; {short(pointer().to)}
+                {f.submodule?.modified || f.submodule?.untracked ? "-dirty" : ""}
+              </span>
+            </Loading>
+          </Show>
+          <span class={styles.rowEnd}>
+            <Show when={moved() && !opts.staged && !opts.readOnly}>
+              <IconButton
+                size="xs"
+                icon={<Icon icon={Undo2} />}
+                disabled={applying()}
+                aria-label="Discard"
+                tooltip="Check the submodule back out at the commit this repo records"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void discardPointer(opts.root, f.path);
+                }}
+              />
+            </Show>
+            <Show when={moved() && !opts.readOnly}>
+              <IconButton
+                size="xs"
+                icon={<Icon icon={opts.staged ? Minus : Plus} />}
+                aria-label={opts.staged ? "Unstage" : "Stage"}
+                tooltip={opts.staged ? "Unstage the pointer" : "Record the submodule's commit here"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void (opts.staged ? unstage(opts.root, f.path) : stage(opts.root, f.path));
+                }}
+              />
+            </Show>
+          </span>
+          <span class={`${styles.reviewStatus} ${styles.modified}`}>{f.status.trim() || "M"}</span>
+        </div>
+        <Show when={moved() && open()}>
+          <Loading fallback={null}>
+            <div class={styles.pointerCommits}>
+              <For each={pointer().ahead}>
+                {(c) => (
+                  <div class={styles.pointerCommit}>
+                    <span class={styles.pointerSha}>+ {c.sha}</span> {c.subject}
+                  </div>
+                )}
+              </For>
+              <For each={pointer().behind}>
+                {(c) => (
+                  <div class={[styles.pointerCommit, styles.pointerBehind]}>
+                    <span class={styles.pointerSha}>- {c.sha}</span> {c.subject}
+                  </div>
+                )}
+              </For>
+            </div>
+          </Loading>
+        </Show>
+      </>
+    );
+  }
+
   /** One changed file, in the file tree's shape: icon, name, the hover actions,
    *  then the status letter last, so a column of letters lines up down the
    *  right edge whatever the names are doing. The folder is on the `title`,
    *  not beside the name; a sidebar has no room for both. */
   function row(f: FileStatus, opts: { staged: boolean; root: string; readOnly?: boolean }) {
+    if (f.submodule) return pointerRow(f, opts);
     const untracked = () => f.status.includes("?");
     const tab = () => diffTabId(opts.root, f.path, opts.staged);
     return (
@@ -1755,7 +1931,12 @@ export default function ReviewPanel(props: {
           verb they qualify. */}
       <Show when={commitBoxShown() && !viewedReadOnly()}>
         <div class={styles.commitCard}>
-          <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
+          <Show
+            when={
+              (headed() || sections().some((sec) => sec.parent)) &&
+              (amend() ? memberRoots().length : stagedRoots().length) > 1
+            }
+          >
             <div class={styles.commitTarget}>
               <For each={amend() ? memberRoots() : stagedRoots()}>
                 {(root) => {
@@ -1901,6 +2082,42 @@ export default function ReviewPanel(props: {
                 <div class={styles.memberSection} data-root={viewedRoot()}>
                   {sectionLists({ root: viewedRoot()!, readOnly: viewedReadOnly() })}
                 </div>
+                <For each={submodulesOf(viewedRoot())}>
+                  {(sec) => {
+                    const suggested = createMemo(() => {
+                      void gitStateFor(sec.root).head;
+                      return suggestBranch(sec);
+                    });
+                    return (
+                      <div class={styles.memberSection} data-root={sec.root} data-submodule={sec.label}>
+                        <div class={styles.submoduleHeader}>
+                          <Icon icon={GitBranch} />
+                          <span class={styles.submodulePath}>{sec.label}</span>
+                          <Show
+                            when={gitStateFor(sec.root).branch}
+                            fallback={
+                              <Loading fallback={<span class={styles.submoduleBranch}>detached</span>}>
+                                <input
+                                  class={styles.submoduleBranchInput}
+                                  aria-label={`Branch to create in ${sec.label} before committing`}
+                                  title="Detached HEAD: committing creates this branch here first"
+                                  value={typedBranches().get(sec.root) ?? suggested()}
+                                  onInput={(e) => {
+                                    const v = e.currentTarget.value;
+                                    setTypedBranches((prev) => new Map(prev).set(sec.root, v));
+                                  }}
+                                />
+                              </Loading>
+                            }
+                          >
+                            {(b) => <span class={styles.submoduleBranch}>{b()}</span>}
+                          </Show>
+                        </div>
+                        {sectionLists(sec)}
+                      </div>
+                    );
+                  }}
+                </For>
               </OverlayScroll>
             </Show>
           </Show>
