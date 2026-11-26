@@ -1,4 +1,7 @@
 /* @refresh reload */
+// First import on purpose: it declares the cascade layer order, and a layer
+// block from any component CSS that loads ahead of it would claim the top rank.
+import "./styles/reset.css";
 import { render } from "@solidjs/web";
 import App from "./App";
 import { applyCachedTheme } from "./theme";

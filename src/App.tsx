@@ -188,7 +188,6 @@ import {
 import { frontWorktree } from "./utils/editorState";
 import { startRun, stopRun } from "./utils/runStore";
 import { noticeProposal } from "./utils/proposals";
-import "./styles/reset.css";
 import { CockpitPopup, CockpitSwitch, CockpitView } from "./panels/Autopilot/Cockpit";
 import { popupOpen, view } from "./utils/autopilotStore";
 import InboxButton from "./panels/Inbox/InboxButton";
