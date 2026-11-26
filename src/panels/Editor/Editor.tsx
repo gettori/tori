@@ -2565,7 +2565,7 @@ export default function Editor(props: {
   ) {
     if (!r) return;
     const allowed = await mayRewrite(verb, r, guardAsk);
-    if (allowed) reportIntegrate(await run(r), verb, quietDone);
+    if (allowed) reportIntegrate(r, await run(r), verb, quietDone);
   }
 
   async function undoLastCommitHere() {
@@ -2755,12 +2755,12 @@ export default function Editor(props: {
         }),
         onEvent(GIT_MERGE_BRANCH, () => {
           void pickBranch("Merge which branch?", { exceptCurrent: true }).then(async (c) => {
-            if (c) reportIntegrate(await merge(c.root, c.branch), "Merge");
+            if (c) reportIntegrate(c.root, await merge(c.root, c.branch), "Merge");
           });
         }),
         onEvent(GIT_REBASE_BRANCH, () => {
           void pickBranch("Rebase onto which branch?", { exceptCurrent: true }).then(async (c) => {
-            if (c) reportIntegrate(await rebase(c.root, c.branch), "Rebase");
+            if (c) reportIntegrate(c.root, await rebase(c.root, c.branch), "Rebase");
           });
         }),
         onEvent(GIT_ABORT, () => {

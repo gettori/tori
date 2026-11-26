@@ -24,8 +24,8 @@ describe("noteSetup", () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ kind: "error", message: "Setup in feat failed (exit 3)" });
-    const action = seen[0].action as { label: string; run: () => void };
-    expect(action.label).toBe("Show log");
+    const [action, open] = seen[0].action as { label: string; run: () => void }[];
+    expect([action.label, open.label]).toEqual(["Show log", "Open"]);
     action.run();
     expect(opened).toEqual([{ path: "/logs/feat-1.log" }]);
   });
@@ -34,7 +34,7 @@ describe("noteSetup", () => {
     const seen = toasts();
     noteSetup({ kind: "setup", worktree: "/p/feat", state: "running", code: null, log: "/l" });
     noteSetup({ kind: "setup", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
-    expect(seen).toEqual([{ message: "Setup finished in feat", kind: "success" }]);
+    expect(seen).toMatchObject([{ message: "Setup finished in feat", kind: "success", action: [{ label: "Open" }] }]);
   });
 
   it("toasts a failed teardown with Show log and says nothing for one that finished", () => {
@@ -43,8 +43,12 @@ describe("noteSetup", () => {
     noteSetup({ kind: "teardown", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
     noteSetup({ kind: "teardown", worktree: "/p/feat", state: "failed", code: 2, log: "/l" });
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ kind: "error", message: "Teardown in feat failed (exit 2)" });
-    expect((seen[0].action as { label: string }).label).toBe("Show log");
+    expect(seen[0]).toMatchObject({
+      kind: "error",
+      message: "Teardown in feat failed (exit 2)",
+      action: [{ label: "Show log" }],
+    });
+    expect(seen[0].action).toHaveLength(1);
   });
 
   it("toasts a run that exits on its own with a failure, and stays quiet for a stop", () => {
@@ -55,7 +59,10 @@ describe("noteSetup", () => {
     noteSetup({ kind: "run", worktree: "/p/feat", state: "done", code: 0, log: "/l" });
     noteSetup({ kind: "run", worktree: "/p/feat", state: "failed", code: 1, log: "/l" });
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ kind: "error", message: "Run in feat failed (exit 1)" });
-    expect((seen[0].action as { label: string }).label).toBe("Show log");
+    expect(seen[0]).toMatchObject({
+      kind: "error",
+      message: "Run in feat failed (exit 1)",
+      action: [{ label: "Show log" }, { label: "Open" }],
+    });
   });
 });
