@@ -3320,22 +3320,28 @@ fn base_target(repo: &str, branch: Option<&str>, tracked: Option<&str>) -> Optio
     Some((base, base_ref))
 }
 
+/// Where `tip` left the base, `None` for unrelated histories.
+fn fork_of(repo: &str, base_ref: &str, tip: &str) -> Option<String> {
+    // A base rebased or force-pushed after the branch was cut no longer holds
+    // the commits the branch started on, so plain merge-base walks past them and
+    // counts the base's old work as this branch's. The reflog still knows them.
+    git_capture(repo, &["merge-base", "--fork-point", base_ref, tip])
+        .or_else(|_| git_capture(repo, &["merge-base", base_ref, tip]))
+        .ok()
+        .filter(|sha| !sha.is_empty())
+}
+
 /// Commits `tip` has that the base lacks, and the reverse.
-fn base_counts(repo: &str, tip: &str, base_ref: &str) -> (u32, u32) {
+fn base_counts(repo: &str, tip: &str, base_ref: &str, fork: Option<&str>) -> (u32, u32) {
     // Both directions out of one process. Unrelated histories have no merge
     // base and print nothing, which falls through to zero and zero: no work of
     // its own, nothing to catch up on, and `conflicts` left to say why.
-    let counts = git_capture(
-        repo,
-        &[
-            "rev-list",
-            "--left-right",
-            "--count",
-            &format!("{tip}...{base_ref}"),
-            "--",
-        ],
-    )
-    .unwrap_or_default();
+    let range = format!("{tip}...{base_ref}");
+    let below = fork.map(|f| format!("^{f}"));
+    let mut args = vec!["rev-list", "--left-right", "--count", &range];
+    args.extend(below.as_deref());
+    args.push("--");
+    let counts = git_capture(repo, &args).unwrap_or_default();
     let mut counts = counts.split_whitespace();
     let ahead = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
     let behind = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
@@ -3344,12 +3350,13 @@ fn base_counts(repo: &str, tip: &str, base_ref: &str) -> (u32, u32) {
 
 fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>, dirty: bool) -> Option<BaseSync> {
     let (base, base_ref) = base_target(repo, branch, tracked)?;
-    let (ahead, behind) = base_counts(repo, tip, &base_ref);
+    let fork = fork_of(repo, &base_ref, tip);
+    let (ahead, behind) = base_counts(repo, tip, &base_ref, fork.as_deref());
     Some(BaseSync {
         name: base,
         ahead,
         conflicts: base_conflicts(repo, &base_ref, tip, behind),
-        stat: base_stat(repo, &base_ref, tip, ahead, dirty),
+        stat: base_stat(repo, &base_ref, tip, fork.as_deref(), ahead, dirty),
         behind,
         local_base: base_ref.starts_with("refs/heads/"),
     })
@@ -3365,7 +3372,7 @@ pub(crate) fn changed_since_base(repo: &str) -> Option<std::collections::HashSet
     }
     let tracked = branch.as_deref().and_then(|name| sync_ref(repo, name));
     let from = match base_target(repo, branch.as_deref(), tracked.as_deref()) {
-        Some((_, base_ref)) => git_capture(repo, &["merge-base", &base_ref, &tip]).ok()?,
+        Some((_, base_ref)) => fork_of(repo, &base_ref, &tip)?,
         None => tip,
     };
     let diff = git_capture(repo, &["--no-optional-locks", "diff", "--name-only", &from, "--"]).ok()?;
@@ -3428,7 +3435,7 @@ pub(crate) fn unit_conflicts(repo: &str, want: Option<&str>) -> UnitConflicts {
     let Some((_, base_ref)) = base_target(repo, branch.as_deref(), tracked.as_deref()) else {
         return UnitConflicts::default();
     };
-    let (_, behind) = base_counts(repo, &tip, &base_ref);
+    let (_, behind) = base_counts(repo, &tip, &base_ref, None);
     UnitConflicts {
         conflicts: base_conflicts(repo, &base_ref, &tip, behind),
         local_base: base_ref.starts_with("refs/heads/"),
@@ -3442,10 +3449,11 @@ static STATS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<Con
 /// (so what the base gained since is not counted) to the working tree, new
 /// files included, since nobody here commits before they look. Cached on the
 /// two shas only while the checkout is clean, because an edit moves neither.
-fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32, dirty: bool) -> Option<DiffStat> {
+fn base_stat(repo: &str, base_ref: &str, tip: &str, fork: Option<&str>, ahead: u32, dirty: bool) -> Option<DiffStat> {
     if ahead == 0 && !dirty {
         return Some(DiffStat::default());
     }
+    let fork = fork?;
     let key = if dirty { None } else { conflict_key(repo, base_ref, tip) };
     let cache = STATS.get_or_init(Default::default);
     if let Some(hit) = key.as_ref().and_then(|k| {
@@ -3457,10 +3465,9 @@ fn base_stat(repo: &str, base_ref: &str, tip: &str, ahead: u32, dirty: bool) -> 
     }) {
         return Some(hit);
     }
-    let fork = git_capture(repo, &["merge-base", base_ref, tip]).ok()?;
     // Against the working tree only where it is this branch's: a branch asked
     // about from somebody else's checkout has nothing uncommitted.
-    let mut args = vec!["--no-optional-locks", "diff", "--numstat", fork.as_str()];
+    let mut args = vec!["--no-optional-locks", "diff", "--numstat", fork];
     if !dirty {
         args.push(tip);
     }
