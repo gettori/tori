@@ -36,6 +36,8 @@ describe("which files have a second view", () => {
   it("recognises markdown whatever case it was written in", () => {
     expect(isMarkdownPath(MD)).toBe(true);
     expect(isMarkdownPath("/a/README.MD")).toBe(true);
+    expect(isMarkdownPath("/a/notes.markdown")).toBe(true);
+    expect(isMarkdownPath("/a/notes.MKD")).toBe(true);
   });
 
   it("says no to everything else, including the other previewable kind", () => {
@@ -45,6 +47,7 @@ describe("which files have a second view", () => {
     expect(isMarkdownPath(TS)).toBe(false);
     expect(isMarkdownPath("/a/logo.svg")).toBe(false);
     expect(isMarkdownPath("/a/md")).toBe(false);
+    expect(isMarkdownPath("/a/page.mdx")).toBe(false);
   });
 });
 

@@ -19,7 +19,7 @@ import { createSignal } from "solid-js";
  *  consumer exists for. SVG previews render the file itself through the asset
  *  protocol and never ask for its text. */
 export function isMarkdownPath(path: string): boolean {
-  return path.toLowerCase().endsWith(".md");
+  return /\.(md|markdown|mkd)$/i.test(path);
 }
 
 // ---- text --------------------------------------------------------------

@@ -44,6 +44,8 @@ const EXT_TO_LANG = {
   jsonl: "jsonl",
   md: "markdown",
   markdown: "markdown",
+  mkd: "markdown",
+  mdx: "markdown",
   html: "html",
   htm: "html",
   css: "css",
