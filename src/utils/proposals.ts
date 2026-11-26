@@ -7,6 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import { emitWith, TOAST, type ToastEvent } from "./events";
 import type { SpaceProject } from "./topicMembers";
+import { placeLabel } from "./placeLabel";
 
 export type ProposalValues = {
   setupCommand?: string;
@@ -114,7 +115,7 @@ export async function noticeProposal(worktree: string): Promise<void> {
   if (proposal?.state !== "unaccepted" || toastedDigests.has(proposal.digest)) return;
   toastedDigests.add(proposal.digest);
   emitWith<ToastEvent>(TOAST, {
-    message: "This repo proposes commands for its worktrees. Nothing from it runs until you accept it.",
+    message: `The repo behind ${placeLabel(worktree)} proposes commands for its worktrees. Nothing from it runs until you accept it.`,
     kind: "info",
     action: { label: "Review", run: () => void openReview(worktree).catch(toastError) },
   });
@@ -130,7 +131,7 @@ export async function acceptProposal(worktree: string, digest: string): Promise<
   }
   if (setup !== "repo") return;
   emitWith<ToastEvent>(TOAST, {
-    message: "Accepted. Run its setup in this worktree now?",
+    message: `Accepted. Run its setup in ${placeLabel(worktree)} now?`,
     kind: "info",
     action: { label: "Run setup now", run: () => void rerunSetup(worktree) },
   });

@@ -11,7 +11,10 @@ export function placeLabel(root: string, branch?: string | null): string {
     const unit =
       project.branchUnits.find((u) => u.folderPath === root && (u.kind !== "plain" || u.isCurrent)) ??
       project.branchUnits.find((u) => u.folderPath === root);
-    if (!unit) continue;
+    if (!unit) {
+      if (project.path === root) return project.name;
+      continue;
+    }
     const name = branch ?? unit.branch ?? unit.label;
     return name && name !== project.name ? `${name} in ${project.name}` : project.name;
   }

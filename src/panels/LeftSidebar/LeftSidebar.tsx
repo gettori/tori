@@ -18,6 +18,7 @@ import { extensionConnected, openPort, portsAt } from "../../utils/portsStore";
 import { spendFor } from "../../utils/spendStore";
 import { showSpend } from "../../utils/usageSettings";
 import { tearingDown } from "../../utils/teardowns";
+import { openPlace, placeLabel } from "../../utils/placeLabel";
 import { runAt, runnable, startRun, stopRun } from "../../utils/runStore";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -2454,6 +2455,9 @@ export default function LeftSidebar(props: {
   // Repos already warned about a missing credential helper, so the notice fires
   // once per session, not on every fetch.
   const helperWarned = new Set<string>();
+  // Only these fetches are this listener's to report: `fetchIn` toasts its own
+  // failure, and a second unnamed copy of it would land beside that one.
+  const loudFetches = new Set<string>();
 
   // Kick the loud fetch, the one that may stop and ask: a one-time (per session)
   // warning when no credential helper will cache the login, then the fetch
@@ -2472,11 +2476,13 @@ export default function LeftSidebar(props: {
         })
         .catch(() => {});
     }
+    loudFetches.add(repo);
     invoke("git_fetch", { repo }).catch((e) => {
+      loudFetches.delete(repo);
       // No thread started, so no done or error event is coming: the picker's
       // own pulse has to be put out from here or it runs forever.
       setBranchReq((r) => (r && coversPicker(r, repo) ? { ...r, fetching: false } : r));
-      setError(String(e));
+      setError(`${placeLabel(repo)}: ${String(e)}`);
     });
   }
 
@@ -4115,6 +4121,7 @@ export default function LeftSidebar(props: {
     // Guarded on the request still being for this repo, so a late or duplicate
     // fetch-done after a cancel or a reopen cannot resurrect or double a list.
     unlistenFetchDone = await listen<{ repo: string; quiet?: boolean }>("git://fetch-done", async (e) => {
+      if (!e.payload.quiet) loudFetches.delete(e.payload.repo);
       const forThis = (fn: (r: NonNullable<ReturnType<typeof branchReq>>) => typeof r) =>
         setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? fn(r) : r));
       if (branchReq() && coversPicker(branchReq()!, e.payload.repo)) {
@@ -4147,7 +4154,12 @@ export default function LeftSidebar(props: {
       // show. That is the expected resting state of those repos, not an error
       // line across the sidebar.
       if (e.payload.quiet) return;
-      setError(e.payload.error || "Fetch failed");
+      if (loudFetches.delete(e.payload.repo))
+        setError(
+          `${placeLabel(e.payload.repo)}: ${e.payload.error || "Fetch failed"}`,
+          "error",
+          openPlace(e.payload.repo),
+        );
       setBranchReq((r) => (r && coversPicker(r, e.payload.repo) ? { ...r, fetching: false } : r));
     });
   };
