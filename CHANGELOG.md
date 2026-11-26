@@ -10,6 +10,13 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.1126.1-beta
+
+- The usage card in the title bar has its padding back, and other popovers get theirs back too.
+- The session menu's separators line up and the usage figures have proper space under them.
+- Session details in the session menu no longer gets cut off when the chat pane is narrow.
+- macOS 26.1126.1-beta ships; Android 26.1126.1-beta ships; browser extension unchanged at 26.1126.0; push relay unchanged at 26.1030.0-beta.
+
 ## 26.1126.0-beta
 
 - **Tori now needs macOS 26 or later.** If your Mac is on macOS 13, 14 or 15, do not install this update: Tori will not open afterwards. Update macOS first, or stay on the version you have.
