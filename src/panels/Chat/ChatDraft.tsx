@@ -328,6 +328,7 @@ export default function ChatDraft(props: {
         onAttachSession={attachments.onAttachSession}
         navigator={attachments}
         onSend={onSend}
+        takeFocus={props.active}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
         uploads={attachmentSources(tier(), catalog()?.catalogue?.capabilities).uploads}
