@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "./events";
+import { openPlace, placeLabel } from "./placeLabel";
 import { noteRun, seedRuns } from "./runStore";
 import { noteTeardown } from "./teardowns";
 
@@ -13,8 +14,6 @@ export type SetupReport = {
   log: string;
 };
 
-const folderName = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
-
 const WORD: Record<SetupReport["kind"], string> = { setup: "Setup", run: "Run", teardown: "Teardown" };
 
 /** Toast a setup that has ended. A running one says nothing: the worktree
@@ -25,19 +24,21 @@ export function noteSetup(r: SetupReport): void {
   if (r.state === "running" || r.state === "stopping" || r.state === "stopped") return;
   if (r.kind !== "setup" && r.state !== "failed") return;
   const word = WORD[r.kind];
-  const name = folderName(r.worktree);
+  const name = placeLabel(r.worktree);
   const showLog = { label: "Show log", run: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: r.log }) };
+  // A teardown's worktree is gone, so there is nowhere to open.
+  const open = r.kind === "teardown" ? [] : [openPlace(r.worktree)];
   emitWith<ToastEvent>(
     TOAST,
     r.state === "done"
-      ? { message: `Setup finished in ${name}`, kind: "success" }
+      ? { message: `Setup finished in ${name}`, kind: "success", action: open }
       : {
           message:
             r.code === null
               ? `${word} in ${name} ended without an exit code`
               : `${word} in ${name} failed (exit ${r.code})`,
           kind: "error",
-          action: showLog,
+          action: [showLog, ...open],
         },
   );
 }

@@ -805,7 +805,7 @@ export type ToastEvent = {
   kind?: "error" | "info" | "success";
   action?: ToastEventAction | ToastEventAction[];
 };
-type ToastEventAction = { label: string; run: () => void };
+export type ToastEventAction = { label: string; run: () => void };
 
 // Payload-carrying event pair: the safe-send primitive (src/utils/safeSend.ts
 // `requestSend`). Any panel can ask to insert text at a session's prompt;

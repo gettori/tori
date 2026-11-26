@@ -875,7 +875,7 @@ export default function ReviewPanel(props: {
     quietDone = false,
   ) {
     if (!root) return;
-    void busy(() => guarded(verb, root, async () => reportIntegrate(await run(root), verb, quietDone)));
+    void busy(() => guarded(verb, root, async () => reportIntegrate(root, await run(root), verb, quietDone)));
   }
 
   async function openRebase(root: string | null) {
@@ -897,7 +897,7 @@ export default function ReviewPanel(props: {
       guarded("Rebase", req.root, async () => {
         const outcome = await rebaseInteractive(req.root, steps);
         if (outcome) setRebaseReq(null);
-        reportIntegrate(outcome, "Rebase");
+        reportIntegrate(req.root, outcome, "Rebase");
       }),
     );
   }

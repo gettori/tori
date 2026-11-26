@@ -25,6 +25,7 @@ import { mentionPath } from "./pathScope";
 import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "./projectTrust";
 import { DIVERGED_REFUSAL, divergedTarget, duplicateWarning } from "./pushWords";
 import { mayRewrite, type GuardAsk } from "./gitGuard";
+import { openPlace, placeLabel } from "./placeLabel";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
  *  and since the backend moved to `--porcelain=v2 -z` it is always a real
@@ -394,15 +395,28 @@ async function whileBusy<T>(root: string, kind: GitBusy, refused: T, work: () =>
   }
 }
 
-function toastError(e: unknown) {
-  const message = String(e) === UNTRUSTED ? "Git stays off until you trust this project." : String(e);
-  emitWith<ToastEvent>(TOAST, { message, kind: "error" });
+// Named and linked: a fetch or pull runs in the background, so the toast often
+// lands after the user has moved to another checkout.
+function toastError(root: string, e: unknown) {
+  const reason = String(e) === UNTRUSTED ? "Git stays off until you trust this project." : String(e);
+  const branch = gitStateFor(root).branch;
+  emitWith<ToastEvent>(TOAST, {
+    message: `${placeLabel(root, branch)}: ${reason}`,
+    kind: "error",
+    action: openPlace(root, branch),
+  });
 }
 
 /** A remote action that finished. Said out loud because nothing else on screen
  *  moves when a fetch or a push lands with no news. */
-function toastDone(message: string, ok: boolean): boolean {
-  if (ok) emitWith<ToastEvent>(TOAST, { message, kind: "success" });
+function toastDone(root: string, verb: string, ok: boolean): boolean {
+  const branch = gitStateFor(root).branch;
+  if (ok)
+    emitWith<ToastEvent>(TOAST, {
+      message: `${verb} ${placeLabel(root, branch)}.`,
+      kind: "success",
+      action: openPlace(root, branch),
+    });
   return ok;
 }
 
@@ -548,7 +562,7 @@ async function act(
   try {
     await run();
   } catch (e) {
-    toastError(e);
+    toastError(root, e);
     return false;
   }
   await after(root);
@@ -593,15 +607,15 @@ export function fetchIn(root: string): Promise<boolean> {
     try {
       await invoke("git_fetch", { repo: root });
     } catch (e) {
-      toastError(e);
+      toastError(root, e);
       return false;
     }
     const { ok, error } = await result;
     if (!ok) {
-      toastError(error || "Fetch failed");
+      toastError(root, error || "Fetch failed");
       return false;
     }
-    return toastDone("Fetched.", true);
+    return toastDone(root, "Fetched", true);
   });
 }
 
@@ -621,16 +635,16 @@ export function pull(root: string, ask: GuardAsk, rebase = false, ffOnly = false
     try {
       await invoke("git_pull", { repo: root, rebase, ffOnly });
     } catch (e) {
-      toastError(e);
+      toastError(root, e);
       return false;
     }
     const { ok, error } = await result;
     await refreshGit(root);
     if (!ok) {
-      toastError(error || "Pull failed");
+      toastError(root, error || "Pull failed");
       return false;
     }
-    return toastDone(rebase ? "Pulled with rebase." : "Pulled.", true);
+    return toastDone(root, rebase ? "Pulled with rebase into" : "Pulled", true);
   });
 }
 
@@ -640,7 +654,8 @@ export function resetToUpstream(root: string, ask: GuardAsk): Promise<boolean> {
   return whileBusy(root, "reset", false, async () => {
     if (!(await mayRewrite("Reset", root, ask))) return false;
     return toastDone(
-      "Reset to upstream.",
+      root,
+      "Reset to upstream:",
       await act(root, () => invoke("git_reset_to_upstream", { projectPath: root }), refreshGit),
     );
   });
@@ -661,7 +676,7 @@ async function integrate(root: string, cmd: string, args: Record<string, unknown
     return out;
   } catch (e) {
     await refreshGit(root);
-    toastError(e);
+    toastError(root, e);
     return null;
   }
 }
@@ -669,15 +684,20 @@ async function integrate(root: string, cmd: string, args: Record<string, unknown
 /** Say how an integrate went. A conflict opens Changes, where the files and
  *  the Continue that finishes the job are. `quietDone` is for Continue and
  *  Skip, whose success is the banner going away. */
-export function reportIntegrate(outcome: IntegrateOutcome | null, verb: string, quietDone = false): void {
+export function reportIntegrate(root: string, outcome: IntegrateOutcome | null, verb: string, quietDone = false): void {
   if (!outcome) return;
+  const branch = gitStateFor(root).branch;
+  const where = placeLabel(root, branch);
+  const open = openPlace(root, branch);
   if (!outcome.conflicted) {
-    if (!quietDone) emitWith<ToastEvent>(TOAST, { message: `${verb} done.`, kind: "success" });
+    if (!quietDone)
+      emitWith<ToastEvent>(TOAST, { message: `${verb} done in ${where}.`, kind: "success", action: open });
     return;
   }
   emitWith<ToastEvent>(TOAST, {
-    message: `${verb} stopped on a conflict. Resolve the files in Changes, then Continue.`,
+    message: `${verb} stopped on a conflict in ${where}. Resolve the files in Changes, then Continue.`,
     kind: "error",
+    action: open,
   });
   emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "changes" });
 }
@@ -798,16 +818,16 @@ export function push(root: string, branch: string): Promise<boolean> {
     try {
       await invoke("git_push", { repo: root, remote: "origin", branch });
     } catch (e) {
-      toastError(e);
+      toastError(root, e);
       return false;
     }
     const { ok, error } = await result;
     if (!ok) {
-      toastError(error || "Push failed");
+      toastError(root, error || "Push failed");
       return false;
     }
     await refreshMeta(root);
-    return toastDone(`Pushed ${branch}.`, true);
+    return toastDone(root, "Pushed", true);
   });
 }
 
@@ -821,7 +841,7 @@ export function divergedIn(root: string | null): PushTarget | null {
  *  would merge the stale side back in, and a plain push is rejected. */
 export function refuseIfDiverged(root: string): boolean {
   if (!divergedIn(root)) return false;
-  emitWith<ToastEvent>(TOAST, { message: DIVERGED_REFUSAL, kind: "error" });
+  toastError(root, DIVERGED_REFUSAL);
   return true;
 }
 
@@ -876,16 +896,16 @@ export function forcePush(root: string, branch: string, expected: string): Promi
     try {
       await invoke("git_force_push", { repo: root, branch, expected });
     } catch (e) {
-      toastError(e);
+      toastError(root, e);
       return false;
     }
     const { ok, error } = await result;
     if (!ok) {
-      toastError(error || "Force push failed");
+      toastError(root, error || "Force push failed");
       return false;
     }
     await refreshMeta(root);
-    return toastDone(`Force pushed ${branch}.`, true);
+    return toastDone(root, "Force pushed", true);
   });
 }
 

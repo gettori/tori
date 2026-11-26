@@ -288,7 +288,7 @@ describe("the shared git store", () => {
     await refreshGit("/proj");
     fail = "git_stage";
     const seen = await toastsFrom(() => stage("/proj", ["src/a.ts"]));
-    expect(seen).toEqual(["boom"]);
+    expect(seen).toEqual(["feature in proj: boom"]);
     expect(changedFiles()).toEqual([modified]);
   });
 
@@ -396,7 +396,7 @@ describe("the push guards", () => {
     await refreshGit("/proj");
     let refused = false;
     expect(await toastsFrom(async () => (refused = refuseIfDiverged("/proj")))).toEqual([
-      "Diverged: pull with rebase, or force push",
+      "feature in proj: Diverged: pull with rebase, or force push",
     ]);
     expect(refused).toBe(true);
   });
