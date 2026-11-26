@@ -461,7 +461,9 @@ export default function Composer(props: {
     if (!field) return;
     const at = field.caret();
     setCaret(at);
-    const next = activeToken(field.value(), at);
+    // A recalled `/command` would open the menu and take over Up, ending the
+    // walk. The first edit resets the walk, so the menu comes back then.
+    const next = untrack(historyIndex) >= 0 ? null : activeToken(field.value(), at);
     setToken(next);
     setMenuIndex(0);
     if (next?.kind === "file" && !filesRequested) {
