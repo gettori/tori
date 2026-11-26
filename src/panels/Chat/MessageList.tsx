@@ -293,9 +293,9 @@ const sessionName = (id: string) => {
  * paints N items whatever its length.
  *
  * Sticky-to-bottom follows new output only while the user is already at the
- * bottom. Scrolling up detaches, and nothing yanks the view back until they
- * scroll down again, which is what makes reading an earlier turn mid-stream
- * possible.
+ * bottom. Scrolling up by hand detaches, and nothing yanks the view back until
+ * they scroll down again or send, which is what makes reading an earlier turn
+ * mid-stream possible.
  */
 export default function MessageList(props: {
   items: readonly ChatItem[];
@@ -310,6 +310,9 @@ export default function MessageList(props: {
   /** The scrolling root, for a caller that needs to know whether a selection
    *  sits inside this transcript. */
   ref?: (el: HTMLDivElement) => void;
+  /** Hands over a call that puts the list back at the bottom and keeps it
+   *  there, for a send the caller knows the reader just made. */
+  pinner?: (pin: () => void) => void;
   /** Display label for the model that ran a turn, or null when the turn never
    *  named one (replayed history). The header renders the agent name alone
    *  then, rather than blaming an old turn on the current model. */
@@ -438,7 +441,12 @@ export default function MessageList(props: {
     if (scroller) keep = { first: shown()[0]?.id, fromBottom: scroller.scrollHeight - scroller.scrollTop };
     setLoading(true);
     clearTimeout(giveUp);
-    giveUp = setTimeout(() => setLoading(false), LOADING_GIVE_UP_MS);
+    // A page that never came leaves nothing to hold the reader against, and a
+    // `keep` left set would fire on the next unrelated change to the first row.
+    giveUp = setTimeout(() => {
+      setLoading(false);
+      keep = null;
+    }, LOADING_GIVE_UP_MS);
     if (!hasEarlier(props.items, limit())) props.onFetchEarlier?.();
     setLimit(limit() + WINDOW_STEP);
   }
@@ -496,15 +504,39 @@ export default function MessageList(props: {
     );
   }
 
-  // Our own pins fire scroll events too. One that lands after a tall row
-  // arrived but before its pin ran is not the reader leaving the bottom, and
-  // judging it as one would drop every pin after it.
-  let pinnedTop = -1;
+  // A scroll event is not the reader: our own pins, a strip opening above the
+  // composer, rows leaving the window all fire one. Only a scroll that follows
+  // the reader's own wheel, key or pointer can take the pin away; any scroll
+  // that ends at the bottom gives it back.
+  const INTENT_MS = 300;
+  let movedAt = Number.NEGATIVE_INFINITY;
+  let holding = false;
+  const intends = () => holding || performance.now() - movedAt < INTENT_MS;
+  const noteIntent = () => (movedAt = performance.now());
+  const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+  function onListKey(e: KeyboardEvent) {
+    if (NAV_KEYS.has(e.key)) noteIntent();
+  }
+  function onListPointer() {
+    holding = true;
+    const release = () => {
+      holding = false;
+      noteIntent();
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+    };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+  }
   function onListScroll() {
-    if (stuck() && scroller?.scrollTop === pinnedTop) return;
-    const atEnd = atBottom();
-    setStuck(atEnd);
-    if (!armed && !atEnd) {
+    if (atBottom()) {
+      setStuck(true);
+      keep = null;
+      return;
+    }
+    if (!intends()) return;
+    setStuck(false);
+    if (!armed) {
       armed = true;
       lookAgain();
     }
@@ -627,6 +659,7 @@ export default function MessageList(props: {
         ?.querySelector<HTMLElement>(`[data-tool-use-id="${CSS.escape(toolUseId)}"]`)
         ?.scrollIntoView({ block: "center" }),
     );
+    requestAnimationFrame(() => setStuck(atBottom()));
   }
 
   const SecretMark = (p: { hit: SecretHit; rows: SecretRow[] }) => {
@@ -813,10 +846,13 @@ export default function MessageList(props: {
       pinFrame = 0;
       if (!stuck() || !scroller) return;
       scroller.scrollTo({ top: scroller.scrollHeight });
-      pinnedTop = scroller.scrollTop;
     });
   };
   onCleanup(() => cancelAnimationFrame(pinFrame));
+  props.pinner?.(() => {
+    setStuck(true);
+    pin();
+  });
 
   // Re-pin after the DOM has the new content, and only while pinned.
   createEffect(
@@ -888,7 +924,6 @@ export default function MessageList(props: {
     const ro = new ResizeObserver(() => {
       if (!stuck() || !scroller) return;
       scroller.scrollTop = scroller.scrollHeight;
-      pinnedTop = scroller.scrollTop;
     });
     ro.observe(scroller);
     for (const row of scroller.children) ro.observe(row);
@@ -1179,6 +1214,9 @@ export default function MessageList(props: {
         props.ref?.(el);
       }}
       onScroll={onListScroll}
+      onWheel={noteIntent}
+      onKeyDown={onListKey}
+      onPointerDown={onListPointer}
     >
       <Show when={canLoadEarlier()}>
         {/* Kept as a button: it is how a keyboard or a screen reader reaches

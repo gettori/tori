@@ -507,6 +507,7 @@ export default function ChatView(props: {
   // The transcript's scrolling root and the composer's insert handle, for the
   // Quote button that carries a selection from the one into the other.
   let transcriptEl: HTMLDivElement | undefined;
+  let pinTranscript: (() => void) | undefined;
   let composer: ComposerHandle | undefined;
   // The draft's scratch tab, while it has one: the editor reports each save
   // and the close, and this composer answers only for its own linked path.
@@ -1616,6 +1617,7 @@ export default function ChatView(props: {
   // this session was opened with, not someone typing into a running one.
   async function sendBlocks(blocks: ContentBlock[], command: "chat_send" | "chat_send_held" = "chat_send") {
     edit((s) => pushUserTurn(s, blocks));
+    pinTranscript?.();
     try {
       await invoke(command, { sessionId: props.sessionId, blocks });
       return true;
@@ -1781,6 +1783,7 @@ export default function ChatView(props: {
         // promised to rather than spending it on one already running.
         await invoke("chat_steer", { sessionId: props.sessionId, blocks });
         edit((s) => pushSteer(s, blocks));
+        pinTranscript?.();
       },
       now: () => Date.now(),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -2807,6 +2810,7 @@ export default function ChatView(props: {
       >
         <MessageList
           ref={(el) => (transcriptEl = el)}
+          pinner={(pin) => (pinTranscript = pin)}
           items={shownItems()}
           onFetchEarlier={earlier() ? fetchEarlier : undefined}
           streaming={running()}
