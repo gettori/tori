@@ -122,6 +122,21 @@ pub struct Approval {
     pub project: String,
     #[serde(flatten)]
     pub draft: Draft,
+    /// Set when `project` is a submodule, so the card says which repo the
+    /// pull request is in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submodule_path: Option<String>,
+}
+
+impl Approval {
+    pub fn new(project: String, draft: Draft) -> Self {
+        let submodule_path = crate::submodule::path_in_superproject(std::path::Path::new(&project));
+        Self {
+            project,
+            draft,
+            submodule_path,
+        }
+    }
 }
 
 struct Granted {
@@ -192,10 +207,7 @@ impl Approvals {
                 .ok_or_else(|| format!("approval {id} is unknown or already spent"))?;
             (held.session.clone(), held.approval.project.clone())
         };
-        let wanted = Approval {
-            project,
-            draft: draft.clone(),
-        };
+        let wanted = Approval::new(project, draft.clone());
         let id = self.reserve(Some(id), &session, &wanted)?;
         self.spend(&id);
         Ok(())
@@ -227,6 +239,7 @@ mod tests {
     fn pr(body: &str) -> Approval {
         Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::PrCreate {
                 head: "1-x".into(),
                 base: "main".into(),
@@ -277,6 +290,7 @@ mod tests {
             .contains("another session"));
         let merge = Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::PrMerge {
                 number: 7,
                 method: MergeMethod::Squash,

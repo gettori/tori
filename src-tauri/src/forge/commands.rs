@@ -1541,10 +1541,28 @@ pub fn pull_request_states(project_path: &str, numbers: &[u64]) -> Result<PrStat
         .collect())
 }
 
+fn linked(project_path: &str, req: &CreatePr) -> CreatePr {
+    let pr_of = |dir: &std::path::Path, branch: &str| {
+        let pr = forge_pr_for_branch(dir.to_string_lossy().into_owned(), branch.to_string(), false).ok()??;
+        (pr.state == PrState::Open).then_some(pr.url)
+    };
+    CreatePr {
+        body: crate::submodule::with_pr_links(
+            std::path::Path::new(project_path),
+            &req.base,
+            &req.head,
+            &req.body,
+            pr_of,
+        ),
+        ..req.clone()
+    }
+}
+
 /// Opens a pull request for a socket caller, through the gated client since
 /// nothing on screen asked for it.
 pub fn create_pr(project_path: &str, req: &CreatePr) -> Result<PullRequest, ForgeError> {
     let c = gated_client(project_path)?;
+    let req = &linked(project_path, req);
     let pr = attempt(&c, |f| f.create_pull_request(&c.repo, req))?;
     prs::record_created(&c.repo, pr.clone());
     Ok(pr)
@@ -1572,7 +1590,7 @@ pub fn forge_push_and_create_pr(
     let req: CreatePr = new_pr.into();
     let pr = prs::push_then_create(
         || crate::git::push_branch(&project_path, &remote, &head, inner.sock_path(), inner.token()),
-        || attempt(&c, |f| f.create_pull_request(&c.repo, &req)),
+        || attempt(&c, |f| f.create_pull_request(&c.repo, &linked(&project_path, &req))),
     )?;
     prs::record_created(&c.repo, pr.clone());
     Ok(pr)

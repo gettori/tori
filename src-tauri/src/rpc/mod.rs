@@ -1270,6 +1270,7 @@ mod tests {
         };
         Some(approvals::Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft,
         })
     }

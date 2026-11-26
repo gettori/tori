@@ -1964,10 +1964,7 @@ impl DaemonBackend {
         approval_id: Option<&str>,
         call: impl FnOnce(&str) -> Result<Value, RpcError>,
     ) -> Result<Value, RpcError> {
-        let wanted = Approval {
-            project: self.project(principal, project)?,
-            draft,
-        };
+        let wanted = Approval::new(self.project(principal, project)?, draft);
         // A dev build's Keychain grant is bound to a binary every rebuild
         // replaces, so its prompt waits for someone at the window.
         if cfg!(debug_assertions) && !self.screen.attached() {
@@ -2006,6 +2003,7 @@ impl DaemonBackend {
             ModeFreedom::Permissive => {
                 let wanted = Approval {
                     project: project_of(folder, &crate::config::project_dirs()).unwrap_or_else(|| folder.to_string()),
+                    submodule_path: None,
                     draft: Draft::SessionSpawn {
                         agent: agent.to_string(),
                         mode: mode.to_string(),
@@ -3054,10 +3052,7 @@ impl Backend for DaemonBackend {
 
     fn ask_create(&self, principal: &Principal, params: AskParams) -> Result<Value, RpcError> {
         let approval = match params.approval {
-            Some(draft) => Some(Approval {
-                project: self.project(principal, params.project)?,
-                draft,
-            }),
+            Some(draft) => Some(Approval::new(self.project(principal, params.project)?, draft)),
             None => None,
         };
         if let Some(approval) = &approval {
@@ -4436,6 +4431,7 @@ mod tests {
     fn pr_draft() -> Approval {
         Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::PrCreate {
                 head: "1-x".into(),
                 base: "main".into(),
@@ -4569,6 +4565,7 @@ mod tests {
     fn push_draft() -> Approval {
         Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::PrPush {
                 number: 12,
                 head: "1-x".into(),
@@ -4611,6 +4608,7 @@ mod tests {
         let approvals = Approvals::default();
         let review = Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::ReviewSubmit {
                 number: 45,
                 event: crate::forge::model::ReviewEvent::Comment,
@@ -4674,6 +4672,7 @@ mod tests {
         };
         let review = |line| Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::ReviewSubmit {
                 number: 12,
                 event: ReviewEvent::Approve,
@@ -4961,6 +4960,7 @@ mod tests {
         mirrored.shown_in = vec!["worker".into(), "w1".into()];
         mirrored.approval = Some(crate::rpc::approvals::Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: crate::rpc::approvals::Draft::PrMerge {
                 number: 7,
                 method: crate::forge::MergeMethod::Squash,

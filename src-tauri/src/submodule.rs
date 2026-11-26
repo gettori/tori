@@ -533,6 +533,163 @@ fn repo_root(cwd: &Path) -> Option<PathBuf> {
     cwd.ancestors().nth(depth).map(Path::to_path_buf)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Unpushed {
+    pub path: String,
+    message: String,
+}
+
+impl std::fmt::Display for Unpushed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+// A pushed pointer to a commit only this machine has leaves every other clone
+// with a submodule it cannot check out.
+pub(crate) fn check_pointers_since_default(repo: &str, rev: &str, sock: &Path, token: &str) -> Result<(), Unpushed> {
+    let root = Path::new(repo);
+    if !root.join(".gitmodules").is_file() {
+        return Ok(());
+    }
+    let Some(default) = crate::worktree::origin_default(repo) else {
+        return Ok(());
+    };
+    for (path, sha) in changed_pointers(root, &format!("origin/{default}"), rev) {
+        let dir = root.join(&path);
+        if !dir.join(".git").exists() {
+            continue;
+        }
+        let fetched = fetch_remote_refs(&dir, sock, token);
+        let held = line(
+            &dir,
+            &[
+                "for-each-ref",
+                "--count=1",
+                "--contains",
+                &sha,
+                "refs/remotes",
+                REMOTE_TAGS,
+            ],
+        );
+        if held.is_none() {
+            let stale = if fetched {
+                ""
+            } else {
+                " Its remote could not be fetched, so this checked only the branches and tags Tori already knew."
+            };
+            let short = &sha[..sha.len().min(10)];
+            let message = format!(
+                "Submodule {path} points at {short}, which no branch or tag on its remote holds: push the submodule first.{stale}"
+            );
+            return Err(Unpushed { path, message });
+        }
+    }
+    Ok(())
+}
+
+// The remote's tags apart from local ones, which a tag made here and never
+// pushed would otherwise pass for.
+const REMOTE_TAGS: &str = "refs/tori/remote-tags";
+
+pub(crate) fn changed_pointers(repo: &Path, base_ref: &str, rev: &str) -> Vec<(String, String)> {
+    let Some(base) = line(repo, &["merge-base", base_ref, rev]) else {
+        return Vec::new();
+    };
+    output(repo, &["diff", "--raw", "--no-abbrev", &base, rev])
+        .unwrap_or_default()
+        .lines()
+        .filter_map(changed_gitlink)
+        .collect()
+}
+
+pub(crate) fn with_pr_links(
+    repo: &Path,
+    base: &str,
+    head: &str,
+    body: &str,
+    open_pr_url: impl Fn(&Path, &str) -> Option<String>,
+) -> String {
+    let links: Vec<String> = changed_pointers(repo, &format!("origin/{base}"), head)
+        .into_iter()
+        .filter_map(|(path, _)| {
+            let dir = repo.join(&path);
+            let branch = line(&dir, &["symbolic-ref", "--short", "-q", "HEAD"])?;
+            let url = open_pr_url(&dir, &branch).filter(|url| !body.contains(url.as_str()))?;
+            Some(format!("- {path}: {url}"))
+        })
+        .collect();
+    if links.is_empty() {
+        return body.to_string();
+    }
+    format!("{}\n\nSubmodule pull requests:\n{}", body.trim_end(), links.join("\n"))
+}
+
+fn changed_gitlink(raw: &str) -> Option<(String, String)> {
+    let (meta, path) = raw.split_once('\t')?;
+    let fields: Vec<&str> = meta.split_whitespace().collect();
+    match fields.as_slice() {
+        [_, "160000", _, sha, ..] => Some((path.to_string(), sha.to_string())),
+        _ => None,
+    }
+}
+
+fn fetch_remote_refs(dir: &Path, sock: &Path, token: &str) -> bool {
+    let repo = dir.to_string_lossy();
+    let lock = crate::exec::repo_lock(&repo);
+    let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let tags = format!("+refs/tags/*:{REMOTE_TAGS}/*");
+    crate::git::network_git(&repo, sock, token)
+        .args(["fetch", "--quiet", "--no-tags", "origin"])
+        .args(["+refs/heads/*:refs/remotes/origin/*", &tags])
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+#[tauri::command]
+pub async fn git_submodule_push(
+    state: tauri::State<'_, crate::askpass::AskpassState>,
+    root: String,
+    path: String,
+) -> Result<String, String> {
+    let bridge = state.0.clone();
+    crate::exec::blocking("git_submodule_push", move || {
+        let dir = Path::new(&root).join(&path);
+        let branch = branch_to_push(&dir, Path::new(&root))?;
+        let repo = dir.to_string_lossy().into_owned();
+        let lock = crate::exec::repo_lock(&repo);
+        let _held = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::git::push_branch(&repo, "origin", &branch, bridge.sock_path(), bridge.token())?;
+        Ok(branch)
+    })
+    .await
+}
+
+// A detached submodule, as `submodule update` leaves it, gets a branch named
+// like its parent's, the same one a commit from Changes would make.
+fn branch_to_push(dir: &Path, parent: &Path) -> Result<String, String> {
+    if let Some(branch) = line(dir, &["symbolic-ref", "--short", "-q", "HEAD"]) {
+        return Ok(branch);
+    }
+    let parent = line(parent, &["symbolic-ref", "--short", "-q", "HEAD"])
+        .ok_or("Neither the submodule nor its parent is on a branch, so there is nothing to name it.")?;
+    let name = free_branch(dir, &parent);
+    attach_branch(dir, &name)?;
+    Ok(name)
+}
+
+pub(crate) fn path_in_superproject(dir: &Path) -> Option<String> {
+    let parent = line(dir, &["rev-parse", "--show-superproject-working-tree"])?;
+    let top = line(dir, &["rev-parse", "--show-toplevel"])?;
+    Some(
+        Path::new(&top)
+            .strip_prefix(&parent)
+            .ok()?
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
 pub(crate) fn initialized_here(repo: &Path) -> Vec<String> {
     if !repo.join(".gitmodules").is_file() {
         return Vec::new();
@@ -890,6 +1047,81 @@ mod tests {
             !clone_with(&plain, true, clone, || {}),
             "a repo without submodules clones nothing"
         );
+    }
+
+    // Cloned rather than made, so the parent has the `origin/HEAD` the guard
+    // measures from.
+    fn published(tmp: &Path) -> PathBuf {
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let (lib_src, top_src) = (tmp.join("lib-src"), tmp.join("top-src"));
+        let (lib_bare, top_bare, top) = (tmp.join("lib.git"), tmp.join("top.git"), tmp.join("top"));
+        repo(&lib_src);
+        git(tmp, &["clone", "-q", "--bare", &s(&lib_src), &s(&lib_bare)]);
+        repo(&top_src);
+        git(&top_src, &["submodule", "add", "-q", &s(&lib_bare), "lib"]);
+        git(&top_src, &["commit", "-qm", "sub"]);
+        git(tmp, &["clone", "-q", "--bare", &s(&top_src), &s(&top_bare)]);
+        git(tmp, &["clone", "-q", &s(&top_bare), &s(&top)]);
+        git(&top, &["submodule", "update", "-q", "--init"]);
+        git(&top, &["switch", "-q", "-c", "feat"]);
+        top
+    }
+
+    #[test]
+    fn a_parent_pr_links_the_open_pr_of_each_submodule_it_bumps() {
+        let tmp = scratch();
+        let top = published(&tmp);
+        let lib = top.join("lib");
+        assert_eq!(path_in_superproject(&lib).as_deref(), Some("lib"));
+        assert_eq!(path_in_superproject(&top), None);
+        git(&lib, &["switch", "-q", "-c", "lib-feat"]);
+        std::fs::write(lib.join("f.txt"), "y").unwrap();
+        git(&lib, &["commit", "-qam", "change"]);
+        git(&top, &["commit", "-qam", "bump"]);
+        let url = "https://forge.test/lib/pull/4";
+        let open = |_: &Path, branch: &str| (branch == "lib-feat").then(|| url.to_string());
+        let base = crate::worktree::origin_default(&top.to_string_lossy()).unwrap();
+        let base = base.as_str();
+
+        let body = with_pr_links(&top, base, "feat", "Bumps lib.", open);
+        assert_eq!(body, format!("Bumps lib.\n\nSubmodule pull requests:\n- lib: {url}"));
+        assert_eq!(
+            with_pr_links(&top, base, "feat", "Bumps lib.", |_, _| None),
+            "Bumps lib."
+        );
+        let already = format!("See {url}");
+        assert_eq!(with_pr_links(&top, base, "feat", &already, open), already);
+    }
+
+    #[test]
+    fn a_push_is_refused_while_a_changed_pointer_names_an_unpushed_commit() {
+        let tmp = scratch();
+        let top = published(&tmp);
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+        let lib = top.join("lib");
+        let check = || check_pointers_since_default(&s(&top), "feat", Path::new("/nonexistent/sock"), "t");
+        assert!(check().is_ok(), "an untouched pointer is not checked");
+
+        std::fs::write(lib.join("f.txt"), "y").unwrap();
+        git(&lib, &["commit", "-qam", "local"]);
+        git(&top, &["commit", "-qam", "bump"]);
+        git(&top, &["push", "-q", "origin", "feat"]);
+        let err = check().unwrap_err();
+        assert_eq!(err.path, "lib");
+        assert!(err.to_string().starts_with("Submodule lib points at"), "{err}");
+        assert!(!err.to_string().contains("could not be fetched"), "{err}");
+
+        git(&lib, &["tag", "v1"]);
+        assert!(check().is_err(), "a tag only this clone has does not count");
+        git(&lib, &["push", "-q", "origin", "v1"]);
+        assert!(check().is_ok(), "a commit a pushed tag holds is enough");
+
+        std::fs::write(lib.join("f.txt"), "z").unwrap();
+        git(&lib, &["commit", "-qam", "again"]);
+        git(&top, &["commit", "-qam", "bump again"]);
+        git(&lib, &["remote", "set-url", "origin", &s(&tmp.join("gone.git"))]);
+        let err = check().unwrap_err();
+        assert!(err.to_string().contains("could not be fetched"), "{err}");
     }
 
     #[test]

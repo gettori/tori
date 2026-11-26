@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { createSignal } from "solid-js";
 import type { DraftComment, MergeMethod, ReviewEvent } from "./forgeTypes";
 
-export type AskApproval = { project: string } & (
+export type AskApproval = { project: string; submodule_path?: string } & (
   | { action: "pr.create"; head: string; base: string; title: string; body: string; draft: boolean; head_sha: string }
   | {
       action: "review.submit";

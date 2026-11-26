@@ -537,6 +537,7 @@ pub fn run() {
             submodule::git_submodule_reset_pointer,
             submodule::git_submodule_branch_suggestion,
             submodule::git_submodule_attach_branch,
+            submodule::git_submodule_push,
             git::git_diff_file,
             git::git_diff_text,
             git::git_apply_hunks,
