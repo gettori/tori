@@ -914,6 +914,7 @@ describe("agent work collapsed into a card", () => {
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
     ...over,
   });
   const waiting = (id: string) =>

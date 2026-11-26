@@ -654,6 +654,9 @@ pub struct ChatHost {
     /// Each session's turns in progress, for marking what a turn that changed
     /// code ran to check it. Outlives a rewire for the same reason.
     verify: Arc<Mutex<HashMap<String, crate::verification::Tracker>>>,
+    /// Per session behind its own lock, since it runs git and must not hold up
+    /// every other session.
+    submodules: Arc<Mutex<HashMap<String, Arc<Mutex<crate::submodule::Tracker>>>>>,
 }
 
 pub use super::client::ChatState;
@@ -868,6 +871,7 @@ impl ChatHost {
             notes: Arc::default(),
             blind: Arc::default(),
             verify: Arc::default(),
+            submodules: Arc::default(),
         }
     }
 
@@ -1433,6 +1437,7 @@ impl ChatHost {
         let notes = self.notes.clone();
         let blind = self.blind.clone();
         let verify = self.verify.clone();
+        let submodules = self.submodules.clone();
         let id = session_id.to_string();
         let cwd = std::path::PathBuf::from(cwd);
         Box::new(move |event| {
@@ -1476,6 +1481,16 @@ impl ChatHost {
                     events.splice(at..at, marks.into_events());
                 }
             }
+            let tracker = lock(&submodules)
+                .entry(id.clone())
+                .or_insert_with(|| Arc::new(Mutex::new(crate::submodule::Tracker::new(cwd.clone()))))
+                .clone();
+            let source = if lifecycle.replaying(&id) {
+                crate::submodule::Source::Replay
+            } else {
+                crate::submodule::Source::Live
+            };
+            let events = lock(&tracker).pass(events, source);
             for mut event in events {
                 if let ChatEvent::RateLimit {
                     status,
@@ -1578,6 +1593,7 @@ impl ChatHost {
                     lock(&notes).remove(&id);
                     lock(&blind).remove(&id);
                     lock(&verify).remove(&id);
+                    lock(&submodules).remove(&id);
                     if let Some(bridge) = lock(&bridges).remove(&id) {
                         bridge.teardown();
                     }
@@ -1836,6 +1852,7 @@ impl ChatHost {
         lock(&self.notes).remove(session_id);
         lock(&self.blind).remove(session_id);
         lock(&self.verify).remove(session_id);
+        lock(&self.submodules).remove(session_id);
         let Some(entry) = entry else { return Ok(()) };
         let result = lock(&entry.transport).close();
         self.registry.release(session_id, &entry.tab_id);
@@ -2328,6 +2345,7 @@ mod tests {
             output_truncated: false,
             patch: Vec::new(),
             blind_edits: Vec::new(),
+            submodules: Vec::new(),
         }
     }
 
@@ -2562,6 +2580,7 @@ mod tests {
             path: path.into(),
             kind: crate::chat::model::FileEditKind::Modified,
             before_blob: None,
+            submodule: None,
         };
         use crate::chat::model::ToolKind::{Edit, Read};
         vec![

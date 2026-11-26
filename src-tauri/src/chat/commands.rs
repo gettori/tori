@@ -1794,6 +1794,7 @@ mod tests {
                 output_truncated: false,
                 patch: Vec::new(),
                 blind_edits: Vec::new(),
+                submodules: Vec::new(),
             })
             .unwrap(),
         ];
@@ -2663,6 +2664,7 @@ mod verification_tests {
             output_truncated: false,
             patch: Vec::new(),
             blind_edits: Vec::new(),
+            submodules: Vec::new(),
         };
         let events = vec![
             started("e1", "t1", ToolKind::Edit, serde_json::Value::Null),

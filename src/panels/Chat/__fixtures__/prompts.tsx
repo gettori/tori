@@ -34,6 +34,7 @@ function waiting(over: Partial<ToolItem>): ToolItem {
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
     files: [],
     ...over,
   };

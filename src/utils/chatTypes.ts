@@ -321,6 +321,12 @@ export type SubagentUsage = {
   durationMs: number;
 };
 
+export type SubmoduleRef = { root: string; path: string };
+
+export type SubmoduleNeed = "commit" | "push" | "pointer" | "done";
+
+export type SubmoduleTouch = SubmoduleRef & { need: SubmoduleNeed };
+
 /// Mirrors `Verdict` in src-tauri/src/chat/model.rs.
 export type Verdict = "verified" | "failed" | "unverified";
 
@@ -572,6 +578,7 @@ export type ChatEvent =
       patch: PatchHunk[];
       /// Files the call changed without the session having seen them first.
       blindEdits?: string[];
+      submodules?: SubmoduleRef[];
     }
   | {
       type: "fileEdit";
@@ -583,6 +590,7 @@ export type ChatEvent =
       /// `git hash-object` sha of the content before the write, or null when
       /// the folder has no object store.
       beforeBlob: string | null;
+      submodule?: SubmoduleRef;
     }
   /// Arrives over the approval socket while the frame declaring the same call
   /// arrives on stdout, with nothing ordering the two. Consumers must
@@ -672,6 +680,12 @@ export type ChatEvent =
       /// Absent when no claim names one.
       profile?: string;
     }
+  | {
+      type: "turnSubmodules";
+      sessionId: string;
+      turnId: string;
+      submodules: SubmoduleTouch[];
+    }
   /// What a turn that changed code ran to check it, sent just before its
   /// `turnCompleted`. Absent for a turn that changed no code.
   | {
@@ -729,6 +743,7 @@ export const CHAT_EVENT_TYPES = [
   "usage",
   "rateLimit",
   "turnVerification",
+  "turnSubmodules",
   "turnCompleted",
   "sessionError",
   "sessionEnded",
@@ -887,10 +902,11 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "outputTruncated",
       "patch",
     ],
-    optional: ["blindEdits"],
+    optional: ["blindEdits", "submodules"],
   },
   fileEdit: {
     required: ["sessionId", "turnId", "toolUseId", "path", "kind", "beforeBlob"],
+    optional: ["submodule"],
   },
   permissionRequest: {
     required: ["sessionId", "toolUseId", "toolName", "input", "requestId", "autoDenyAtMs", "agentId"],
@@ -915,6 +931,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     optional: ["profile"],
   },
   turnVerification: { required: ["sessionId", "turnId", "verdict", "checks"], optional: ["settledLater"] },
+  turnSubmodules: { required: ["sessionId", "turnId", "submodules"] },
   turnCompleted: {
     required: ["sessionId", "turnId", "outcome", "stopReason", "usage", "costUsd", "permissionDenials"],
     optional: ["extra"],

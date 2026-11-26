@@ -59,7 +59,7 @@ pub fn serve(input: impl BufRead, out: Out, connect: Connect) -> io::Result<Vec<
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
                     "serverInfo": { "name": "tori", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": INSTRUCTIONS,
+                    "instructions": instructions(&connect),
                 });
                 reply(&out, id, Ok(result));
             }
@@ -76,6 +76,20 @@ pub fn serve(input: impl BufRead, out: Out, connect: Connect) -> io::Result<Vec<
         }
     }
     Ok(calls)
+}
+
+// The caller's folder rather than this process's, which an ACP agent may have
+// started anywhere.
+fn instructions(connect: &Connect) -> String {
+    let cwd = connect()
+        .and_then(|mut c| c.call("caller", Value::Null))
+        .ok()
+        .and_then(|me| me["identity"]["cwd"].as_str().map(std::path::PathBuf::from))
+        .or_else(|| std::env::current_dir().ok());
+    match cwd.as_deref().and_then(crate::submodule::agent_note) {
+        Some(note) => format!("{INSTRUCTIONS} {note}"),
+        None => INSTRUCTIONS.to_string(),
+    }
 }
 
 fn reply(out: &Out, id: Value, outcome: Result<Value, (i64, String)>) {

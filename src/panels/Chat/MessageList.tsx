@@ -44,7 +44,7 @@ import {
   type TurnCheck,
 } from "./chatStore";
 import { VERDICT_LABEL, verdictDetail } from "../../utils/verification";
-import type { PermissionMode, QuestionAnswer, SecretHit } from "../../utils/chatTypes";
+import type { PermissionMode, QuestionAnswer, SecretHit, SubmoduleTouch } from "../../utils/chatTypes";
 import { commandAround, secretLabel } from "../../utils/secretReads";
 import { mentionPath } from "../../utils/pathScope";
 import Popover from "../../components/Popover/Popover";
@@ -57,6 +57,7 @@ import WorktreeCard, { isWorktreeCard } from "./WorktreeCard";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
 import ToriNoteRow from "./ToriNote";
+import SubmoduleMark from "./SubmoduleMark";
 import PromptFrom from "./PromptFrom";
 import { peerPrompt } from "./relatedSessions";
 import { findSession } from "../../utils/sessionStore";
@@ -376,6 +377,7 @@ export default function MessageList(props: {
   verifications?: Record<string, TurnCheck>;
   /** Off hides the verification marks a session's turns already carry. */
   showVerification?: boolean;
+  submodules?: Record<string, SubmoduleTouch[]>;
   /** Which rows show their time. Absent shows none. */
   timestamps?: Timestamps;
 }) {
@@ -747,6 +749,7 @@ export default function MessageList(props: {
               </Tooltip>
             )}
           </Show>
+          <Show when={props.submodules?.[id()]}>{(touches) => <SubmoduleMark touches={touches()} />}</Show>
           <Show when={props.showVerification !== false && props.verifications?.[id()]}>
             {(v) => (
               <Tooltip<HTMLSpanElement>

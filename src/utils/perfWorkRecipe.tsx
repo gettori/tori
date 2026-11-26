@@ -191,6 +191,7 @@ function editCard(): ToolItem {
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
   };
 }
 

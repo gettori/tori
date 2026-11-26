@@ -714,6 +714,7 @@ fn file_edits(
                     snapshot::BeforeState::Blob { sha } => Some(sha),
                     _ => None,
                 },
+                submodule: None,
             }
         })
         .collect()
@@ -855,6 +856,7 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                 // back to diffing the call's own arguments.
                 patch: Vec::new(),
                 blind_edits: Vec::new(),
+                submodules: Vec::new(),
                 // Still empty, and Phase 8 measured *why* rather than assuming
                 // it. A diff block does name an absolute path, so this looked
                 // like it could be filled from one - but the sequence
