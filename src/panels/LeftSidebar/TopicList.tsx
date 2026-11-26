@@ -180,6 +180,7 @@ export default function TopicList(props: {
             unpushed={req().demote ? false : req().unpushed}
             hasRemote={req().demote ? false : req().hasRemote}
             ignoredWork={req().ignoredWork}
+            submodules={req().submodules}
             operation={req().operation}
             largeFiles={req().largeFiles}
             keepsCopy={req().keepsCopy}

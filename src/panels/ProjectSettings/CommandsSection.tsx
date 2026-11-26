@@ -60,6 +60,16 @@ export default function CommandsSection(props: { projectPath: string; answered: 
         />
       </Row>
       <Row
+        label="Initialize submodules in a new worktree"
+        hint="Clones and checks out each submodule, nested ones too, before the setup command runs. Off leaves them empty until you initialize one from the file tree."
+      >
+        <Switch
+          checked={setup().initSubmodules}
+          onChange={(on) => saveSetup({ initSubmodules: on })}
+          aria-label="Initialize submodules in a new worktree"
+        />
+      </Row>
+      <Row
         stack
         label="Run command"
         hint={

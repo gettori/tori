@@ -24,7 +24,7 @@ import type { GuardAsk } from "../../utils/gitGuard";
 import { emitWith, ROOT_MOVED, DRAFT_INTO_NEW, type RootMoved, type DraftIntoNew } from "../../utils/events";
 import { demoteMemberWorktree, removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
-import type { Operation, WorktreeStatus } from "../../utils/worktreeOperation";
+import type { Operation, SubmoduleWork, WorktreeStatus } from "../../utils/worktreeOperation";
 import type { UnitIssue } from "../../utils/issues";
 
 export type TopicActionsHost = {
@@ -101,6 +101,7 @@ export function createTopicActions(host: TopicActionsHost) {
     unpushed: boolean | null;
     hasRemote: boolean | null;
     ignoredWork: string[];
+    submodules: SubmoduleWork[];
     operation: Operation | null;
     largeFiles: string[];
     keepsCopy: boolean | null;
@@ -256,6 +257,7 @@ export function createTopicActions(host: TopicActionsHost) {
       unpushed: null,
       hasRemote: null,
       ignoredWork: [],
+      submodules: [],
       operation: null,
       largeFiles: [],
       keepsCopy: null,
@@ -276,6 +278,7 @@ export function createTopicActions(host: TopicActionsHost) {
           unpushed: s.unpushed,
           hasRemote: s.hasRemote,
           ignoredWork: s.ignoredWork,
+          submodules: s.submodules,
           operation: s.operation,
           largeFiles: s.largeFiles,
           keepsCopy: s.keepsCopy,

@@ -323,6 +323,7 @@ import {
   displayBranch,
   ownsFolder,
   type Operation,
+  type SubmoduleWork,
   type WorktreeStatus,
 } from "../../utils/worktreeOperation";
 import {
@@ -897,6 +898,7 @@ export default function LeftSidebar(props: {
     unpushed: boolean | null;
     hasRemote: boolean | null;
     ignoredWork: string[];
+    submodules: SubmoduleWork[];
     operation: Operation | null;
     largeFiles: string[];
     keepsCopy: boolean | null;
@@ -2283,6 +2285,7 @@ export default function LeftSidebar(props: {
       unpushed: null,
       hasRemote: null,
       ignoredWork: [],
+      submodules: [],
       operation: u.operation ?? null,
       largeFiles: [],
       keepsCopy: null,
@@ -2313,6 +2316,7 @@ export default function LeftSidebar(props: {
                 unpushed: s.unpushed && !landed,
                 hasRemote: s.hasRemote,
                 ignoredWork: s.ignoredWork,
+                submodules: s.submodules,
                 operation: s.operation,
                 largeFiles: s.largeFiles,
                 keepsCopy: s.keepsCopy,
@@ -5410,6 +5414,7 @@ export default function LeftSidebar(props: {
             unpushed={req().unpushed}
             hasRemote={req().hasRemote}
             ignoredWork={req().ignoredWork}
+            submodules={req().submodules}
             operation={req().operation}
             largeFiles={req().largeFiles}
             keepsCopy={req().keepsCopy}

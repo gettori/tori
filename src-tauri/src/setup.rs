@@ -503,6 +503,17 @@ pub fn set_publisher(app: AppHandle) {
 
 /// Run the project's setup in a worktree Tori has just created for it.
 pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
+    let (owner, folder) = (project.to_string(), worktree.to_path_buf());
+    let later = move || {
+        start_setup(&owner, &folder);
+    };
+    if crate::submodule::clone_then(worktree, prefs_for(project).init_submodules, later) {
+        return None;
+    }
+    start_setup(project, worktree)
+}
+
+fn start_setup(project: &str, worktree: &Path) -> Option<Report> {
     let (command, source) = command_for(Kind::Setup, project, worktree)?;
     let log_dir = settings_and_logs().1;
     let path_env = crate::env::login_path().map_or_else(crate::env::augmented_path, str::to_string);
@@ -522,7 +533,7 @@ pub fn on_created(project: &str, worktree: &Path) -> Option<Report> {
 #[tauri::command(async)]
 pub fn setup_rerun(worktree_path: String) -> Result<Report, String> {
     let project = crate::config::project_of_folder(worktree_path.clone()).ok_or("This folder is in no project.")?;
-    on_created(&project, Path::new(&worktree_path)).ok_or_else(|| "This worktree has no setup command.".to_string())
+    start_setup(&project, Path::new(&worktree_path)).ok_or_else(|| "This worktree has no setup command.".to_string())
 }
 
 /// Run the teardown in a worktree about to be removed, and return once it has
@@ -550,7 +561,8 @@ pub fn status(worktree: &Path) -> Option<Report> {
 }
 
 pub fn wait(worktree: &Path, cap: Duration) -> Option<Report> {
-    RUNS.wait(worktree, Kind::Setup, cap)
+    let left = crate::submodule::wait_cloned(worktree, cap);
+    RUNS.wait(worktree, Kind::Setup, left)
 }
 
 pub fn kill(worktree: &Path) {
