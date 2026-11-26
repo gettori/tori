@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, onCleanup } from "solid-js";
+import { Show, createEffect, createSignal, onCleanup, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Ellipsis } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
@@ -7,6 +7,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import SessionStats, { type SessionDetail } from "./SessionStats";
 import type { ConnectionHealth } from "./chatStore";
 import { backgroundLabel } from "../../utils/sessionStatus";
+import { anchorLayer } from "../../lib/layer";
 import styles from "./Chat.module.css";
 
 /**
@@ -60,6 +61,7 @@ export default function StatusStrip(props: {
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [elapsed, setElapsed] = createSignal(0);
   let root: HTMLDivElement | undefined;
+  let trigger!: HTMLButtonElement;
   let timer: number | undefined;
 
   createEffect(
@@ -144,6 +146,7 @@ export default function StatusStrip(props: {
           `aria-expanded` instead, which is the attribute that is true. */}
       <IconButton
         size="sm"
+        ref={(el) => (trigger = el)}
         class={styles.stripMenuButton}
         icon={<Icon icon={Ellipsis} />}
         tooltip="Session menu"
@@ -152,15 +155,33 @@ export default function StatusStrip(props: {
         onClick={() => setMenuOpen(!menuOpen())}
       />
       <Show when={menuOpen()}>
-        <div
-          class={styles.stripMenu}
-          onClick={(e) => {
-            if ((e.target as HTMLElement).closest("[data-closes-menu]")) setMenuOpen(false);
-          }}
-        >
+        <MenuSurface anchor={trigger} onClose={() => setMenuOpen(false)}>
           {props.menu}
-        </div>
+        </MenuSurface>
       </Show>
+    </div>
+  );
+}
+
+// In the top layer so the pane's overflow cannot clip the menu, or the session
+// details panel that hangs off its side. It stays in the strip's DOM, so a
+// press inside either one is still inside the strip and does not close it.
+function MenuSurface(props: { anchor: HTMLElement; onClose: () => void; children: JSX.Element }) {
+  let surface!: HTMLDivElement;
+  onSettled(() => {
+    surface.showPopover();
+    return anchorLayer(props.anchor, surface, "bottom-end", 4);
+  });
+  return (
+    <div
+      ref={surface}
+      popover="manual"
+      class={styles.stripMenu}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("[data-closes-menu]")) props.onClose();
+      }}
+    >
+      {props.children}
     </div>
   );
 }
