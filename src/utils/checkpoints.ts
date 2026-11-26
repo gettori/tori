@@ -75,3 +75,9 @@ export async function checkpointChatTurn(sessionId: string, repoPath: string, at
 function snapshot(sessionId: string, repoPath: string, promptTs: number): Promise<unknown> {
   return invoke("checkpoint_snapshot", { sessionId, repoPath, promptTs }).catch(() => {});
 }
+
+export function skippedNote(skipped: readonly string[] | undefined): string {
+  if (!skipped?.length) return "";
+  const one = skipped.length === 1;
+  return ` Left ${one ? "submodule" : "submodules"} ${skipped.join(", ")} alone: ${one ? "its commit" : "their commits"} changed since the checkpoint.`;
+}

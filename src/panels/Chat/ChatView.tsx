@@ -121,7 +121,8 @@ import {
   type QuestionAnswer,
 } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, liveChats, setLiveChat } from "../../utils/chatSessions";
-import { checkpointChatTurn } from "../../utils/checkpoints";
+import { checkpointChatTurn, skippedNote } from "../../utils/checkpoints";
+import type { RevertOutcome } from "../Editor/CheckpointTimeline";
 import { USAGE_CHANGED, type UsageChanged, type UsageTotals } from "../../utils/chatUsageStore";
 import {
   capabilitiesFor,
@@ -2527,12 +2528,14 @@ export default function ChatView(props: {
     if (!ok) return;
 
     try {
-      await invoke<unknown>("checkpoint_revert_tree", {
+      const outcome = await invoke<RevertOutcome>("checkpoint_revert_tree", {
         repoPath: props.workspace,
         sessionId: props.sessionId,
         promptTs,
         shared: confirmedShared,
       });
+      const note = skippedNote(outcome.skipped).trim();
+      if (note) emitWith<ToastEvent>(TOAST, { message: note, kind: "info" });
     } catch (e) {
       emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
       return;

@@ -455,6 +455,17 @@ fn repo_root(cwd: &Path) -> Option<PathBuf> {
     cwd.ancestors().nth(depth).map(Path::to_path_buf)
 }
 
+pub(crate) fn initialized_here(repo: &Path) -> Vec<String> {
+    if !repo.join(".gitmodules").is_file() {
+        return Vec::new();
+    }
+    declared(repo)
+        .into_iter()
+        .map(|(_, path)| path)
+        .filter(|path| repo.join(path).join(".git").exists())
+        .collect()
+}
+
 fn initialized(root: &Path) -> Vec<String> {
     fn walk(repo: &Path, prefix: &str, out: &mut Vec<String>) {
         if !repo.join(".gitmodules").is_file() {

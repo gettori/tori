@@ -1,4 +1,5 @@
 import { createSignal, createEffect, createMemo, onSettled, onCleanup, For, Show, untrack } from "solid-js";
+import { skippedNote } from "../../utils/checkpoints";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -85,6 +86,7 @@ export type RevertOutcome = {
   backstop_ts: number | null;
   restored: string[];
   deleted: string[];
+  skipped?: string[];
 };
 /** A pre-discard snapshot of the working tree, owned by this *worktree* rather
  *  than by a session: nobody has to be chatting for one to exist, so these are
@@ -545,9 +547,10 @@ export default function CheckpointTimeline(props: {
       await Promise.all([loadList(), loadFiles()]);
       emitWith<ToastEvent>(TOAST, {
         message:
-          outcome.backstop_ts === null
+          (outcome.backstop_ts === null
             ? "Already at that checkpoint, nothing to revert."
-            : `Reverted ${outcome.restored.length + outcome.deleted.length} file(s). The previous state is saved as a backstop.`,
+            : `Reverted ${outcome.restored.length + outcome.deleted.length} file(s). The previous state is saved as a backstop.`) +
+          skippedNote(outcome.skipped),
         kind: "info",
       });
     } catch (e) {

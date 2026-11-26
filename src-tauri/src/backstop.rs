@@ -286,6 +286,9 @@ fn restore_from(repo: &str, target: &str) -> Result<RestoreOutcome, String> {
     let mut deleted = Vec::new();
     for line in raw.lines() {
         let Some(change) = parse_raw_change(line) else { continue };
+        if change.is_gitlink() {
+            continue;
+        }
         let abs = Path::new(repo).join(&change.path);
         if change.dst_mode == "000000" {
             match std::fs::remove_file(&abs) {

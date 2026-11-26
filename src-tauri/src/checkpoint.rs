@@ -598,13 +598,8 @@ pub(crate) fn checkpoint_points(repo: &str, session_id: &str) -> Vec<(u64, Strin
         .collect()
 }
 
-fn tree_at_or_before(checkpoints: &[Checkpoint], ts: u64) -> String {
-    checkpoints
-        .iter()
-        .rev()
-        .find(|c| c.ts <= ts)
-        .map(|c| c.tree.clone())
-        .unwrap_or_else(|| EMPTY_TREE.to_string())
+fn tree_at_or_before(checkpoints: &[Checkpoint], ts: u64) -> Option<String> {
+    checkpoints.iter().rev().find(|c| c.ts <= ts).map(|c| c.tree.clone())
 }
 
 fn tree_after(repo: &str, session_id: &str, checkpoints: &[Checkpoint], ts: u64) -> Result<String, String> {
@@ -677,18 +672,42 @@ fn write_snapshot(session_id: &str, repo_path: &str, prompt_ts: u64) -> Result<O
     if !is_git_worktree(repo_path) {
         return Ok(None);
     }
+    // Before the submodules, each of which would otherwise adopt it first.
+    adopt_legacy_index(session_id, repo_path);
+    let submodule_wrote = snapshot_submodules(session_id, repo_path, prompt_ts);
     let checkpoints = list_checkpoints(repo_path, session_id);
     if checkpoints.iter().any(|c| c.ts == prompt_ts) {
         return Ok(None);
     }
-    adopt_legacy_index(session_id, repo_path);
     let tree = write_tree_scratch(repo_path, &checkpoint_index_path(session_id, repo_path))?;
-    let prior = tree_at_or_before(&checkpoints, prompt_ts);
-    if prior == tree {
+    let prior = tree_at_or_before(&checkpoints, prompt_ts).unwrap_or_else(|| EMPTY_TREE.to_string());
+    if prior == tree && !submodule_wrote {
         return Ok(None);
     }
     git_run(repo_path, &["update-ref", &ref_name(session_id, prompt_ts), &tree])?;
     Ok(Some(checkpoints.iter().filter(|c| c.ts < prompt_ts).count() + 1))
+}
+
+// The parent's tree holds only a submodule's commit, so a turn that changed
+// nothing else still needs the parent's ref for the timeline to show it.
+fn snapshot_submodules(session_id: &str, repo_path: &str, prompt_ts: u64) -> bool {
+    let mut wrote = false;
+    for sub in crate::submodule::initialized_here(Path::new(repo_path)) {
+        let dir = absolute(repo_path, &sub);
+        match write_snapshot(session_id, &dir, prompt_ts) {
+            Ok(turn) => wrote |= turn.is_some(),
+            Err(e) => eprintln!("[checkpoint] snapshot of submodule {dir} failed: {e}"),
+        }
+    }
+    wrote
+}
+
+fn submodules_at(repo_path: &str, session_id: &str, ts: u64) -> Vec<(String, String)> {
+    crate::submodule::initialized_here(Path::new(repo_path))
+        .into_iter()
+        .map(|sub| (absolute(repo_path, &sub), sub))
+        .filter(|(dir, _)| tree_at_or_before(&list_checkpoints(dir, session_id), ts).is_some())
+        .collect()
 }
 
 #[derive(Serialize, Clone, PartialEq, Debug)]
@@ -824,20 +843,26 @@ fn turn_files_one(
     others: Option<Vec<String>>,
 ) -> Result<Vec<CheckpointFile>, String> {
     let checkpoints = list_checkpoints(&repo_path, &session_id);
-    let before = tree_at_or_before(&checkpoints, prompt_ts);
+    let before = tree_at_or_before(&checkpoints, prompt_ts).unwrap_or_else(|| EMPTY_TREE.to_string());
     let after = diff_after(&repo_path, &session_id, &checkpoints, prompt_ts, cumulative)?;
-    if before == after {
-        return Ok(Vec::new());
+    let mut files = Vec::new();
+    if before != after {
+        let out = git_capture(&repo_path, &["diff", "--name-status", &before, &after])?;
+        files = attributed_files(
+            &repo_path,
+            &session_id,
+            prompt_ts,
+            parse_name_status(&out),
+            others.as_deref().unwrap_or_default(),
+        );
+        count_lines(&repo_path, &before, &after, &mut files);
     }
-    let out = git_capture(&repo_path, &["diff", "--name-status", &before, &after])?;
-    let mut files = attributed_files(
-        &repo_path,
-        &session_id,
-        prompt_ts,
-        parse_name_status(&out),
-        &others.unwrap_or_default(),
-    );
-    count_lines(&repo_path, &before, &after, &mut files);
+    for (dir, sub) in submodules_at(&repo_path, &session_id, prompt_ts) {
+        for mut f in turn_files_one(dir, session_id.clone(), prompt_ts, cumulative, others.clone())? {
+            f.path = format!("{sub}/{}", f.path);
+            files.push(f);
+        }
+    }
     Ok(files)
 }
 
@@ -1200,8 +1225,13 @@ fn diff_file_one(
     file: String,
     cumulative: Option<bool>,
 ) -> Result<String, String> {
+    for (dir, sub) in submodules_at(&repo_path, &session_id, prompt_ts) {
+        if let Some(rel) = file.strip_prefix(&format!("{sub}/")) {
+            return diff_file_one(dir, session_id, prompt_ts, rel.to_string(), cumulative);
+        }
+    }
     let checkpoints = list_checkpoints(&repo_path, &session_id);
-    let before = tree_at_or_before(&checkpoints, prompt_ts);
+    let before = tree_at_or_before(&checkpoints, prompt_ts).unwrap_or_else(|| EMPTY_TREE.to_string());
     let after = diff_after(&repo_path, &session_id, &checkpoints, prompt_ts, cumulative)?;
     git_output(&repo_path, &["diff", "--no-color", &before, &after, "--", &file])
 }
@@ -1285,7 +1315,7 @@ fn range_diff_one(
     absolute: bool,
 ) -> Result<(Vec<CheckpointFile>, String), String> {
     let checkpoints = list_checkpoints(repo_path, session_id);
-    let before = tree_at_or_before(&checkpoints, from_ts);
+    let before = tree_at_or_before(&checkpoints, from_ts).unwrap_or_else(|| EMPTY_TREE.to_string());
     let after = tree_after(repo_path, session_id, &checkpoints, to_ts)?;
     let mut mine = std::collections::HashSet::new();
     for turn in checkpoints.iter().filter(|c| (from_ts..=to_ts).contains(&c.ts)) {
@@ -1325,11 +1355,16 @@ pub struct RevertOutcome {
     /// buffers on those files can reload or raise a conflict.
     pub restored: Vec<String>,
     pub deleted: Vec<String>,
+    /// Submodules left as they are because their commit is not the one the
+    /// checkpoint recorded: resetting one could drop commits made since.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skipped: Vec<String>,
 }
 
 /// One line of `git diff --raw --no-abbrev --no-renames`:
 /// `:<src_mode> <dst_mode> <src_sha> <dst_sha> <status>\t<path>`.
 pub(crate) struct RawChange {
+    src_mode: String,
     pub(crate) dst_mode: String,
     dst_sha: String,
     pub(crate) path: String,
@@ -1338,15 +1373,24 @@ pub(crate) struct RawChange {
 pub(crate) fn parse_raw_change(line: &str) -> Option<RawChange> {
     let (meta, path) = line.split_once('\t')?;
     let mut fields = meta.split_whitespace();
-    let _src_mode = fields.next()?;
+    let src_mode = fields.next()?.to_string();
     let dst_mode = fields.next()?.to_string();
     let _src_sha = fields.next()?;
     let dst_sha = fields.next()?.to_string();
     Some(RawChange {
+        src_mode,
         dst_mode,
         dst_sha,
         path: path.to_string(),
     })
+}
+
+impl RawChange {
+    // A submodule's commit, which has no blob to write and a folder where a
+    // file would go.
+    pub(crate) fn is_gitlink(&self) -> bool {
+        self.src_mode == "160000" || self.dst_mode == "160000"
+    }
 }
 
 /// Write a blob from the object store to `abs`, honouring the tree's mode:
@@ -1390,31 +1434,69 @@ pub(crate) fn write_blob_to_disk(repo: &str, change: &RawChange, abs: &Path) -> 
     Ok(())
 }
 
-/// Snapshot `tree` as a backstop checkpoint stamped now, bumping past any ref
-/// already at that second so a fast double-revert can't overwrite the first
-/// backstop.
-///
-/// Epoch **seconds**, matching the prompt-boundary timestamps the rest of the
-/// timeline is keyed by (`parse_rfc3339_secs` in sessions.rs). Milliseconds
-/// here would put every backstop ~1000x above every real boundary, so each
-/// later turn would sort before it and `tree_at_or_before` would resolve the
-/// wrong tree.
-fn write_backstop(
-    repo: &str,
-    session_id: &str,
-    checkpoints: &[Checkpoint],
-    tree: &str,
-    target: u64,
-) -> Result<u64, String> {
+// Epoch seconds, like the prompt boundaries: milliseconds would sort every
+// backstop after every later turn. Bumped so a fast double revert keeps both.
+fn backstop_ts(parts: &[RevertPart]) -> Result<u64, String> {
     let mut ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_secs();
-    while checkpoints.iter().any(|c| c.ts == ts) {
+    while parts.iter().any(|p| p.checkpoints.iter().any(|c| c.ts == ts)) {
         ts += 1;
     }
-    git_run(repo, &["update-ref", &backstop_ref_name(session_id, ts, target), tree])?;
     Ok(ts)
+}
+
+struct RevertPart {
+    repo: String,
+    sub: Option<String>,
+    checkpoints: Vec<Checkpoint>,
+    target: String,
+    current: String,
+}
+
+fn in_part(sub: Option<&str>, path: &str) -> String {
+    match sub {
+        Some(sub) => format!("{sub}/{path}"),
+        None => path.to_string(),
+    }
+}
+
+fn revert_parts(
+    repo: &str,
+    sub: Option<&str>,
+    session_id: &str,
+    prompt_ts: u64,
+    exact: bool,
+    parts: &mut Vec<RevertPart>,
+    skipped: &mut Vec<String>,
+) -> Result<(), String> {
+    let checkpoints = list_checkpoints(repo, session_id);
+    let target = if exact {
+        checkpoints.iter().find(|c| c.ts == prompt_ts).map(|c| c.tree.clone())
+    } else {
+        tree_at_or_before(&checkpoints, prompt_ts)
+    }
+    .ok_or("No checkpoint at that point in the timeline.")?;
+    let current = write_tree_scratch(repo, &checkpoint_index_path(session_id, repo))?;
+    for (dir, name) in submodules_at(repo, session_id, prompt_ts) {
+        let path = in_part(sub, &name);
+        let recorded = git_capture(repo, &["rev-parse", "--verify", "-q", &format!("{target}:{name}")]).ok();
+        let head = git_capture(&dir, &["rev-parse", "HEAD"]).ok();
+        if recorded.is_none() || recorded != head {
+            skipped.push(path);
+            continue;
+        }
+        revert_parts(&dir, Some(&path), session_id, prompt_ts, false, parts, skipped)?;
+    }
+    parts.push(RevertPart {
+        repo: repo.to_string(),
+        sub: sub.map(str::to_string),
+        checkpoints,
+        target,
+        current,
+    });
+    Ok(())
 }
 
 /// Restore the whole working tree to the checkpoint at `prompt_ts`, after
@@ -1493,6 +1575,7 @@ fn revert_members(
         backstop_ts: None,
         restored: Vec::new(),
         deleted: Vec::new(),
+        skipped: Vec::new(),
     };
     for root in roots {
         let here = shared.iter().filter_map(|f| relative_to(root, f)).collect();
@@ -1502,6 +1585,7 @@ fn revert_members(
         out.backstop_ts = out.backstop_ts.or(one.backstop_ts);
         out.restored.extend(one.restored.iter().map(|p| absolute(root, p)));
         out.deleted.extend(one.deleted.iter().map(|p| absolute(root, p)));
+        out.skipped.extend(one.skipped.iter().map(|p| absolute(root, p)));
     }
     Ok(out)
 }
@@ -1516,31 +1600,34 @@ fn revert_tree_one(
     if !is_git_worktree(&repo_path) {
         return Err("This folder isn't a git repository, so it has no checkpoints.".into());
     }
-    let checkpoints = list_checkpoints(&repo_path, &session_id);
-    let target = checkpoints
-        .iter()
-        .rev()
-        // A member's snapshot at `prompt_ts` is skipped when it had not
-        // changed, which leaves the earlier tree as its state then.
-        .find(|c| if exact { c.ts == prompt_ts } else { c.ts <= prompt_ts })
-        .map(|c| c.tree.clone())
-        .ok_or("No checkpoint at that point in the timeline.")?;
-    let current = write_tree_scratch(&repo_path, &checkpoint_index_path(&session_id, &repo_path))?;
-    if current == target {
+    let mut parts = Vec::new();
+    let mut skipped = Vec::new();
+    revert_parts(
+        &repo_path,
+        None,
+        &session_id,
+        prompt_ts,
+        exact,
+        &mut parts,
+        &mut skipped,
+    )?;
+    if parts.iter().all(|p| p.current == p.target) {
         return Ok(RevertOutcome {
             backstop_ts: None,
             restored: Vec::new(),
             deleted: Vec::new(),
+            skipped,
         });
     }
     // Backstop before any write: if a later step fails, the pre-revert state
-    // is already recoverable from the timeline.
-    let backstop_ts = write_backstop(&repo_path, &session_id, &checkpoints, &current, prompt_ts)?;
+    // is already recoverable from the timeline. The session's own folder always
+    // gets one, since the timeline lists only its refs.
+    let backstop_ts = backstop_ts(&parts)?;
+    for p in parts.iter().filter(|p| p.sub.is_none() || p.current != p.target) {
+        let name = backstop_ref_name(&session_id, backstop_ts, prompt_ts);
+        git_run(&p.repo, &["update-ref", &name, &p.current])?;
+    }
 
-    let raw = git_capture(
-        &repo_path,
-        &["diff", "--raw", "--no-abbrev", "--no-renames", &current, &target],
-    )?;
     // The turn's attributed set, cumulative over every turn from `prompt_ts`
     // onward: reverting *to* a boundary undoes everything since, so the scope is
     // everything this session wrote since, not just its next turn.
@@ -1549,38 +1636,52 @@ fn revert_tree_one(
 
     let mut restored = Vec::new();
     let mut deleted = Vec::new();
-    for line in raw.lines() {
-        let Some(change) = parse_raw_change(line) else { continue };
-        // Another session's concurrent edit to a file this one never touched is
-        // left exactly where it is. Without this the undo would reach across
-        // sessions and nothing on screen would have said so.
-        if let Some(mine) = &mine {
-            if !mine.contains(&change.path) && !shared.contains(&change.path) {
+    for p in parts.iter().filter(|p| p.current != p.target) {
+        let raw = git_capture(
+            &p.repo,
+            &["diff", "--raw", "--no-abbrev", "--no-renames", &p.current, &p.target],
+        )?;
+        for line in raw.lines() {
+            let Some(change) = parse_raw_change(line) else { continue };
+            if change.is_gitlink() {
                 continue;
             }
-        }
-        let abs = Path::new(&repo_path).join(&change.path);
-        if change.dst_mode == "000000" {
-            // Absent from the target tree: the revert removes it.
-            match std::fs::remove_file(&abs) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e.to_string()),
+            let path = in_part(p.sub.as_deref(), &change.path);
+            // Another session's concurrent edit to a file this one never touched is
+            // left exactly where it is. Without this the undo would reach across
+            // sessions and nothing on screen would have said so.
+            if let Some(mine) = &mine {
+                if !mine.contains(&path) && !shared.contains(&path) {
+                    continue;
+                }
             }
-            deleted.push(change.path);
-        } else {
-            write_blob_to_disk(&repo_path, &change, &abs)?;
-            restored.push(change.path);
+            let abs = Path::new(&p.repo).join(&change.path);
+            if change.dst_mode == "000000" {
+                // Absent from the target tree: the revert removes it.
+                match std::fs::remove_file(&abs) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.to_string()),
+                }
+                deleted.push(path);
+            } else {
+                write_blob_to_disk(&p.repo, &change, &abs)?;
+                restored.push(path);
+            }
         }
     }
     Ok(RevertOutcome {
         backstop_ts: Some(backstop_ts),
         restored,
         deleted,
+        skipped,
     })
 }
 
 fn prune_refs(repo_path: &str, session_id: &str) {
+    for sub in crate::submodule::initialized_here(Path::new(repo_path)) {
+        prune_refs(&absolute(repo_path, &sub), session_id);
+    }
     let Ok(out) = crate::exec::git_in(repo_path)
         .args(["for-each-ref", "--format=%(refname)", &ref_prefix(session_id)])
         .output()
@@ -1679,6 +1780,91 @@ mod tests {
         if let Some(d) = attribution_path(session_id, 0).parent() {
             std::fs::remove_dir_all(d).ok();
         }
+    }
+
+    fn committed(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        git(dir, &["init", "-q"]);
+        std::fs::write(dir.join("f.txt"), "x").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-qm", "init"]);
+    }
+
+    fn with_submodules(names: &[&str]) -> (PathBuf, String, String) {
+        let (dir, sid) = tmp_repo();
+        std::fs::write(dir.join("f.txt"), "x").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-qm", "init"]);
+        for name in names {
+            let origin = dir.with_file_name(format!("{}-{name}", dir.file_name().unwrap().to_string_lossy()));
+            committed(&origin);
+            let url = origin.to_string_lossy().into_owned();
+            git(
+                &dir,
+                &["-c", "protocol.file.allow=always", "submodule", "add", "-q", &url, name],
+            );
+        }
+        git(&dir, &["commit", "-qm", "subs"]);
+        let repo = dir.to_string_lossy().into_owned();
+        (dir, sid, repo)
+    }
+
+    fn read(path: PathBuf) -> String {
+        std::fs::read_to_string(path).unwrap()
+    }
+
+    #[test]
+    fn a_turn_inside_a_submodule_is_checkpointed_there_and_listed() {
+        let (dir, sid, repo) = with_submodules(&["lib"]);
+        let lib = dir.join("lib").to_string_lossy().into_owned();
+        assert!(checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap());
+        std::fs::write(dir.join("lib/f.txt"), "edited").unwrap();
+        assert!(
+            checkpoint_snapshot_body(sid.clone(), repo.clone(), 200).unwrap(),
+            "a turn that changed only the submodule still checkpoints"
+        );
+
+        assert!(list_checkpoints(&repo, &sid).iter().any(|c| c.ts == 200));
+        let tree = list_checkpoints(&lib, &sid)
+            .into_iter()
+            .find(|c| c.ts == 200)
+            .expect("the submodule keeps its own ref")
+            .tree;
+        git(&dir.join("lib"), &["gc", "-q", "--prune=now"]);
+        let kept = git_capture(&lib, &["cat-file", "-p", &format!("{tree}:f.txt")]).unwrap();
+        assert_eq!(kept, "edited");
+
+        let files = checkpoint_turn_files(repo.clone(), sid.clone(), 100, None, None).unwrap();
+        assert!(files.iter().any(|f| f.path == "lib/f.txt"), "{files:?}");
+        let diff = checkpoint_diff_file(repo.clone(), sid.clone(), 100, "lib/f.txt".into(), None).unwrap();
+        assert!(diff.contains("+edited"), "{diff}");
+        cleanup(&dir, &sid);
+    }
+
+    #[test]
+    fn a_rewind_restores_parent_and_submodule_and_leaves_a_moved_one_alone() {
+        let (dir, sid, repo) = with_submodules(&["lib", "moved"]);
+        checkpoint_snapshot_body(sid.clone(), repo.clone(), 100).unwrap();
+        std::fs::write(dir.join("f.txt"), "edited").unwrap();
+        std::fs::write(dir.join("lib/f.txt"), "edited").unwrap();
+        std::fs::write(dir.join("moved/f.txt"), "edited").unwrap();
+        git(&dir.join("moved"), &["commit", "-qam", "agent commit"]);
+        let moved_head = git_capture(&absolute(&repo, "moved"), &["rev-parse", "HEAD"]).unwrap();
+
+        let out = checkpoint_revert_tree_body(repo.clone(), sid.clone(), 100, None).unwrap();
+
+        assert!(out.backstop_ts.is_some());
+        assert!(out.restored.contains(&"f.txt".to_string()), "{:?}", out.restored);
+        assert!(out.restored.contains(&"lib/f.txt".to_string()), "{:?}", out.restored);
+        assert_eq!(read(dir.join("f.txt")), "x");
+        assert_eq!(read(dir.join("lib/f.txt")), "x");
+        assert_eq!(out.skipped, ["moved"]);
+        assert_eq!(read(dir.join("moved/f.txt")), "edited");
+        assert_eq!(
+            git_capture(&absolute(&repo, "moved"), &["rev-parse", "HEAD"]).unwrap(),
+            moved_head
+        );
+        cleanup(&dir, &sid);
     }
 
     #[test]
