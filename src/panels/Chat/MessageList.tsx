@@ -852,10 +852,12 @@ export default function MessageList(props: {
     });
   };
   onCleanup(() => cancelAnimationFrame(pinFrame));
-  props.pinner?.(() => {
-    setStuck(true);
-    pin();
-  });
+  untrack(() =>
+    props.pinner?.(() => {
+      setStuck(true);
+      pin();
+    }),
+  );
 
   // Re-pin after the DOM has the new content, and only while pinned.
   createEffect(

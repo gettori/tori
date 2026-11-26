@@ -337,8 +337,8 @@
   border: 1px solid var(--border-default);
   border-radius: calc(3px * var(--ui-scale));
   background: transparent;
-  color: var(--fg);
-  font-family: var(--font-mono);
+  color: var(--fg-default);
+  font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
 }
 
@@ -346,7 +346,7 @@
 .pointerNote {
   flex: none;
   color: var(--fg-subtle);
-  font-family: var(--font-mono);
+  font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
 }
 
@@ -372,7 +372,7 @@
 }
 
 .pointerSha {
-  font-family: var(--font-mono);
+  font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
 }
 
@@ -382,14 +382,14 @@
   gap: calc(6px * var(--ui-scale));
   margin: calc(10px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0;
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-default);
   color: var(--fg-muted);
   font-size: var(--tori-text-sm);
 }
 
 .submodulePath {
   overflow: hidden;
-  color: var(--fg);
+  color: var(--fg-default);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -398,7 +398,7 @@
 .submoduleBranch {
   margin-left: auto;
   color: var(--fg-subtle);
-  font-family: var(--font-mono);
+  font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
 }
 

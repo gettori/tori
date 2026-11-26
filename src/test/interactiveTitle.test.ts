@@ -190,12 +190,26 @@ const KEPT = new Map<string, Kept>([
   ],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
   ["panels/Chat/UsageReadout.tsx", { count: 1, reason: TRUNCATION }],
+  [
+    "panels/Chat/SubmoduleMark.tsx",
+    { count: 1, reason: `${TRUNCATION} - a changed submodule's repo root, behind its relative path` },
+  ],
+  [
+    "panels/Chat/ToolCallCard.tsx",
+    {
+      count: 1,
+      reason: `${TRUNCATION} - a submodule chip on a tool call, naming the repo the edit needs its own commit in`,
+    },
+  ],
   ["panels/Editor/CallsPanel.tsx", { count: 1, reason: ROW_ONCLICK }],
   ["panels/Editor/CommitDetail.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/DiffView.tsx", { count: 2, reason: `one ${TRUNCATION}, one ${HEADING}` }],
   ["panels/Editor/GraphView.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Editor/FileHistory.tsx", { count: 1, reason: TRUNCATION }],
-  ["panels/Editor/FileTree/FileTree.tsx", { count: 1, reason: TRUNCATION }],
+  [
+    "panels/Editor/FileTree/FileTree.tsx",
+    { count: 2, reason: `${TRUNCATION}, one of them the submodule badge beside a folder's name` },
+  ],
   [
     "panels/Editor/FilesPanel/FilesPanel.tsx",
     {
@@ -414,8 +428,11 @@ const KEPT = new Map<string, Kept>([
  *  grouping row's path and a misplaced project's name.
  *
  *  **Down one** with the pull request header shared by the panel and the tab:
- *  branch names wrap instead of truncating, so the head ref needs no title. */
-const RAW_ELEMENT_TITLES = 79;
+ *  branch names wrap instead of truncating, so the head ref needs no title.
+ *
+ *  **Up three** with submodules: the tree's submodule badge, a tool call's
+ *  submodule chip and the changed submodule list's repo root. */
+const RAW_ELEMENT_TITLES = 82;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -562,8 +579,10 @@ describe("the title= guard", () => {
       // the move dialog's folder, a grouping row's path and a misplaced
       // project's name, each the full path behind a truncated label. Up one
       // for the space settings dialog's name. Down one: the panel's branch line
-      // no longer truncates, so it has no full name to show.
-      span: 63,
+      // no longer truncates, so it has no full name to show. Up three for
+      // submodules: the tree's badge, a tool call's chip and a changed
+      // submodule's repo root.
+      span: 66,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
