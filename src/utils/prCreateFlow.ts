@@ -15,7 +15,9 @@
 
 import { createSignal, type Accessor } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { emitWith, PR_OPENED, TOAST, type PrOpened, type ToastEvent } from "./events";
+import { emitWith, OPEN_REVIEW, PR_OPENED, TOAST, type OpenReview, type PrOpened, type ToastEvent } from "./events";
+import { placeLabel } from "./placeLabel";
+import { projectPathFor } from "./sessionActivity";
 import { gitStateFor, push, refreshMeta } from "./gitActions";
 import { composeDraftRequest, prPath, type PrPath } from "./createPr";
 import { comparePrUrl } from "./prUrl";
@@ -172,7 +174,17 @@ export function createPrFlow(deps: {
         },
       });
       setFormOpen(false);
-      emitWith<ToastEvent>(TOAST, { message: `Opened #${pr.number}`, kind: "info" });
+      const projectPath = projectPathFor(root);
+      emitWith<ToastEvent>(TOAST, {
+        message: `Opened #${pr.number} for ${placeLabel(root, branchName)}`,
+        kind: "info",
+        ...(projectPath && {
+          action: {
+            label: "Open",
+            run: () => emitWith<OpenReview>(OPEN_REVIEW, { projectPath, number: pr.number }),
+          },
+        }),
+      });
       // The listings hold their own reads, so the write-through that makes the
       // sidebar chip flip does not reach them. Without this the pull request
       // the user just opened is absent until they hit Refresh.

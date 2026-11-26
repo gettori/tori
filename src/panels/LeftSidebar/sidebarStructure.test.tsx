@@ -234,7 +234,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     await waitFor(() => expect(bridge.configReads).toBe(1));
   });
 
-  it("keeps a quiet fetch failure off the sidebar's error line", async () => {
+  it("keeps fetch failures it did not start off the sidebar's error line", async () => {
     mount();
     await screen.findByRole("button", { name: "work" });
     await waitFor(() => expect(bridge.handlers["git://fetch-error"]).toBeTruthy());
@@ -247,11 +247,13 @@ describe("the sidebar levels that outlive the session rows", () => {
     await Promise.resolve();
     expect(bridge.toasts).toEqual([]);
 
-    // The manual one still speaks up, so the silence above is a choice.
+    // A loud one someone else started is theirs to report: a second toast
+    // here would sit beside it.
     bridge.handlers["git://fetch-error"]({
       payload: { repo: REPO, error: "host is unreachable", quiet: false },
     });
-    await waitFor(() => expect(bridge.toasts).toEqual(["host is unreachable"]));
+    await Promise.resolve();
+    expect(bridge.toasts).toEqual([]);
   });
 
   it("expands a git project into its branch-unit rows", async () => {
