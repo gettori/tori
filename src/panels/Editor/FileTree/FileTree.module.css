@@ -151,6 +151,26 @@
   line-height: 1;
 }
 
+.submoduleBadge {
+  display: inline-flex;
+  flex: none;
+  padding-left: calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
+}
+
+.submoduleAbsent {
+  opacity: 0.5;
+}
+
+.submoduleDot {
+  flex: none;
+  margin-left: auto;
+  padding-left: calc(4px * var(--ui-scale));
+  color: var(--activity-touched);
+  font-size: var(--tori-text-2xs);
+  line-height: 1;
+}
+
 /* Live "editing now": the file the selected session is writing this instant.
    A step up from the touched tint (brand, not accent) because it is a
    different claim - "changing right now" rather than "changed at some point". */

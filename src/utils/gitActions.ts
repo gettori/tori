@@ -21,7 +21,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, SET_RIGHT_MODE, TOAST, type FsChanged, type SetRightMode, type ToastEvent } from "./events";
 import { rootOf } from "./topics";
 import { adoptSync } from "./branchSync";
-import { mentionPath } from "./pathScope";
+import { isUnderPath, mentionPath } from "./pathScope";
 import { askToTrust, noteRefused, onTrustChange, UNTRUSTED } from "./projectTrust";
 import { DIVERGED_REFUSAL, divergedTarget, duplicateWarning } from "./pushWords";
 import { mayRewrite, type GuardAsk } from "./gitGuard";
@@ -277,6 +277,23 @@ function viewOf(root: string): RootView {
     views.set(root, view);
   }
   return view;
+}
+
+const changedInside = (s: SubmoduleState) => s.pointer_moved || s.modified || s.untracked;
+
+export function flaggedSubmodules(root: string): string[] {
+  // The answers, not the slots: the slots span these very roots once entered.
+  return current(root, answers())
+    .files.filter((f) => f.submodule && changedInside(f.submodule))
+    .map((f) => `${root.replace(/\/+$/, "")}/${f.path}`);
+}
+
+export function withSubmodules(roots: readonly string[]): string[] {
+  const out = [...roots];
+  for (let i = 0; i < out.length; i++) {
+    for (const sub of flaggedSubmodules(out[i])) if (!out.includes(sub)) out.push(sub);
+  }
+  return out;
 }
 
 /** The active member's slot: what a surface showing one repo at a time reads. */
@@ -929,9 +946,18 @@ export function forcePush(root: string, branch: string, expected: string): Promi
 export async function startGitWatch(): Promise<() => void> {
   // A payload naming no root predates the per-root events and is taken as
   // "somewhere in here", which is every entered member.
-  const refreshOne = (root: string | undefined, run: (root: string) => Promise<void>) => {
-    if (root) void run(root);
-    else for (const r of [...epochs.keys()]) void run(r);
+  const refreshOne = (root: string | undefined, run: (root: string) => Promise<void>, paths?: readonly string[]) => {
+    if (!root) {
+      for (const r of [...epochs.keys()]) void run(r);
+      return;
+    }
+    void run(root);
+    // A submodule sits inside its parent's watch, so the parent's burst is the
+    // only one it gets.
+    for (const r of epochs.keys()) {
+      if (r === root || !isUnderPath(r, root)) continue;
+      if (!paths || paths.some((p) => isUnderPath(p, r))) void run(r);
+    }
   };
   // The backend fans one container's fetch out to every folder in it, so the
   // root on the payload is already the key a row reads by.
@@ -944,7 +970,7 @@ export async function startGitWatch(): Promise<() => void> {
   };
   const untrust = onTrustChange(() => refreshOne(undefined, refreshGit));
   const unlisteners = await Promise.all([
-    listen<FsChanged>("fs://changed", (e) => refreshOne(e.payload?.root, refreshStatus)),
+    listen<FsChanged>("fs://changed", (e) => refreshOne(e.payload?.root, refreshStatus, e.payload?.paths ?? [])),
     // HEAD, the index or a ref moved: a commit, push or checkout run anywhere
     // but Tori's own buttons, which refresh on their own.
     listen<{ root?: string }>("git://changed", (e) => refreshOne(e.payload?.root, refreshGit)),
