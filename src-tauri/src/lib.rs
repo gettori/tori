@@ -89,6 +89,7 @@ mod sidebar_order;
 mod sound;
 mod space_move;
 mod speech;
+mod submodule;
 mod themes;
 mod topic_home;
 mod topics;
@@ -529,6 +530,8 @@ pub fn run() {
             search::replace_in_files,
             search::apply_line_edits,
             git::git_status,
+            submodule::git_submodules,
+            submodule::git_submodule_init,
             git::git_diff_file,
             git::git_diff_text,
             git::git_apply_hunks,

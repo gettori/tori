@@ -388,6 +388,18 @@ fn known_repos() -> Vec<String> {
             repos.push(unit.folder_path.clone());
         }
     }
+    // A submodule is its own repo with its own config and remote, so it gets
+    // the account its remote resolves to, not its parent's.
+    let subs: Vec<String> = repos
+        .iter()
+        .flat_map(|repo| {
+            crate::submodule::list(Path::new(repo))
+                .into_iter()
+                .filter(|sub| sub.initialized)
+                .map(move |sub| Path::new(repo).join(sub.path).to_string_lossy().into_owned())
+        })
+        .collect();
+    repos.extend(subs);
     repos
 }
 
