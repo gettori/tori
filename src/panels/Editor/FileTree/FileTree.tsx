@@ -12,6 +12,7 @@ import {
   TOAST,
   type FileRenamed,
   type FsChanged,
+  type FsIgnoredChanged,
   type OpenInEditor,
   type OpenShellAt,
   type SearchInFolder,
@@ -999,9 +1000,17 @@ function RootBody(props: {
     void (async () => {
       // Only this root's bursts. Inside a Topic every member is unmuted at once,
       // so the backend's `root` tag is the only thing separating them.
-      const off = await listen<FsChanged>("fs://changed", (e) => {
-        if (e.payload.root === props.path) refresh();
-      });
+      const offs = await Promise.all([
+        listen<FsChanged>("fs://changed", (e) => {
+          if (e.payload.root === props.path) refresh();
+        }),
+        // Ignored writes only matter where they are on screen: a build filling
+        // a closed `dist/` should cost the tree nothing.
+        listen<FsIgnoredChanged>("fs://ignored-changed", (e) => {
+          if (e.payload.root === props.path && e.payload.dirs.some((d) => mounted.has(d))) refresh();
+        }),
+      ]);
+      const off = () => offs.forEach((f) => f());
       if (gone) off();
       else unwatch = off;
     })();

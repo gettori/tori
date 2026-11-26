@@ -721,6 +721,15 @@ struct FsChanged {
     paths: Vec<String>,
 }
 
+/// The gitignored half of a burst, which `fs://changed` drops: only the file
+/// tree wants it, since it lists ignored entries. Parent directories, deduped,
+/// so a build writing thousands of files sends a handful of strings.
+#[derive(Clone, Serialize)]
+struct FsIgnoredChanged {
+    root: String,
+    dirs: Vec<String>,
+}
+
 /// Install (or re-select) the recursive watcher for a project dir. Watchers
 /// live in an LRU of `MAX_WATCHED_ROOTS`: re-selecting a warm root only moves
 /// mute flags, so a switch back costs no rebuild; background roots keep their
@@ -920,7 +929,21 @@ fn install_watcher(
             // and the checkpoints.
             let candidates: Vec<String> = rest.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
             let ignored = gitignored_paths(&emit_root, candidates.iter().map(String::as_str));
-            let paths: Vec<String> = candidates.into_iter().filter(|p| !ignored.contains(p)).collect();
+            let (hidden, paths): (Vec<String>, Vec<String>) = candidates.into_iter().partition(|p| ignored.contains(p));
+            let dirs: BTreeSet<String> = hidden
+                .iter()
+                .filter_map(|p| Path::new(p).parent())
+                .map(|d| d.to_string_lossy().into_owned())
+                .collect();
+            if !dirs.is_empty() {
+                let _ = app_handle.emit(
+                    "fs://ignored-changed",
+                    FsIgnoredChanged {
+                        root: emit_root.clone(),
+                        dirs: dirs.into_iter().collect(),
+                    },
+                );
+            }
             if !paths.is_empty() {
                 let _ = app_handle.emit(
                     "fs://changed",
