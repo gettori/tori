@@ -10,9 +10,24 @@ matching section here fails the release rather than publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.1126.0-beta
 
 - **Tori now needs macOS 26 or later.** If your Mac is on macOS 13, 14 or 15, do not install this update: Tori will not open afterwards. Update macOS first, or stay on the version you have.
+- Menu bar rows name the branch next to the project, so chats on the same project in different worktrees are easy to tell apart.
+- Changed submodules show up as their own sections in Changes, and the file tree marks submodule folders with a badge.
+- When a turn changes a submodule, chat says so and says what it still needs (a commit, a PR). The agent is told which folders are submodules.
+- Checkpoints cover submodules in their own repos, and a revert puts them back unless their commit moved.
+- A new worktree clones its submodules before running setup. Removing a worktree warns if work is left in a submodule.
+- A push whose submodule pointer names an unpushed commit is refused, with an option to push the submodule first. Submodule pull requests are linked.
+- Git, setup, fetch, proposal and PR toasts name the checkout they are about and link to it. The second fetch error toast is gone.
+- Up arrow in the composer keeps walking through older prompts after it recalls a `/command`. Before, the slash menu opened and took over the arrows.
+- A new chat focuses the composer.
+- Only scrolling yourself takes the transcript off the bottom.
+- Script tabs come back after a quit, with an offer to run them again.
+- A branch is counted from where it left its base, even after the base was rewritten.
+- The file tree refreshes for writes under gitignored folders it has open.
+- `.mdx` is highlighted as markdown with the markdown icon, and `.markdown` and `.mkd` preview like `.md`.
+- macOS 26.1126.0-beta ships; Android 26.1126.0-beta ships; browser extension 26.1126.0 ships, rolling out on the Chrome Web Store; push relay unchanged at 26.1030.0-beta.
 
 ## 26.1120.0-beta
 
