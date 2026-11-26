@@ -532,6 +532,7 @@ describe("staying at the bottom when the list is made shorter", () => {
     const scroller = container.firstElementChild as HTMLElement;
     const geom = stubScroll(scroller, 400);
     geom.setTop(100);
+    fireEvent.wheel(scroller, { deltaY: -500 });
     fireEvent.scroll(scroller);
 
     geom.shrinkTo(340);
@@ -583,6 +584,7 @@ describe("a send takes the reader back to the bottom", () => {
     const scroller = container.firstElementChild as HTMLElement;
     const geom = stubScroll(scroller, 400);
     geom.setTop(100);
+    fireEvent.wheel(scroller, { deltaY: -500 });
     fireEvent.scroll(scroller);
     await tick();
     return { scroller, geom, setItems };
