@@ -1369,6 +1369,7 @@ describe("reasoningFor", () => {
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
   });
   const text = (id: string, body: string, agentId: string | null = null): ChatItem => ({
     kind: "text",

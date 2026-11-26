@@ -279,6 +279,28 @@ pub fn cap_output(text: &str) -> Option<String> {
     Some(text[..end].to_string())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmoduleRef {
+    pub root: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SubmoduleNeed {
+    Commit,
+    Push,
+    Pointer,
+    Done,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmoduleTouch {
+    pub root: String,
+    pub path: String,
+    pub need: SubmoduleNeed,
+}
+
 /// What a tool did to a file, for the edit cards and the diff gutter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1443,6 +1465,9 @@ pub enum ChatEvent {
         /// Filled where events leave Rust, never by an adapter.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         blind_edits: Vec<String>,
+        /// Filled where events leave Rust, never by an adapter.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        submodules: Vec<SubmoduleRef>,
     },
 
     /// A file was written, with the before-state addressed by content hash so
@@ -1457,6 +1482,9 @@ pub enum ChatEvent {
         /// `None` when the folder has no object store to write into.
         #[serde(default)]
         before_blob: Option<String>,
+        /// Filled where events leave Rust, never by an adapter.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        submodule: Option<SubmoduleRef>,
     },
 
     /// A tool call is blocked awaiting the user's answer.
@@ -1608,6 +1636,12 @@ pub enum ChatEvent {
         /// knows which login the child runs as.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         profile: Option<String>,
+    },
+
+    TurnSubmodules {
+        session_id: String,
+        turn_id: String,
+        submodules: Vec<SubmoduleTouch>,
     },
 
     /// What a turn that changed code ran to check it, sent just before its
@@ -2085,6 +2119,7 @@ mod tests {
                     lines: vec![" ctx".into(), "-was".into(), "+is".into(), "+and".into(), " ctx".into()],
                 }],
                 blind_edits: vec!["/tmp/w/probe.txt".into()],
+                submodules: Vec::new(),
             },
             ChatEvent::FileEdit {
                 session_id: "s1".into(),
@@ -2093,6 +2128,10 @@ mod tests {
                 path: "/tmp/w/probe.txt".into(),
                 kind: FileEditKind::Modified,
                 before_blob: Some("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391".into()),
+                submodule: Some(SubmoduleRef {
+                    root: "/tmp/w/vendor/lib".into(),
+                    path: "vendor/lib".into(),
+                }),
             },
             ChatEvent::PermissionRequest {
                 session_id: "s1".into(),
@@ -2294,6 +2333,15 @@ mod tests {
                     duration_ms: Some(14_200),
                 }],
                 settled_later: true,
+            },
+            ChatEvent::TurnSubmodules {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                submodules: vec![SubmoduleTouch {
+                    root: "/tmp/w/vendor/lib".into(),
+                    path: "vendor/lib".into(),
+                    need: SubmoduleNeed::Push,
+                }],
             },
             ChatEvent::TurnCompleted {
                 session_id: "s1".into(),
@@ -2684,6 +2732,7 @@ mod tests {
                 ChatEvent::Usage { .. } => "usage",
                 ChatEvent::RateLimit { .. } => "rateLimit",
                 ChatEvent::TurnVerification { .. } => "turnVerification",
+                ChatEvent::TurnSubmodules { .. } => "turnSubmodules",
                 ChatEvent::TurnCompleted { .. } => "turnCompleted",
                 ChatEvent::SessionError { .. } => "sessionError",
                 ChatEvent::SessionEnded { .. } => "sessionEnded",
@@ -2693,7 +2742,7 @@ mod tests {
         // A mismatch means a sample is missing or duplicated.
         assert_eq!(
             events.len(),
-            30,
+            31,
             "every_event() must hold exactly one sample per variant"
         );
     }

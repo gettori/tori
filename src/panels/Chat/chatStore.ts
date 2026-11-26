@@ -48,6 +48,8 @@ import type {
   SecretHit,
   SlashCommand,
   SubagentUsage,
+  SubmoduleRef,
+  SubmoduleTouch,
   ToolKind,
   ToolLocation,
   ToolSummary,
@@ -180,6 +182,7 @@ export type ToolItem = {
   secret: SecretHit | null;
   /** Files the call changed without the session having seen them first. */
   blindEdits: string[];
+  submodules: SubmoduleRef[];
 };
 
 /** One hook frame, as a transcript row.
@@ -502,6 +505,7 @@ export type ChatState = {
   laneOfCall: Record<string, string>;
   /** `turnId` -> what that turn ran to check the code it changed. */
   verifications: Record<string, TurnCheck>;
+  submodules: Record<string, SubmoduleTouch[]>;
   /** When this chat last showed a sign of life, of any kind. Read by nothing
    *  but the thinking span, which needs to know when the model went quiet, and
    *  the last frame is the only thing that knows. */
@@ -709,6 +713,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     selectedLane: null,
     laneOfCall: {},
     verifications: {},
+    submodules: {},
     lastFrameAt: Date.now(),
     ready: false,
     started: false,
@@ -825,6 +830,10 @@ export function mergeSecret(a: SecretHit | null, b: SecretHit): SecretHit {
 /** A turn's verification verdict and the checks behind it. */
 export type TurnCheck = { verdict: Verdict; checks: Check[]; settledLater?: boolean };
 
+function addSubmodule(card: ToolItem, sub: SubmoduleRef) {
+  if (!card.submodules.some((s) => s.path === sub.path)) card.submodules.push(sub);
+}
+
 /** Each turn's blind edits, folded from its tool cards. */
 export function turnBlindEdits(items: readonly ChatItem[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -897,6 +906,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
   };
   s.toolIndex[toolUseId] = s.items.length;
   push(s, card);
@@ -1601,6 +1611,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       card.files = ev.files;
       card.durationMs = ev.durationMs;
       card.blindEdits = ev.blindEdits ?? [];
+      for (const sub of ev.submodules ?? []) addSubmodule(card, sub);
       return;
     }
     case "fileEdit": {
@@ -1609,6 +1620,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       if (!card.edits.some((e) => e.path === ev.path)) {
         card.edits.push({ path: ev.path, kind: ev.kind, beforeBlob: ev.beforeBlob });
       }
+      if (ev.submodule) addSubmodule(card, ev.submodule);
       return;
     }
     case "permissionRequest": {
@@ -1688,6 +1700,9 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // owns what a reading means, and `usageStore` owns which account it is
       // about. This is one session's copy of the last frame it saw.
       s.rateLimit = rateLimitFrom(ev);
+      return;
+    case "turnSubmodules":
+      s.submodules[ev.turnId] = ev.submodules;
       return;
     case "turnVerification":
       s.verifications[ev.turnId] = { verdict: ev.verdict, checks: ev.checks, settledLater: ev.settledLater };
@@ -1984,6 +1999,7 @@ export function prependHistory(s: ChatState, events: readonly unknown[]) {
   s.turns = { ...page.turns, ...s.turns };
   s.laneOfCall = { ...page.laneOfCall, ...s.laneOfCall };
   s.verifications = { ...page.verifications, ...s.verifications };
+  s.submodules = { ...page.submodules, ...s.submodules };
   // The totals stand; only where they are counted from moved.
   s.unloaded.prompts += prompts - promptsSent(s);
   s.unloaded.toolCalls += toolCalls - toolCallsSeen(s);
@@ -2037,6 +2053,7 @@ export function resetTranscript(s: ChatState) {
   s.selectedLane = null;
   s.laneOfCall = {};
   s.verifications = {};
+  s.submodules = {};
   s.compactions = 0;
   s.compactionReclaimed = 0;
   s.compactingItemId = null;

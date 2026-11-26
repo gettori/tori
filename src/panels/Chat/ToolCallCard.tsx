@@ -12,7 +12,7 @@ import {
   isPending,
   refresh,
 } from "solid-js";
-import { ChevronRight, EyeOff, KeyRound } from "../../components/Icon/icons";
+import { ChevronRight, EyeOff, FolderGit2, KeyRound } from "../../components/Icon/icons";
 import Icon from "../../components/Icon/Icon";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { chatCall } from "./chatCalls";
@@ -235,6 +235,17 @@ export default function ToolCallCard(props: {
             <Icon icon={EyeOff} size={12} />
           </span>
         </Show>
+        <For each={props.card.submodules}>
+          {(sub) => (
+            <span
+              class={styles.toolSubmodule}
+              title={`${sub.root} is its own repo: this edit needs a commit and PR there.`}
+            >
+              <Icon icon={FolderGit2} size={12} />
+              submodule: {sub.path}
+            </span>
+          )}
+        </For>
         {/* What the call did, once it has said. A row with no summary is the
             row exactly as it was before this existed. A write says it in two
             numbers that carry their own verdict, so those get the diff's own

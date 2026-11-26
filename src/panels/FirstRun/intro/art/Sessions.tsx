@@ -101,6 +101,7 @@ function tool(
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
   };
 }
 

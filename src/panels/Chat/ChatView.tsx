@@ -2861,6 +2861,7 @@ export default function ChatView(props: {
           showSecrets={settings.secretWatch?.enabled !== false}
           showBlindEdits={settings.blindEdits?.enabled !== false}
           verifications={state.verifications}
+          submodules={state.submodules}
           showVerification={settings.verification?.enabled !== false}
         />
       </Show>

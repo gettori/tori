@@ -1680,6 +1680,7 @@ mod tests {
             output_truncated: false,
             patch: Vec::new(),
             blind_edits: Vec::new(),
+            submodules: Vec::new(),
         }
     }
 

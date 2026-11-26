@@ -305,6 +305,7 @@ fn push_block(
                 // never watched run.
                 patch: block.tool_patch.clone(),
                 blind_edits: Vec::new(),
+                submodules: Vec::new(),
             });
         }
         _ => {}

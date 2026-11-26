@@ -250,6 +250,7 @@ fn keep(event: &ChatEvent) -> Keep {
         | ChatEvent::PlanUpdate { .. }
         | ChatEvent::Usage { .. }
         | ChatEvent::TurnVerification { .. }
+        | ChatEvent::TurnSubmodules { .. }
         | ChatEvent::TurnCompleted { .. } => Keep::Whole,
     }
 }
@@ -758,6 +759,7 @@ mod tests {
             output_truncated: false,
             patch: Vec::new(),
             blind_edits: Vec::new(),
+            submodules: Vec::new(),
         }
     }
 

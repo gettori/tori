@@ -572,6 +572,7 @@
 
 .turnSecret,
 .turnBlindEdit,
+.turnSubmodule,
 .turnVerification {
   display: inline-flex;
   align-items: center;
@@ -581,7 +582,8 @@
   font-size: calc(var(--chat-font-size) - 2px);
 }
 
-.turnSecret {
+.turnSecret,
+.turnSubmodule {
   padding: 0;
   border: 0;
   background: none;
@@ -589,7 +591,8 @@
   cursor: pointer;
 }
 
-.turnSecret:hover {
+.turnSecret:hover,
+.turnSubmodule:hover {
   text-decoration: underline;
 }
 
@@ -641,6 +644,15 @@ button.secretPath:hover {
 
 code.secretReason {
   font-family: var(--tori-font-mono);
+}
+
+.turnSubmoduleSettled {
+  color: var(--fg-muted);
+}
+
+.submoduleNeed {
+  grid-column: 1;
+  color: var(--fg-muted);
 }
 
 .secretShow {
@@ -1225,6 +1237,15 @@ code.secretReason {
 .toolBlindEdit {
   display: inline-flex;
   color: var(--attention-fg);
+}
+
+.toolSubmodule {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(3px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-xs);
 }
 
 .toolBody {

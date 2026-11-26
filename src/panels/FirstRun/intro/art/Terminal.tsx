@@ -61,6 +61,7 @@ function tool(id: string, over: Partial<ToolItem>): ToolItem {
     edits: [],
     secret: null,
     blindEdits: [],
+    submodules: [],
     files: [],
     ...over,
   };

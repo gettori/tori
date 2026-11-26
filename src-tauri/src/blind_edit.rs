@@ -319,6 +319,7 @@ mod tests {
             path: path.into(),
             kind,
             before_blob: None,
+            submodule: None,
         }
     }
 
@@ -335,6 +336,7 @@ mod tests {
             output_truncated: false,
             patch: Vec::new(),
             blind_edits: Vec::new(),
+            submodules: Vec::new(),
         }
     }
 

@@ -201,6 +201,9 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "rateLimit":
           expect(ev.limitType).toBe("five_hour");
           break;
+        case "turnSubmodules":
+          expect(ev.submodules).toEqual([{ root: "/tmp/w/vendor/lib", path: "vendor/lib", need: "push" }]);
+          break;
         case "turnVerification":
           // A failing chain is one entry naming every check in it.
           expect(ev.verdict).toBe("failed");
