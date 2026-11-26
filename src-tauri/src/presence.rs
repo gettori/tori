@@ -286,10 +286,14 @@ fn tray_entries(live: &[Live]) -> Vec<TrayEntry> {
     shown
         .into_iter()
         .map(|l| {
-            let project = if l.project.is_empty() {
+            let place: Vec<&str> = [l.project.as_str(), l.branch.as_deref().unwrap_or_default()]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect();
+            let project = if place.is_empty() {
                 String::new()
             } else {
-                format!(" ({})", l.project)
+                format!(" ({})", place.join(", "))
             };
             let why = match l.reason.filter(|_| l.dot == Dot::NeedsYou) {
                 Some(reason) => format!(": {}", reason_note(reason)),
@@ -816,6 +820,26 @@ mod tests {
         assert_eq!(
             tray_entries(&[blocked])[0].label,
             "deploy (repo): had a command blocked"
+        );
+    }
+
+    #[test]
+    fn names_the_branch_beside_the_project() {
+        let on = |project: &str, branch: Option<&str>| Live {
+            branch: branch.map(str::to_string),
+            ..named("chat-1", Dot::Working, "chat A", project)
+        };
+        let labels: Vec<String> = [
+            on("repo", Some("feature-x")),
+            on("", Some("feature-x")),
+            on("notes", None),
+        ]
+        .iter()
+        .map(|l| tray_entries(std::slice::from_ref(l))[0].label.clone())
+        .collect();
+        assert_eq!(
+            labels,
+            ["chat A (repo, feature-x)", "chat A (feature-x)", "chat A (notes)"]
         );
     }
 
