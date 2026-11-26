@@ -476,6 +476,13 @@ export type FsChanged = {
   paths: string[];
 };
 
+/** The backend `fs://ignored-changed` payload, mirroring `struct
+ *  FsIgnoredChanged`: parent dirs of the gitignored paths `fs://changed` drops. */
+export type FsIgnoredChanged = {
+  root: string;
+  dirs: string[];
+};
+
 // Payload-carrying event: open a file in the editor at an optional position.
 // (General file-change fan-out is not here — that rides the backend
 // `fs://changed` Tauri event, consumed directly by the editor panes. The one
