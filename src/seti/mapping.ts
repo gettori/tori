@@ -482,6 +482,14 @@ export const extensions: Record<string, SetiIcon> = {
     "glyph": "",
     "hue": "blue"
   },
+  "mkd": {
+    "glyph": "",
+    "hue": "blue"
+  },
+  "mdx": {
+    "glyph": "",
+    "hue": "blue"
+  },
   "html": {
     "glyph": "",
     "hue": "orange"

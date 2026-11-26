@@ -42,7 +42,9 @@ function descriptionFor(path: string): LanguageDescription | null {
   return (
     LanguageDescription.matchFilename(languages, name) ??
     LanguageDescription.matchFilename(languages, name.toLowerCase()) ??
-    (SHELL_SUFFIXES.includes(suffix(path)) ? LanguageDescription.matchLanguageName(languages, "shell") : null)
+    (SHELL_SUFFIXES.includes(suffix(path)) ? LanguageDescription.matchLanguageName(languages, "shell") : null) ??
+    // language-data claims no mdx; its JSX and ESM lines read as markdown text.
+    (suffix(path) === "mdx" ? LanguageDescription.matchLanguageName(languages, "markdown") : null)
   );
 }
 

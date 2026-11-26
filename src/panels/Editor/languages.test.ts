@@ -29,6 +29,11 @@ describe("languageForPath", () => {
     expect(now).toEqual(before);
   });
 
+  it("reads mdx as markdown", async () => {
+    expect((await languageForPath("/r/a.mdx"))?.name).toBe("markdown");
+    expect((await languageForPath("/r/A.MDX"))?.name).toBe("markdown");
+  });
+
   it("serves JavaScript, TypeScript and JSON from the eager packs", async () => {
     const same = async (path: string, expected: { language: unknown }) =>
       expect(await languageForPath(path), path).toBe(expected.language);
