@@ -1193,7 +1193,7 @@ describe("Open PR", () => {
 
     // The number is the confirmation. Without it the dialog just closes, and
     // the user has no idea whether anything was opened.
-    await waitFor(() => expect(toasts.messages).toContain("Opened #42"));
+    await waitFor(() => expect(toasts.messages).toContain("Opened #42 for wave-3 in proj"));
     toasts.stop();
     await waitFor(() => expect(screen.queryByText("Open a pull request")).toBeNull());
   });

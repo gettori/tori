@@ -1292,7 +1292,6 @@ export default function ReviewPanel(props: {
       <>
         <div
           class={styles.reviewRow}
-          title={f.path}
           data-pointer={f.path}
           aria-expanded={moved() ? (open() ? "true" : "false") : undefined}
           onClick={() =>
@@ -2100,13 +2099,16 @@ export default function ReviewPanel(props: {
                                 <input
                                   class={styles.submoduleBranchInput}
                                   aria-label={`Branch to create in ${sec.label} before committing`}
-                                  title="Detached HEAD: committing creates this branch here first"
+                                  aria-describedby={`${sec.root}#branch-hint`}
                                   value={typedBranches().get(sec.root) ?? suggested()}
                                   onInput={(e) => {
                                     const v = e.currentTarget.value;
                                     setTypedBranches((prev) => new Map(prev).set(sec.root, v));
                                   }}
                                 />
+                                <span id={`${sec.root}#branch-hint`} class={styles.srOnly}>
+                                  Detached HEAD: committing creates this branch here first
+                                </span>
                               </Loading>
                             }
                           >

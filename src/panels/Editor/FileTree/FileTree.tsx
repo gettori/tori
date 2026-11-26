@@ -1014,16 +1014,25 @@ function RootBody(props: {
   // refresh both ends.
   const mounted = new Map<string, () => Promise<void>>();
   const [submodules, setSubmodules] = createSignal<ReadonlyMap<string, SubmoduleInfo>>(new Map());
+  // A tree rooted at its repo can see `.gitmodules` in its own listing, and
+  // most repos have none, so a worktree switch skips the call. A tree rooted
+  // below its repo cannot see that file and always asks.
+  const declaresSubmodules = () =>
+    props.path !== props.repoPath || entries().some((row) => row.entry.path === `${props.repoPath}/.gitmodules`);
   function loadSubmodules() {
-    const repo = props.repoPath;
+    const repo = untrack(() => props.repoPath);
     if (!repo) return;
+    if (!untrack(declaresSubmodules)) {
+      if (untrack(submodules).size) setSubmodules(new Map());
+      return;
+    }
     void invoke<SubmoduleInfo[]>("git_submodules", { root: repo })
       .then((list) => setSubmodules(new Map(list.map((sub) => [`${repo}/${sub.path}`, sub]))))
       .catch(() => {});
   }
   const submoduleKey = createMemo(() => {
     const repo = props.repoPath;
-    if (!repo) return "";
+    if (!repo || !declaresSubmodules()) return "";
     const flags = gitStateFor(repo)
       .files.filter((f) => f.submodule)
       .map((f) => `${f.path}:${JSON.stringify(f.submodule)}`);
