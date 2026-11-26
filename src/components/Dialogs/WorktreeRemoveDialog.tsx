@@ -3,7 +3,7 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Checkbox from "../Checkbox/Checkbox";
-import { operationChip, type Operation } from "../../utils/worktreeOperation";
+import { operationChip, type Operation, type SubmoduleWork } from "../../utils/worktreeOperation";
 
 // The removal confirmation for a single worktree. Shows what is being deleted (the
 // branch + folder path), warns when the tree has uncommitted or unpushed work about
@@ -24,6 +24,7 @@ export default function WorktreeRemoveDialog(props: {
   dirty: boolean | null;
   unpushed: boolean | null;
   ignoredWork: string[];
+  submodules?: SubmoduleWork[];
   operation?: Operation | null;
   largeFiles?: string[];
   // Whether the removal keeps a rescue copy, with the local branch kept and
@@ -51,9 +52,14 @@ export default function WorktreeRemoveDialog(props: {
   const confirm = () => props.onConfirm({ deleteLocal: deleteLocal(), deleteRemote: deleteRemote() });
   const op = () => (props.operation ? operationChip(props.operation) : null);
   const large = () => props.largeFiles ?? [];
+  const submodules = () => props.submodules ?? [];
   const kept = () => !!(deleteLocal() ? props.keepsCopyWithBranch : props.keepsCopy);
   const lost = () =>
-    [props.ignoredWork.length > 0 ? "ignored files" : "", large().length > 0 ? "files too large to keep" : ""]
+    [
+      props.ignoredWork.length > 0 ? "ignored files" : "",
+      large().length > 0 ? "files too large to keep" : "",
+      submodules().length > 0 ? "work in submodules" : "",
+    ]
       .filter(Boolean)
       .join(" and ");
   let ok: HTMLButtonElement | undefined;
@@ -123,6 +129,16 @@ export default function WorktreeRemoveDialog(props: {
             <span class={styles.wtDetailKey}>Ignored</span>
             <span class={styles.wtDetailVal} title={props.ignoredWork.join("\n")}>
               {props.ignoredWork.join(", ")}
+            </span>
+          </div>
+        </Show>
+        <Show when={submodules().length > 0}>
+          <div class={styles.wtDetailRow}>
+            <span class={styles.wtDetailKey}>Submodules</span>
+            <span class={styles.wtDetailVal} data-remove-submodules>
+              {submodules()
+                .map((w) => `${w.path} (${w.dirty ? "uncommitted changes" : "unpushed commits"})`)
+                .join(", ")}
             </span>
           </div>
         </Show>

@@ -921,6 +921,7 @@ pub struct WorktreeStatus {
     pub large_files: Vec<String>,
     pub keeps_copy: bool,
     pub keeps_copy_with_branch: bool,
+    pub submodules: Vec<crate::submodule::SubmoduleWork>,
 }
 
 /// The `(remote, ref)` a branch pushes to, from its tracking config
@@ -1048,6 +1049,7 @@ pub(crate) fn worktree_status_body(path: String) -> Result<WorktreeStatus, Strin
         },
         keeps_copy: crate::rescue::keeps_copy(p, None),
         keeps_copy_with_branch: crate::rescue::keeps_copy(p, branch_at(p).as_deref()),
+        submodules: crate::submodule::work(p),
     })
 }
 
@@ -1105,17 +1107,32 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
     remove_worktree_deleting(repo_path, worktree_path, force, None)
 }
 
+fn removal_refusal(worktree: &Path) -> Result<(), String> {
+    if let Some(w) = crate::submodule::work(worktree).first() {
+        let what = if w.dirty {
+            "uncommitted changes"
+        } else {
+            "commits that are not pushed"
+        };
+        return Err(format!(
+            "Submodule {} has {what}; commit and push them there first.",
+            w.path
+        ));
+    }
+    if tree_dirty(worktree)? {
+        return Err("This worktree has uncommitted changes; commit or discard them first.".into());
+    }
+    keeps_no_ignored_work(worktree)
+}
+
 pub(crate) fn remove_worktree_deleting(
     repo_path: &str,
     worktree_path: &str,
     force: bool,
     deleted_branch: Option<&str>,
 ) -> Result<(), String> {
-    if !force && tree_dirty(Path::new(worktree_path))? {
-        return Err("This worktree has uncommitted changes; commit or discard them first.".into());
-    }
     if !force {
-        keeps_no_ignored_work(Path::new(worktree_path))?;
+        removal_refusal(Path::new(worktree_path))?;
     }
     let folder = Path::new(worktree_path);
     crate::setup::kill(folder);
@@ -1350,6 +1367,50 @@ mod tests {
         git(dir, &["config", "user.email", "t@t.t"]);
         git(dir, &["config", "user.name", "t"]);
         git(dir, &["commit", "-q", "--allow-empty", "-m", "one"]);
+    }
+
+    #[test]
+    fn a_worktree_with_work_in_a_submodule_is_refused_naming_it() {
+        let tmp = unique_tmp();
+        let (lib, repo) = (tmp.join("lib"), tmp.join("repo"));
+        committed_repo(&lib);
+        committed_repo(&repo);
+        let file = ["-c", "protocol.file.allow=always"];
+        git(
+            &repo,
+            &[&file[..], &["submodule", "add", "-q", lib.to_str().unwrap(), "lib"]].concat(),
+        );
+        git(&repo, &["commit", "-qm", "sub"]);
+        let repo_s = repo.to_str().unwrap();
+        let add = |name: &str| {
+            let wt = tmp.join(name);
+            git(&repo, &["worktree", "add", "-q", "-b", name, wt.to_str().unwrap()]);
+            git(&wt, &[&file[..], &["submodule", "update", "-q", "--init"]].concat());
+            assert!(wt.join("lib/.git").exists(), "the submodule is checked out");
+            wt
+        };
+
+        let clean = add("clean");
+        do_remove_worktree(repo_s, clean.to_str().unwrap(), false).unwrap();
+        assert!(!clean.exists(), "an initialized submodule alone does not block removal");
+
+        let dirty = add("dirty");
+        std::fs::write(dirty.join("lib/new.txt"), "x").unwrap();
+        let err = do_remove_worktree(repo_s, dirty.to_str().unwrap(), false).unwrap_err();
+        assert!(err.contains("Submodule lib") && err.contains("uncommitted"), "{err}");
+        assert!(dirty.join("lib/new.txt").exists());
+
+        let ahead = add("ahead");
+        let who = ["-c", "user.email=t@t.t", "-c", "user.name=t"];
+        git(
+            &ahead.join("lib"),
+            &[&who[..], &["commit", "-q", "--allow-empty", "-m", "local"]].concat(),
+        );
+        git(&ahead, &[&who[..], &["commit", "-qam", "bump"]].concat());
+        let err = do_remove_worktree(repo_s, ahead.to_str().unwrap(), false).unwrap_err();
+        assert!(err.contains("Submodule lib") && err.contains("not pushed"), "{err}");
+        assert!(ahead.exists());
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     fn diverged_repo(repo: &Path) {

@@ -981,6 +981,12 @@ export async function startGitWatch(): Promise<() => void> {
       noteFetch(e.payload ?? {}, true);
       refreshOne(e.payload?.repo, e.payload?.quiet ? refreshMeta : refreshGit);
     }),
+    listen<{ worktree: string; error: string }>("submodules://init-failed", (e) =>
+      emitWith<ToastEvent>(TOAST, {
+        message: `The submodules in ${e.payload.worktree} were not cloned: ${e.payload.error}. Initialize them from the file tree to try again.`,
+        kind: "error",
+      }),
+    ),
     listen<FetchEvent>("git://fetch-error", (e) => {
       noteFetch(e.payload ?? {}, false);
       // Still a refresh: `--all` across several remotes can fail on one and

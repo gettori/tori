@@ -282,6 +282,7 @@ pub fn run() {
             packs::link::watch(app.handle());
 
             setup::set_publisher(app.handle().clone());
+            submodule::set_cloner(app.handle().clone());
             run::at_launch();
 
             app.manage(rpc::start(app.handle().clone()));

@@ -17,7 +17,10 @@ export type WorktreeStatus = {
   largeFiles: string[];
   keepsCopy: boolean;
   keepsCopyWithBranch: boolean;
+  submodules: SubmoduleWork[];
 };
+
+export type SubmoduleWork = { path: string; dirty: boolean; unpushed: boolean };
 
 type UnitLike = {
   label: string;

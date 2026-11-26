@@ -202,6 +202,84 @@ pub fn init(repo: &str, paths: &[String], sock: &Path, token: &str) -> Result<()
     Ok(())
 }
 
+type Cloner = dyn Fn(&Path) -> Result<(), String> + Send + Sync;
+
+static CLONER: std::sync::OnceLock<Box<Cloner>> = std::sync::OnceLock::new();
+static CLONING: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+static CLONED: std::sync::Condvar = std::sync::Condvar::new();
+
+// The credential bridge and the watchers are app state, and a new worktree is
+// made from places that hold neither: the socket, attempts, a restored copy.
+pub fn set_cloner(app: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+    let _ = CLONER.set(Box::new(move |worktree| {
+        let cloned = app
+            .try_state::<crate::askpass::AskpassState>()
+            .ok_or_else(|| "the credential bridge is not running".to_string())
+            .and_then(|bridge| init(&worktree.to_string_lossy(), &[], bridge.0.sock_path(), bridge.0.token()));
+        match &cloned {
+            Ok(()) => crate::fs::rewatch_containing(&app, app.state::<crate::fs::FsWatch>().inner(), worktree),
+            Err(error) => {
+                let payload = serde_json::json!({ "worktree": worktree, "error": error });
+                let _ = app.emit("submodules://init-failed", payload);
+            }
+        }
+        cloned
+    }));
+}
+
+// Off the creating call, which may be an agent's socket request, since a clone
+// can take minutes. A failed one leaves the worktree usable and the file tree's
+// Initialize action to retry, so it does not stop `then`, the setup.
+pub fn clone_then(worktree: &Path, wanted: bool, then: impl FnOnce() + Send + 'static) -> bool {
+    CLONER
+        .get()
+        .is_some_and(|clone| clone_with(worktree, wanted, clone.as_ref(), then))
+}
+
+fn clone_with(worktree: &Path, wanted: bool, clone: &'static Cloner, then: impl FnOnce() + Send + 'static) -> bool {
+    if !wanted || initialized_here(worktree).len() == declared_count(worktree) {
+        return false;
+    }
+    let key = cloning_key(worktree);
+    cloning().push(key.clone());
+    let dir = worktree.to_path_buf();
+    std::thread::spawn(move || {
+        if let Err(e) = clone(&dir) {
+            eprintln!("tori: submodules in {} were not initialized: {e}", dir.display());
+        }
+        // Started before the clone reads as done, so a waiter never sees neither.
+        then();
+        cloning().retain(|d| d != &key);
+        CLONED.notify_all();
+    });
+    true
+}
+
+pub fn wait_cloned(worktree: &Path, cap: Duration) -> Duration {
+    let key = cloning_key(worktree);
+    let started = Instant::now();
+    let held = cloning();
+    let _ = CLONED.wait_timeout_while(held, cap, |c| c.contains(&key));
+    cap.saturating_sub(started.elapsed())
+}
+
+fn cloning() -> std::sync::MutexGuard<'static, Vec<PathBuf>> {
+    CLONING.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn cloning_key(worktree: &Path) -> PathBuf {
+    worktree.canonicalize().unwrap_or_else(|_| worktree.to_path_buf())
+}
+
+fn declared_count(repo: &Path) -> usize {
+    if repo.join(".gitmodules").is_file() {
+        declared(repo).len()
+    } else {
+        0
+    }
+}
+
 // Through the askpass command, whose `GIT_SSH_COMMAND` carries the parent's
 // account wrapper into each clone: a clone never reads its parent's config.
 // The https bridge stays off, since it answers for the parent's account only.
@@ -485,21 +563,43 @@ fn initialized(root: &Path) -> Vec<String> {
     out
 }
 
+fn dirty(dir: &Path) -> bool {
+    output(dir, &["status", "--porcelain", "--ignore-submodules=all"]).is_some_and(|s| !s.is_empty())
+}
+
+fn pushed(dir: &Path, head: &str) -> bool {
+    line(dir, &["for-each-ref", "--count=1", "--contains", head, "refs/remotes"]).is_some()
+}
+
+#[derive(Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmoduleWork {
+    pub path: String,
+    pub dirty: bool,
+    pub unpushed: bool,
+}
+
+pub fn work(root: &Path) -> Vec<SubmoduleWork> {
+    initialized(root)
+        .into_iter()
+        .filter_map(|path| {
+            let dir = root.join(&path);
+            let dirty = dirty(&dir);
+            let unpushed = line(&dir, &["rev-parse", "HEAD"]).is_some_and(|head| !pushed(&dir, &head));
+            (dirty || unpushed).then_some(SubmoduleWork { path, dirty, unpushed })
+        })
+        .collect()
+}
+
 fn need(root: &Path, subs: &[String], path: &str) -> SubmoduleNeed {
     let dir = root.join(path);
-    let dirty = output(&dir, &["status", "--porcelain", "--ignore-submodules=all"]).is_some_and(|s| !s.is_empty());
-    if dirty {
+    if dirty(&dir) {
         return SubmoduleNeed::Commit;
     }
     let Some(head) = line(&dir, &["rev-parse", "HEAD"]) else {
         return SubmoduleNeed::Commit;
     };
-    let pushed = line(
-        &dir,
-        &["for-each-ref", "--count=1", "--contains", &head, "refs/remotes"],
-    )
-    .is_some();
-    if !pushed {
+    if !pushed(&dir, &head) {
         return SubmoduleNeed::Push;
     }
     let parent = subs
@@ -756,6 +856,40 @@ mod tests {
         let note = agent_note(&top.join("src")).expect("a repo with a submodule gets the note");
         assert!(note.contains("libs/a"), "{note}");
         assert!(agent_note(&plain).is_none());
+    }
+
+    #[test]
+    fn a_new_worktree_gets_its_submodules_only_when_the_setting_is_on() {
+        let tmp = scratch();
+        let (lib, top) = (tmp.join("lib"), tmp.join("top"));
+        repo(&lib);
+        repo(&top);
+        git(&top, &["submodule", "add", "-q", lib.to_str().unwrap(), "lib"]);
+        git(&top, &["commit", "-qm", "sub"]);
+        let clone: &'static Cloner = Box::leak(Box::new(|wt: &Path| {
+            git(wt, &["submodule", "update", "-q", "--init", "--recursive"]);
+            Ok(())
+        }));
+
+        let off = tmp.join("off");
+        git(&top, &["worktree", "add", "-q", "-b", "off", off.to_str().unwrap()]);
+        assert!(!clone_with(&off, false, clone, || {}));
+        assert!(!off.join("lib/f.txt").exists());
+
+        let on = tmp.join("on");
+        git(&top, &["worktree", "add", "-q", "-b", "on", on.to_str().unwrap()]);
+        let (started, setup) = std::sync::mpsc::channel();
+        assert!(clone_with(&on, true, clone, move || started.send(()).unwrap()));
+        wait_cloned(&on, Duration::from_secs(60));
+        setup.try_recv().expect("setup starts before the wait ends");
+        assert!(on.join("lib/f.txt").exists());
+
+        let plain = tmp.join("plain");
+        repo(&plain);
+        assert!(
+            !clone_with(&plain, true, clone, || {}),
+            "a repo without submodules clones nothing"
+        );
     }
 
     #[test]

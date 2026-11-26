@@ -58,6 +58,7 @@ describe("Project settings dialog, Worktrees section", () => {
       runCommand: "",
       openBrowser: true,
       runOnCreate: false,
+      initSubmodules: true,
     });
 
     cleanup();

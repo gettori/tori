@@ -454,7 +454,8 @@ export type PrFixLoop = {
  *  nothing; `setupWait` holds `worktree.new` and `session.spawn` until setup exits,
  *  `teardownCommand` runs before a worktree is removed, and `runCommand` is
  *  started and stopped by hand. `openBrowser` opens a run's first port once it listens, and `runOnCreate`
- *  starts it in a worktree created from the app once setup is done. `ports` is
+ *  starts it in a worktree created from the app once setup is done. `initSubmodules` clones a new
+ *  worktree's submodules before its setup. `ports` is
  *  how many of the worktree's ten ports are exported, all ten when unset. */
 export type WorktreePrefs = {
   setupCommand: string;
@@ -463,6 +464,7 @@ export type WorktreePrefs = {
   runCommand: string;
   openBrowser: boolean;
   runOnCreate: boolean;
+  initSubmodules: boolean;
   ports?: number;
 };
 
@@ -1080,6 +1082,7 @@ const NO_SETUP: WorktreePrefs = {
   runCommand: "",
   openBrowser: true,
   runOnCreate: false,
+  initSubmodules: true,
 };
 
 /** What this project runs in a new worktree; nothing for one never set up. */
