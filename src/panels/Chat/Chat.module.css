@@ -134,12 +134,7 @@
 
 /* The overflow menu, on the shared menuSurface recipe. */
 .stripMenu {
-  position: absolute;
-  top: 100%;
-  right: calc(12px * var(--ui-scale));
-  z-index: 1000;
   width: calc(300px * var(--ui-scale));
-  margin-top: calc(4px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-xl);
