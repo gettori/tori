@@ -782,6 +782,7 @@ const GIT_SIGNAL_FILES: &[&str] = &[
 struct GitDirs {
     git: PathBuf,
     common: PathBuf,
+    submodules: Vec<PathBuf>,
 }
 
 impl GitDirs {
@@ -806,7 +807,12 @@ impl GitDirs {
             Ok(rel) => git.join(rel.trim()).canonicalize().ok()?,
             Err(_) => git.clone(),
         };
-        Some(Self { git, common })
+        let submodules = submodule_git_dirs(&git.join("modules"), 0);
+        Some(Self {
+            git,
+            common,
+            submodules,
+        })
     }
 
     fn contains(&self, p: &Path) -> bool {
@@ -822,11 +828,29 @@ impl GitDirs {
         if p.starts_with(self.common.join("refs")) {
             return true;
         }
+        let name = p.file_name().and_then(|n| n.to_str());
         let in_dir = p.parent().is_some_and(|d| d == self.git || d == self.common);
-        in_dir
-            && p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| GIT_SIGNAL_FILES.contains(&n))
+        if in_dir && name.is_some_and(|n| GIT_SIGNAL_FILES.contains(&n)) {
+            return true;
+        }
+        // Never a submodule's `index`: any status run inside it rewrites that file,
+        // so hearing it would turn the refresh into a loop.
+        let head_like = matches!(name, Some("HEAD" | "packed-refs"));
+        let modules = self.git.join("modules");
+        if !p.starts_with(&modules) || !(head_like || p.components().any(|c| c.as_os_str() == "refs")) {
+            return false;
+        }
+        // Found on disk per event rather than from the list, so a submodule
+        // checked out after the watcher started is heard too.
+        let Some(sub) = p
+            .ancestors()
+            .skip(1)
+            .take_while(|a| a.starts_with(&modules) && *a != modules)
+            .find(|a| a.join("HEAD").is_file())
+        else {
+            return false;
+        };
+        p.starts_with(sub.join("refs")) || (p.parent() == Some(sub) && head_like)
     }
 
     /// What the root's own recursive watch does not already cover. Not the
@@ -843,8 +867,31 @@ impl GitDirs {
             }
             out.push((self.common.join("refs"), RecursiveMode::Recursive));
         }
+        for sub in self.submodules.iter().filter(|sub| !sub.starts_with(&root)) {
+            out.push((sub.clone(), RecursiveMode::NonRecursive));
+            out.push((sub.join("refs"), RecursiveMode::Recursive));
+        }
         out
     }
+}
+
+// A submodule named `libs/core` lives at `modules/libs/core`, and a nested one
+// at `modules/outer/modules/inner`, so any directory holding a `HEAD` is one.
+// Read off disk for the reason `GitDirs::resolve` is: no process per selection.
+fn submodule_git_dirs(modules: &Path, depth: usize) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(modules) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for dir in entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+        if dir.join("HEAD").is_file() {
+            out.extend(submodule_git_dirs(&dir.join("modules"), depth + 1));
+            out.push(dir);
+        } else if depth < 8 {
+            out.extend(submodule_git_dirs(&dir, depth + 1));
+        }
+    }
+    out
 }
 
 /// Watch one root and wire its bursts to `fs://changed`. Shared by the
@@ -1010,6 +1057,38 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn a_commit_inside_a_submodule_is_a_signal_and_its_index_is_not() {
+        let root = temp_tree("submodule-signal");
+        let git = root.join(".git");
+        for dir in [
+            git.join("refs"),
+            git.join("modules/libs/core/refs/heads"),
+            git.join("modules/outer/refs"),
+            git.join("modules/outer/modules/inner/refs"),
+        ] {
+            std::fs::create_dir_all(dir).unwrap();
+        }
+        for sub in ["modules/libs/core", "modules/outer", "modules/outer/modules/inner"] {
+            std::fs::write(git.join(sub).join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        }
+        std::fs::write(git.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let dirs = GitDirs::resolve(&root).unwrap();
+        let git = dirs.git.clone();
+        assert_eq!(dirs.submodules.len(), 3);
+
+        assert!(dirs.is_signal(&git.join("modules/libs/core/HEAD")));
+        assert!(dirs.is_signal(&git.join("modules/libs/core/refs/heads/main")));
+        assert!(dirs.is_signal(&git.join("modules/outer/modules/inner/HEAD")));
+        assert!(!dirs.is_signal(&git.join("modules/libs/core/index")));
+        assert!(!dirs.is_signal(&git.join("modules/libs/core/HEAD.lock")));
+        assert!(!dirs.is_signal(&git.join("modules/libs/core/objects/ab/cdef")));
+
+        std::fs::create_dir_all(git.join("modules/late/refs")).unwrap();
+        std::fs::write(git.join("modules/late/HEAD"), "ref: refs/heads/main\n").unwrap();
+        assert!(dirs.is_signal(&git.join("modules/late/HEAD")));
     }
 
     /// The watcher LRU: re-selecting a warm root asks for no new watcher and

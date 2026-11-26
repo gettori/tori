@@ -42,7 +42,9 @@ export type FileStatus = {
    *  offering stage, unstage or discard, none of which git performs on one.
    *  Optional only so a fixture may omit it; the backend always sends it. */
   conflicted?: boolean;
+  submodule?: SubmoduleState | null;
 };
+export type SubmoduleState = { pointer_moved: boolean; modified: boolean; untracked: boolean };
 export type AheadBehind = {
   ahead: number;
   behind: number;
@@ -473,7 +475,13 @@ const sameFile = (a: FileStatus, b: FileStatus) =>
   (a.orig_path ?? null) === (b.orig_path ?? null) &&
   a.staged === b.staged &&
   a.unstaged === b.unstaged &&
-  !!a.conflicted === !!b.conflicted;
+  !!a.conflicted === !!b.conflicted &&
+  sameSubmodule(a.submodule, b.submodule);
+
+function sameSubmodule(a: SubmoduleState | null | undefined, b: SubmoduleState | null | undefined): boolean {
+  if (!a || !b) return !a === !b;
+  return a.pointer_moved === b.pointer_moved && a.modified === b.modified && a.untracked === b.untracked;
+}
 
 // Every watcher burst re-reads status, and a `<For>` keys rows by object: a
 // list of fresh objects remounts every row of the Changes panel per burst.

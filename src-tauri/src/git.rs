@@ -42,6 +42,30 @@ pub struct GitFileStatus {
     /// `DD` both deleted) contain no `U` at all, and `DD` is indistinguishable
     /// from an ordinary staged-and-worktree delete once the type is gone.
     conflicted: bool,
+    /// Set when the path is a submodule (a gitlink), from v2's `S<c><m><u>`
+    /// field. `None` for an ordinary file.
+    submodule: Option<SubmoduleState>,
+}
+
+/// What git says has changed in a submodule, as the parent sees it.
+#[derive(Serialize, Debug, PartialEq, Eq, Clone, Copy)]
+pub struct SubmoduleState {
+    /// The submodule's HEAD is not the commit the parent records.
+    pointer_moved: bool,
+    /// Tracked files inside the submodule are modified.
+    modified: bool,
+    /// The submodule holds untracked files.
+    untracked: bool,
+}
+
+fn submodule_state(sub: &str) -> Option<SubmoduleState> {
+    let flags = sub.strip_prefix('S')?.as_bytes();
+    let at = |i: usize, c: u8| flags.get(i) == Some(&c);
+    Some(SubmoduleState {
+        pointer_moved: at(0, b'C'),
+        modified: at(1, b'M'),
+        untracked: at(2, b'U'),
+    })
 }
 
 #[tauri::command]
@@ -95,7 +119,13 @@ pub(crate) fn git_status_body(project_path: &str) -> Result<Vec<GitFileStatus>, 
 /// staged version, and both `git commit` and `git restore --staged` refuse it.
 /// Reading `UU`'s two non-space columns as "staged and unstaged" would list the
 /// file in both sections and offer it actions git will not perform.
-fn status_entry(xy: &str, path: &str, orig_path: Option<String>, conflicted: bool) -> GitFileStatus {
+fn status_entry(
+    xy: &str,
+    path: &str,
+    orig_path: Option<String>,
+    conflicted: bool,
+    submodule: Option<SubmoduleState>,
+) -> GitFileStatus {
     let mut chars = xy.chars();
     let norm = |c: Option<char>| match c {
         Some('.') | None => ' ',
@@ -110,6 +140,7 @@ fn status_entry(xy: &str, path: &str, orig_path: Option<String>, conflicted: boo
         staged: !conflicted && x != ' ' && x != '?',
         unstaged: !conflicted && y != ' ',
         conflicted,
+        submodule,
     }
 }
 
@@ -136,7 +167,7 @@ fn parse_status(text: &str) -> Vec<GitFileStatus> {
         match kind {
             // Untracked has no XY of its own, so it keeps v1's "??" - the code
             // the panel already styles as untracked.
-            "?" => files.push(status_entry("??", rest, None, false)),
+            "?" => files.push(status_entry("??", rest, None, false, None)),
             // Ignored only appears under `--ignored`, which this does not pass.
             // Skipped rather than listed: an ignored file is not a change.
             "!" => {}
@@ -150,13 +181,14 @@ fn parse_status(text: &str) -> Vec<GitFileStatus> {
                 };
                 let mut parts = rest.splitn(leading + 1, ' ');
                 let xy = parts.next().unwrap_or_default();
-                let Some(path) = parts.nth(leading - 1) else { continue };
+                let submodule = parts.next().and_then(submodule_state);
+                let Some(path) = parts.nth(leading - 2) else { continue };
                 let orig = if kind == "2" {
                     records.next().map(str::to_string)
                 } else {
                     None
                 };
-                files.push(status_entry(xy, path, orig, kind == "u"));
+                files.push(status_entry(xy, path, orig, kind == "u", submodule));
             }
             _ => {}
         }
@@ -1453,7 +1485,14 @@ pub fn git_branch_paths(project_path: String, base: String) -> Result<Vec<String
 pub fn git_worktree_stat(project_path: String) -> Result<DiffStat, String> {
     let mut stat = parse_numstat(&git_capture(
         &project_path,
-        &["--no-optional-locks", "diff", "--numstat", "HEAD", "--"],
+        &[
+            "--no-optional-locks",
+            "diff",
+            "--numstat",
+            "--ignore-submodules=all",
+            "HEAD",
+            "--",
+        ],
     )?);
     add_untracked(&project_path, &mut stat);
     Ok(stat)
@@ -2130,6 +2169,10 @@ fn git_command(repo: &str, op_id: &str, sock: &Path, token: &str) -> Command {
     cmd.env(ENV_OP, op_id);
     cmd.env("PATH", augmented_path());
     cmd
+}
+
+pub(crate) fn network_git(repo: &str, sock: &Path, token: &str) -> Command {
+    git_command(repo, &next_op_id(), sock, token)
 }
 
 /// Payload for the background-fetch result events.
@@ -3024,7 +3067,19 @@ pub struct UnitGit {
 
 fn unit_git(folder: &str) -> Option<UnitGit> {
     // A read the phone polls must not take the index lock a concurrent commit needs.
-    let stat = parse_numstat(&git_capture(folder, &["--no-optional-locks", "diff", "--numstat", "HEAD"]).ok()?);
+    let stat = parse_numstat(
+        &git_capture(
+            folder,
+            &[
+                "--no-optional-locks",
+                "diff",
+                "--numstat",
+                "--ignore-submodules=all",
+                "HEAD",
+            ],
+        )
+        .ok()?,
+    );
     let sync = git_capture(folder, &["symbolic-ref", "--quiet", "--short", "HEAD"])
         .ok()
         .filter(|name| !name.is_empty())
@@ -3467,7 +3522,13 @@ fn base_stat(repo: &str, base_ref: &str, tip: &str, fork: Option<&str>, ahead: u
     }
     // Against the working tree only where it is this branch's: a branch asked
     // about from somebody else's checkout has nothing uncommitted.
-    let mut args = vec!["--no-optional-locks", "diff", "--numstat", fork];
+    let mut args = vec![
+        "--no-optional-locks",
+        "diff",
+        "--numstat",
+        "--ignore-submodules=all",
+        fork,
+    ];
     if !dirty {
         args.push(tip);
     }
@@ -4405,6 +4466,36 @@ mod tests {
             .iter()
             .filter(|f| f.path != "new name.txt" && f.path != "copy.txt")
             .all(|f| f.orig_path.is_none()));
+    }
+
+    #[test]
+    fn a_gitlink_entry_carries_its_submodule_state() {
+        let out = concat!(
+            "1 .M SC.. 160000 160000 160000 aaa bbb libs/moved\0",
+            "1 .M S.MU 160000 160000 160000 aaa aaa libs/dirty\0",
+            "1 .M N... 100644 100644 100644 aaa bbb src/file.rs\0",
+            "? new.txt\0",
+        );
+        let files = parse_status(out);
+        let sub = |p: &str| files.iter().find(|f| f.path == p).unwrap().submodule;
+        assert_eq!(
+            sub("libs/moved"),
+            Some(SubmoduleState {
+                pointer_moved: true,
+                modified: false,
+                untracked: false
+            })
+        );
+        assert_eq!(
+            sub("libs/dirty"),
+            Some(SubmoduleState {
+                pointer_moved: false,
+                modified: true,
+                untracked: true
+            })
+        );
+        assert_eq!(sub("src/file.rs"), None);
+        assert_eq!(sub("new.txt"), None);
     }
 
     #[test]
