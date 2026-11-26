@@ -416,14 +416,29 @@ async function whileBusy<T>(root: string, kind: GitBusy, refused: T, work: () =>
 
 // Named and linked: a fetch or pull runs in the background, so the toast often
 // lands after the user has moved to another checkout.
-function toastError(root: string, e: unknown) {
+function toastError(root: string, e: unknown, sub?: string) {
   const reason = String(e) === UNTRUSTED ? "Git stays off until you trust this project." : String(e);
   const branch = gitStateFor(root).branch;
+  const open = openPlace(root, branch);
   emitWith<ToastEvent>(TOAST, {
     message: `${placeLabel(root, branch)}: ${reason}`,
     kind: "error",
-    action: openPlace(root, branch),
+    action: sub ? [{ label: "Push submodule", run: () => void pushSubmodule(root, sub) }, open] : open,
   });
+}
+
+// The submodule itself rather than its section, which may have left Changes.
+export async function pushSubmodule(root: string, path: string): Promise<void> {
+  try {
+    const branch = await invoke<string>("git_submodule_push", { root, path });
+    emitWith<ToastEvent>(TOAST, {
+      message: `Pushed submodule ${path} on ${branch}. Push ${placeLabel(root, gitStateFor(root).branch)} again.`,
+      kind: "success",
+    });
+  } catch (e) {
+    toastError(`${root}/${path}`, e);
+  }
+  await refreshGit(root);
 }
 
 /** A remote action that finished. Said out loud because nothing else on screen
@@ -806,12 +821,14 @@ export async function headMessage(root: string): Promise<string> {
 // Resolves once `git://push-done|error` fires for `repo`, so a caller can await
 // a push before proceeding (e.g. "Open PR" pushing first). One-shot: both
 // listeners are torn down as soon as either fires.
-function waitFor(repo: string, done: string, failed: string): Promise<{ ok: boolean; error: string }> {
+type RemoteOutcome = { ok: boolean; error: string; submodule?: string };
+
+function waitFor(repo: string, done: string, failed: string): Promise<RemoteOutcome> {
   return new Promise((resolve) => {
     let settled = false;
     let unDone: UnlistenFn | undefined;
     let unError: UnlistenFn | undefined;
-    const finish = (result: { ok: boolean; error: string }) => {
+    const finish = (result: RemoteOutcome) => {
       if (settled) return;
       settled = true;
       unDone?.();
@@ -821,13 +838,13 @@ function waitFor(repo: string, done: string, failed: string): Promise<{ ok: bool
     listen<{ repo: string }>(done, (e) => {
       if (e.payload.repo === repo) finish({ ok: true, error: "" });
     }).then((un) => (settled ? un() : (unDone = un)));
-    listen<{ repo: string; error: string }>(failed, (e) => {
-      if (e.payload.repo === repo) finish({ ok: false, error: e.payload.error });
+    listen<{ repo: string; error: string; submodule?: string }>(failed, (e) => {
+      if (e.payload.repo === repo) finish({ ok: false, error: e.payload.error, submodule: e.payload.submodule });
     }).then((un) => (settled ? un() : (unError = un)));
   });
 }
 
-function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
+function waitForPush(repo: string): Promise<RemoteOutcome> {
   return waitFor(repo, "git://push-done", "git://push-error");
 }
 
@@ -846,9 +863,9 @@ export function push(root: string, branch: string): Promise<boolean> {
       toastError(root, e);
       return false;
     }
-    const { ok, error } = await result;
+    const { ok, error, submodule } = await result;
     if (!ok) {
-      toastError(root, error || "Push failed");
+      toastError(root, error || "Push failed", submodule);
       return false;
     }
     await refreshMeta(root);
@@ -924,9 +941,9 @@ export function forcePush(root: string, branch: string, expected: string): Promi
       toastError(root, e);
       return false;
     }
-    const { ok, error } = await result;
+    const { ok, error, submodule } = await result;
     if (!ok) {
-      toastError(root, error || "Force push failed");
+      toastError(root, error || "Force push failed", submodule);
       return false;
     }
     await refreshMeta(root);

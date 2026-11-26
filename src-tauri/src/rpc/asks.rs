@@ -88,10 +88,7 @@ fn hold_of(held: &Held) -> Option<Hold> {
 // again; any other answer still stands and goes to the next wait.
 fn reloaded(hold: Hold) -> (String, Held) {
     let answer = hold.answer.filter(|a| a != APPROVE);
-    let approval = Approval {
-        project: hold.project,
-        draft: hold.draft,
-    };
+    let approval = Approval::new(hold.project, hold.draft);
     let ask = Ask {
         id: hold.ask,
         session: hold.session,
@@ -548,6 +545,7 @@ mod tests {
         let asks = Asks::default();
         let approval = || Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft: Draft::PrMerge {
                 number: 7,
                 method: MergeMethod::Squash,
@@ -575,10 +573,7 @@ mod tests {
             "s1".into(),
             "merge?".into(),
             vec!["sure".into()],
-            Some(Approval {
-                project: "/p".into(),
-                draft,
-            }),
+            Some(Approval::new("/p".into(), draft)),
             Some("root".into()),
             None,
         )
@@ -620,10 +615,7 @@ mod tests {
             method: MergeMethod::Squash,
             head_sha: "abc".into(),
         };
-        let approval = Some(Approval {
-            project: "/p".into(),
-            draft,
-        });
+        let approval = Some(Approval::new("/p".into(), draft));
         asks.create(
             "s1".into(),
             "merge?".into(),

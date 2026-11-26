@@ -2558,6 +2558,40 @@ pub struct PushResult {
     repo: String,
     ok: bool,
     error: String,
+    /// The submodule whose unpushed commit refused the push, for the toast's
+    /// Push submodule action.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    submodule: Option<String>,
+}
+
+impl PushResult {
+    fn of(repo: String, pushed: Result<(), PushFailure>) -> Self {
+        let submodule = match &pushed {
+            Err(PushFailure::Pointer(u)) => Some(u.path.clone()),
+            _ => None,
+        };
+        Self {
+            repo,
+            ok: pushed.is_ok(),
+            error: pushed.err().map(|e| e.to_string()).unwrap_or_default(),
+            submodule,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum PushFailure {
+    Pointer(crate::submodule::Unpushed),
+    Git(String),
+}
+
+impl std::fmt::Display for PushFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PushFailure::Pointer(u) => u.fmt(f),
+            PushFailure::Git(e) => f.write_str(e),
+        }
+    }
 }
 
 /// One blocking `git push` through the askpass bridge, with a fresh op id so
@@ -2570,6 +2604,11 @@ pub struct PushResult {
 /// Sharing the body means the second caller cannot drift from the first on
 /// `--set-upstream`, which is the flag a brand-new branch depends on.
 pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &str) -> Result<(), String> {
+    push_branch_checked(repo, remote, branch, sock, token).map_err(|e| e.to_string())
+}
+
+fn push_branch_checked(repo: &str, remote: &str, branch: &str, sock: &Path, token: &str) -> Result<(), PushFailure> {
+    crate::submodule::check_pointers_since_default(repo, branch, sock, token).map_err(PushFailure::Pointer)?;
     let op_id = next_op_id();
     let set_upstream = !has_upstream(repo, branch);
     let mut cmd = git_command(repo, &op_id, sock, token);
@@ -2581,8 +2620,8 @@ pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &
     cmd.arg(remote).arg(branch);
     match crate::git_health::run(&mut cmd) {
         Ok(o) if o.status.success() => Ok(()),
-        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
-        Err(e) => Err(e),
+        Ok(o) => Err(PushFailure::Git(String::from_utf8_lossy(&o.stderr).trim().to_string())),
+        Err(e) => Err(PushFailure::Git(e)),
     }
 }
 
@@ -2610,6 +2649,7 @@ pub fn push_sha(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Path, 
 }
 
 pub fn push_commit(repo: &str, remote: &str, branch: &str, sha: &str, sock: &Path, token: &str) -> Result<(), String> {
+    crate::submodule::check_pointers_since_default(repo, sha, sock, token).map_err(|e| e.to_string())?;
     let op_id = next_op_id();
     let mut cmd = git_command(repo, &op_id, sock, token);
     let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);
@@ -2652,16 +2692,18 @@ pub fn git_push(
     thread::spawn(move || {
         // Push writes local tracking refs when it lands, so it queues with the
         // repo's other writes for its duration.
-        let (ok, error) = {
+        let pushed = {
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            match push_branch(&repo, &remote, &branch, inner.sock_path(), inner.token()) {
-                Ok(()) => (true, String::new()),
-                Err(e) => (false, e),
-            }
+            push_branch_checked(&repo, &remote, &branch, inner.sock_path(), inner.token())
         };
-        let event = if ok { "git://push-done" } else { "git://push-error" };
-        let _ = app.emit(event, PushResult { repo, ok, error });
+        let result = PushResult::of(repo, pushed);
+        let event = if result.ok {
+            "git://push-done"
+        } else {
+            "git://push-error"
+        };
+        let _ = app.emit(event, result);
     });
     Ok(())
 }
@@ -2671,20 +2713,27 @@ pub fn git_push(
 /// push somebody made since is rejected rather than thrown away. The bare
 /// `--force-with-lease` would lease on the tracking ref, which any background
 /// fetch moves. Refused unless the branch has really diverged from its target.
-pub fn force_push_branch(repo: &str, branch: &str, expected: &str, sock: &Path, token: &str) -> Result<(), String> {
+pub fn force_push_branch(
+    repo: &str,
+    branch: &str,
+    expected: &str,
+    sock: &Path,
+    token: &str,
+) -> Result<(), PushFailure> {
     let head = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .map_err(|_| "Not on a branch.".to_string())?;
+        .map_err(|_| PushFailure::Git("Not on a branch.".to_string()))?;
     if head != branch {
-        return Err(format!("{branch} is not checked out here."));
+        return Err(PushFailure::Git(format!("{branch} is not checked out here.")));
     }
     match push_target(repo, branch) {
         Some(t) if t.ahead > 0 && t.behind > 0 => {}
         _ => {
-            return Err(format!(
+            return Err(PushFailure::Git(format!(
                 "{branch} has not diverged from origin/{branch}, so it was not force pushed."
-            ))
+            )))
         }
     }
+    crate::submodule::check_pointers_since_default(repo, branch, sock, token).map_err(PushFailure::Pointer)?;
     let op_id = next_op_id();
     let mut cmd = git_command(repo, &op_id, sock, token);
     let _bridge = crate::credential::bridge(&mut cmd, repo, "origin", &op_id);
@@ -2697,8 +2746,8 @@ pub fn force_push_branch(repo: &str, branch: &str, expected: &str, sock: &Path, 
     ]);
     match crate::git_health::run(&mut cmd) {
         Ok(o) if o.status.success() => Ok(()),
-        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
-        Err(e) => Err(e),
+        Ok(o) => Err(PushFailure::Git(String::from_utf8_lossy(&o.stderr).trim().to_string())),
+        Err(e) => Err(PushFailure::Git(e)),
     }
 }
 
@@ -2714,16 +2763,18 @@ pub fn git_force_push(
 ) -> Result<(), String> {
     let inner = state.0.clone();
     thread::spawn(move || {
-        let (ok, error) = {
+        let pushed = {
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            match force_push_branch(&repo, &branch, &expected, inner.sock_path(), inner.token()) {
-                Ok(()) => (true, String::new()),
-                Err(e) => (false, e),
-            }
+            force_push_branch(&repo, &branch, &expected, inner.sock_path(), inner.token())
         };
-        let event = if ok { "git://push-done" } else { "git://push-error" };
-        let _ = app.emit(event, PushResult { repo, ok, error });
+        let result = PushResult::of(repo, pushed);
+        let event = if result.ok {
+            "git://push-done"
+        } else {
+            "git://push-error"
+        };
+        let _ = app.emit(event, result);
     });
     Ok(())
 }

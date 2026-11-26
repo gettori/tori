@@ -739,6 +739,7 @@ mod tests {
         };
         super::super::approvals::Approval {
             project: "/p".into(),
+            submodule_path: None,
             draft,
         }
     }

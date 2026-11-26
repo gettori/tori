@@ -750,7 +750,7 @@ pub struct AskParams {
     /// Ask to approve this outward action and its exact draft. The options become Approve and Reject, and
     /// an Approve answer comes back with the `approval_id` a background session passes to that action.
     pub approval: Option<Draft>,
-    /// The project an `approval` is for, the caller's own project when left out.
+    /// The project an `approval` is for, or the submodule folder a pull request is in; the caller's own project when left out.
     pub project: Option<String>,
     /// The autopilot item an `approval` holds up. The ask then survives the asking chat and a restart,
     /// and is withdrawn when the item is done or failed.
@@ -806,7 +806,7 @@ pub struct PrCreateParams {
     pub body: String,
     /// Open it as a draft.
     pub draft: Option<bool>,
-    /// The project folder, the caller's own project when left out.
+    /// The project folder, or a submodule's folder for a pull request in that submodule; the caller's own project when left out.
     pub project: Option<String>,
     /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
     pub approval_id: Option<String>,
@@ -890,7 +890,7 @@ pub struct PrPushParams {
     pub head: String,
     /// The commit to push, from any worktree of the project; never forced.
     pub head_sha: String,
-    /// The project folder, the caller's own project when left out.
+    /// The project folder, or a submodule's folder for a pull request in that submodule; the caller's own project when left out.
     pub project: Option<String>,
     /// The approval `ask.create` returned for exactly this call; a background session is refused without one.
     pub approval_id: Option<String>,
@@ -2945,6 +2945,7 @@ pub mod tests {
         let ask = |item: &str| {
             let approval = Some(Approval {
                 project: "/p".into(),
+                submodule_path: None,
                 draft: draft.clone(),
             });
             asks.create("s1".into(), "merge?".into(), vec![], approval, None, Some(item.into()))

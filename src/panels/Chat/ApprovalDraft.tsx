@@ -13,6 +13,9 @@ export default function ApprovalDraft(props: { approval: AskApproval }) {
   const attach = () => (props.approval.action === "pty.attach" ? props.approval : undefined);
   return (
     <div class={styles.askDraft}>
+      <Show when={props.approval.submodule_path}>
+        {(path) => <span class={styles.askDraftMeta}>In submodule {path()}, its own repo</span>}
+      </Show>
       <Show when={pr()}>
         {(pr) => (
           <>
