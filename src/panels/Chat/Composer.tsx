@@ -277,6 +277,9 @@ export default function Composer(props: {
   fileExists?: (path: string) => Promise<boolean>;
   /** Receives the imperative handle on mount, for the transcript's Quote. */
   handle?: (handle: ComposerHandle) => void;
+  /** Take the caret each time this turns true. Absent, the input waits for a
+   *  click, which is right for a chat whose transcript the user came to read. */
+  takeFocus?: boolean;
   /** The scratch file's name while the draft is being edited in the editor.
    *  The input is read only then; the editor writes, the composer sends. */
   linked?: string | null;
@@ -1126,6 +1129,13 @@ export default function Composer(props: {
     onBlur: closeMenu,
   });
   onCleanup(() => field?.destroy());
+  createEffect(
+    () => !!props.takeFocus,
+    (take) => {
+      // Behind the render that reveals the pane, so the focus lands on a visible field.
+      if (take) queueMicrotask(() => field?.focus());
+    },
+  );
 
   return (
     <div
