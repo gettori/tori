@@ -15,12 +15,14 @@
 //! hour per project. Uncapped, a project with a hundred stale worktrees would
 //! spend the whole budget on branches nobody is looking at.
 //!
-//! So the tick takes the first [`UNITS_PER_TICK`] branches **in the order the
-//! caller passed them** (the caller puts the visible ones first, since it is the
-//! only side that knows what is on screen) and reports the rest as `uncovered`
-//! rather than dropping them silently. A partial answer that renders as a
-//! complete one is the failure nobody notices: those units simply never get a
-//! chip, with nothing on screen saying why.
+//! So the tick takes [`UNITS_PER_TICK`] branches, **the longest unanswered
+//! first**, and reports the rest as `uncovered` rather than dropping them
+//! silently. A partial answer that renders as a complete one is the failure
+//! nobody notices: those units simply never get a chip, with nothing on screen
+//! saying why. Age is what picks, not the caller's order alone: a fixed order
+//! cut the same tail off every tick, so a project with more branches than the
+//! cap had rows that were never asked about at all. The caller's order (visible
+//! units first) breaks ties, which is all of them on the first tick.
 
 use super::model::{CheckState, PrState, RateSnapshot, RepoRef, ReviewDecision, StatusReport, UnitStatus};
 use super::ForgeError;
@@ -55,12 +57,14 @@ pub struct TickPlan {
 
 /// Trims the caller's branch list down to one tick's worth.
 ///
-/// Order is the caller's priority order and is preserved. Duplicates collapse
-/// before the cap so two worktrees on the same branch do not each eat a slot,
-/// and empty names are skipped entirely rather than counted as uncovered: a
-/// `plain-dir` unit has no branch, so there is nothing the forge could be asked
-/// about and nothing the UI should report as missed.
-pub fn plan_tick(branches: &[String], cap: usize) -> TickPlan {
+/// A branch never answered goes first, then the oldest answer; `answered_at`
+/// is when each branch last was. The sort is stable, so the caller's priority
+/// order still decides between equals. Duplicates collapse before the cap so
+/// two worktrees on the same branch do not each eat a slot, and empty names are
+/// skipped entirely rather than counted as uncovered: a `plain-dir` unit has no
+/// branch, so there is nothing the forge could be asked about and nothing the
+/// UI should report as missed.
+pub fn plan_tick(branches: &[String], cap: usize, answered_at: impl Fn(&str) -> Option<Instant>) -> TickPlan {
     let mut seen = HashSet::new();
     let mut ask: Vec<String> = Vec::new();
     for b in branches {
@@ -70,6 +74,7 @@ pub fn plan_tick(branches: &[String], cap: usize) -> TickPlan {
         ask.push(b.clone());
     }
     let distinct = ask.len();
+    ask.sort_by_cached_key(|b| answered_at(b));
     ask.truncate(cap);
     TickPlan {
         uncovered: distinct - ask.len(),
@@ -96,6 +101,10 @@ impl StatusCache {
             return Some(status.clone());
         }
         None
+    }
+
+    pub fn answered_at(&self, repo: &RepoRef, branch: &str) -> Option<Instant> {
+        self.entries.get(&Self::key(repo, branch)).map(|(at, _)| *at)
     }
 
     /// Files a status under the head ref the server echoed back, not under
@@ -151,7 +160,7 @@ pub fn tick<F>(
 where
     F: FnOnce(&[String]) -> Result<Fetched, ForgeError>,
 {
-    let plan = plan_tick(branches, UNITS_PER_TICK);
+    let plan = plan_tick(branches, UNITS_PER_TICK, |b| cache.answered_at(repo, b));
     if plan.ask.is_empty() {
         return Ok(StatusReport {
             statuses: vec![],
@@ -347,7 +356,7 @@ pub fn cached_tick<F>(repo: &RepoRef, branches: &[String], refresh: bool, fetch:
 where
     F: FnOnce(&[String]) -> Result<Fetched, ForgeError>,
 {
-    let plan = plan_tick(branches, UNITS_PER_TICK);
+    let plan = with(|c| plan_tick(branches, UNITS_PER_TICK, |b| c.answered_at(repo, b)));
     if plan.ask.is_empty() {
         return Ok(StatusReport {
             statuses: vec![],
@@ -428,7 +437,7 @@ mod tests {
         // The whole point of `uncovered`: a silently truncated answer renders as
         // a complete one, and the units past the cap just never get a chip.
         let all: Vec<String> = (0..UNITS_PER_TICK + 5).map(|i| format!("wave-{i}")).collect();
-        let plan = plan_tick(&all, UNITS_PER_TICK);
+        let plan = plan_tick(&all, UNITS_PER_TICK, |_| None);
         assert_eq!(plan.ask.len(), UNITS_PER_TICK);
         assert_eq!(plan.uncovered, 5);
         // Caller order is priority order: the visible units the caller listed
@@ -440,7 +449,7 @@ mod tests {
     fn duplicate_branches_do_not_each_eat_a_slot() {
         // Two worktrees on one branch is normal (a detached checkout beside the
         // primary), and asking twice buys nothing.
-        let plan = plan_tick(&branches(&["main", "wave-3", "main"]), 2);
+        let plan = plan_tick(&branches(&["main", "wave-3", "main"]), 2, |_| None);
         assert_eq!(plan.ask, branches(&["main", "wave-3"]));
         assert_eq!(plan.uncovered, 0, "the duplicate was never a distinct unit");
     }
@@ -449,7 +458,7 @@ mod tests {
     fn a_unit_with_no_branch_is_not_a_unit_the_forge_can_answer_for() {
         // A `plain-dir` unit has no branch. Counting it as uncovered would put a
         // permanent "1 not covered" on a project that is fully covered.
-        let plan = plan_tick(&branches(&["", "main", ""]), 20);
+        let plan = plan_tick(&branches(&["", "main", ""]), 20, |_| None);
         assert_eq!(plan.ask, branches(&["main"]));
         assert_eq!(plan.uncovered, 0);
     }
@@ -500,7 +509,7 @@ mod tests {
             answered(ask)
         })
         .unwrap();
-        assert_eq!(*asked.borrow(), branches(&["main", "wave-3"]));
+        assert_eq!(*asked.borrow(), branches(&["wave-3", "main"]));
     }
 
     #[test]
